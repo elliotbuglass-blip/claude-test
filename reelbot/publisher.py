@@ -1,11 +1,15 @@
-"""Posts a finished video to Instagram as a trial reel via Meta's Graph API.
+"""Posts a finished video to Instagram as a trial reel.
 
-Flow (Meta's "resumable upload"): make a container -> upload the file -> wait -> publish.
-Uploading the file directly means you don't need to host videos anywhere.
+Two ways, set by posting.backend in config.yaml:
+- "graph": straight to Meta's Graph API (free; needs a Meta developer app + token).
+  Flow: make a container -> upload the file -> wait -> publish.
+- "metricool": schedules through Metricool (paid plan), which supports TRIAL_REEL.
+  Flow: upload to a temporary file host -> Metricool downloads it and publishes at the set time.
 """
 
 import json
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import requests
@@ -13,7 +17,46 @@ import requests
 from .settings import env
 
 
-def post_reel(video_path, caption, posting):
+def post_reel(video_path, caption, posting, slot=0):
+    """Returns an id. For Metricool, `slot` spaces posts out by minutes_between_posts."""
+    if posting.get("backend") == "metricool":
+        when = datetime.now() + timedelta(minutes=5 + slot * posting["minutes_between_posts"])
+        return _metricool(video_path, caption, posting, when)
+    return _graph(video_path, caption, posting)
+
+
+def _metricool(video_path, caption, posting, when):
+    with open(video_path, "rb") as f:
+        up = requests.post("https://tmpfiles.org/api/v1/upload", files={"file": f}, timeout=300)
+    up.raise_for_status()
+    video_url = up.json()["data"]["url"].replace("tmpfiles.org/", "tmpfiles.org/dl/")
+
+    resp = requests.post(
+        "https://app.metricool.com/api/v2/scheduler/posts",
+        headers={"X-Mc-Auth": env("METRICOOL_API_TOKEN")},
+        params={"userId": env("METRICOOL_USER_ID"), "blogId": env("METRICOOL_BLOG_ID")},
+        json={
+            "text": caption,
+            "publicationDate": {"dateTime": when.strftime("%Y-%m-%dT%H:%M:%S"),
+                                "timezone": posting.get("timezone", "Europe/London")},
+            "draft": False,
+            "autoPublish": True,
+            "saveExternalMediaFiles": True,
+            "providers": [{"network": "INSTAGRAM"}],
+            "instagramData": {"type": "TRIAL_REEL" if posting.get("trial_reel") else "REEL",
+                              "shareTrialAutomatically": posting.get("graduation") == "SS_PERFORMANCE"},
+            "media": [video_url],
+        },
+        timeout=60,
+    )
+    # Never retry blindly: the post may exist even if the response errored. Check Metricool first.
+    if resp.status_code not in (200, 201):
+        raise RuntimeError(f"Metricool error ({resp.status_code}): {resp.text[:300]} "
+                           "- check the Metricool planner before retrying, to avoid duplicates.")
+    return f"metricool:{resp.json().get('data', {}).get('id')} @ {when:%Y-%m-%d %H:%M}"
+
+
+def _graph(video_path, caption, posting):
     version = posting["graph_api_version"]
     user_id = env("IG_USER_ID")
     token = env("IG_ACCESS_TOKEN")

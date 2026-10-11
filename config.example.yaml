@@ -2,10 +2,23 @@
 
 niche: "menswear, cars (Aston Martin DB12) and fashion. Moody, aspirational, 'quiet luxury' tone."
 
-# Accounts in your niche to learn from (Business/Creator accounts only — Instagram's rule).
+# 10-20 accounts in your niche for the Competitor Radar. Mix sizes: a few big ones,
+# several mid-size, a few just ahead of you. Active accounts with original reels only.
 competitors:
-  - example_carspotter
-  - example_menswear_account
+  - username: example_carspotter
+    notes: "car spotting, moody night edits"
+  - username: example_menswear_account
+    notes: "menswear, dupes"
+
+# Competitor Radar: a reel counts as an "outlier" when it beats its creator's OWN median views.
+radar:
+  reels_per_account: 40
+  min_age_hours: 72        # younger reels are still collecting views
+  max_age_days: 30         # older topics may be stale
+  min_ratio: 5.0           # 5x the creator's median…
+  hybrid_ratio: 3.0        # …or 3x, if the reel also has real reach:
+  hybrid_min_views: 50000
+  abs_floor_views: 20000   # tune after first run: ~ median views of your strongest competitor
 
 clips:
   inbox_dir: inbox            # drop your raw clips here
@@ -29,6 +42,8 @@ audio:
   original_volume: 0.35       # only used in "mix"
 
 posting:
+  backend: graph              # graph = Meta API directly (free) | metricool = via Metricool (paid)
+  timezone: Europe/London     # used by Metricool scheduling
   trial_reel: true
   graduation: MANUAL          # MANUAL = you choose in the app, SS_PERFORMANCE = Instagram decides
   require_approval: true      # true = you check videos in output/review before they post

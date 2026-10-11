@@ -3,6 +3,7 @@
 import array
 import json
 import random
+import re
 import subprocess
 import textwrap
 from pathlib import Path
@@ -62,19 +63,43 @@ def extract_frame(path, at_seconds, out_path):
     return out_path
 
 
+# drawtext can't render emoji (they come out as empty boxes), so strip them from burned-in text.
+EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u200D]+")
+
+
+def clean_text(text):
+    return " ".join(EMOJI.sub("", text).split())
+
+
 def _escape(text):
     return text.replace("\\", "\\\\").replace("'", "’").replace(":", "\\:").replace("%", "\\%")
 
 
+FONT_FALLBACKS = [
+    "/System/Library/Fonts/Helvetica.ttc",                    # Mac
+    "/System/Library/Fonts/Supplemental/Arial.ttf",           # Mac
+    "C\\:/Windows/Fonts/arial.ttf",                          # Windows
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",        # Linux
+]
+
+
+def _font(path):
+    for candidate in [path, *FONT_FALLBACKS]:
+        if candidate and Path(candidate.replace("\\", "")).exists():
+            return candidate
+    raise SystemExit(f"Font not found: {path}. Set look.font in config.yaml to a .ttf/.otf on your computer.")
+
+
 def _text_filters(caption, look):
     size = look["font_size"]
-    lines = textwrap.wrap(caption, width=22) or [""]
+    font = _font(look["font"])
+    lines = textwrap.wrap(clean_text(caption), width=22) or [""]
     line_h = int(size * 1.25)
     top = int(H * look["text_position"])
     filters = []
     for i, line in enumerate(lines):
         filters.append(
-            f"drawtext=fontfile='{look['font']}':text='{_escape(line)}':fontsize={size}"
+            f"drawtext=fontfile='{font}':text='{_escape(line)}':fontsize={size}"
             f":fontcolor=white:shadowcolor=black@0.55:shadowx=2:shadowy=3"
             f":x=(w-text_w)/2:y={top + i * line_h}"
         )
@@ -99,23 +124,29 @@ def render(clip, out_path, caption, start, length, look, audio_cfg):
         print(f"  (no tracks in {audio_cfg['folder']}/, keeping original sound)")
         mode = "original"
 
+    tmp = out_path.with_suffix(".tmp.mp4")
     cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{start:.2f}", "-t", f"{length:.2f}", "-i", str(clip)]
     fade = f"afade=t=out:st={max(length - 0.6, 0):.2f}:d=0.6"
     if mode == "original":
         cmd += ["-vf", ",".join(vf)]
         cmd += ["-map", "0:v", "-map", "0:a", "-af", fade] if has_audio else ["-map", "0:v", "-an"]
     else:
-        cmd += ["-t", f"{length:.2f}", "-i", str(track)]
-        music = f"[1:a]volume={audio_cfg['music_volume']}"
+        # Loop the track if it's shorter than the reel, and level it so every track sits at the same loudness.
+        cmd += ["-stream_loop", "-1", "-i", str(track)]
+        music = f"[1:a]loudnorm=I=-14:TP=-1.5:LRA=11,volume={audio_cfg['music_volume']}"
         if mode == "mix" and has_audio:
             audio = (f"{music}[m];[0:a]volume={audio_cfg['original_volume']}[o];"
-                     f"[m][o]amix=inputs=2:duration=first,{fade}[a]")
+                     f"[m][o]amix=inputs=2:duration=first:normalize=0,{fade}[a]")
         else:
             audio = f"{music},{fade}[a]"
         cmd += ["-filter_complex", f"[0:v]{','.join(vf)}[v];{audio}", "-map", "[v]", "-map", "[a]"]
 
-    cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-shortest",
-            "-movflags", "+faststart", str(out_path)]
+    cmd += ["-t", f"{length:.2f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", "44100",
+            "-movflags", "+faststart", str(tmp)]
     _run(cmd)
+    # Re-mux to drop the H.264 edit list, which makes some players show a black first frame.
+    _run(["ffmpeg", "-y", "-v", "error", "-fflags", "+genpts+igndts", "-i", str(tmp),
+          "-c", "copy", "-movflags", "+faststart", str(out_path)])
+    tmp.unlink(missing_ok=True)
     return track

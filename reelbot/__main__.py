@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import competitors, editor, stats
+from . import competitors, editor, stats, vision
 from .settings import APPROVED, POSTED, REVIEW, ROOT, load_config
 
 
@@ -15,15 +15,29 @@ def cmd_stats(cfg, args):
     if args.refresh:
         rows = stats.refresh(args.period)
         print(f"Pulled {len(rows)} posts from Windsor.\n")
+    if args.read_text:
+        print("Reading the on-screen text of your reels…")
+        stats.read_onscreen_text()
+        print()
     print(stats.summary(stats.load()))
 
 
 def cmd_research(cfg, args):
-    print("Reading competitor accounts…")
-    posts = competitors.refresh(cfg["competitors"], cfg["posting"]["graph_api_version"])
-    print(f"\nSaved {len(posts)} competitor reels. Best performers:")
-    for p in competitors.top_posts(10):
-        print(f"  {p['likes_per_1k_followers']:>7}  @{p['account']}: {p['caption'][:70]!r}")
+    from . import research
+
+    print("Competitor Radar: pulling reels…")
+    outliers = competitors.run(cfg["competitors"], cfg["radar"], use_cache=args.cached)
+    print(f"\nTop outliers (on-screen hook):")
+    for o in outliers[:10]:
+        print(f"  {o['ratio']:>5}x  {o['views']:>10,}  @{o['account']}: “{o.get('on_screen_text') or '(no text)'}”")
+    print("\nMaking sure your own on-screen hooks are read…")
+    stats.read_onscreen_text()
+    print("Writing the research brief…")
+    brief = research.build(cfg["niche"])
+    print("\nWinning patterns:")
+    for p in brief["winning_patterns"]:
+        print(f"  • {p['pattern']}")
+    print(f"\nFull pick list: output/picklist.md")
 
 
 def cmd_make(cfg, args):
@@ -51,7 +65,8 @@ def cmd_make(cfg, args):
         notes = notes_file.read_text().strip() if notes_file.exists() else clip.stem.replace("_", " ")
 
         if args.captions:
-            captions = [{"text": t.strip(), "angle": "manual"} for t in args.captions.split("|")]
+            captions = [{"on_screen_text": t.strip(), "post_caption": t.strip(), "angle": "manual",
+                         "inspired_by": ""} for t in args.captions.split("|")]
         else:
             from .captions import write_captions  # only needs the Anthropic key when used
             frame = editor.extract_frame(clip, start + length / 2, REVIEW / f".{clip.stem}.jpg")
@@ -60,12 +75,14 @@ def cmd_make(cfg, args):
 
         for i, cap in enumerate(captions, 1):
             out = REVIEW / f"{clip.stem}__v{i}.mp4"
-            track = editor.render(clip, out, cap["text"], start, length, cfg["look"], cfg["audio"])
-            meta = {"source": clip.name, "caption": cap["text"], "angle": cap["angle"],
+            on_screen = editor.clean_text(cap["on_screen_text"])
+            track = editor.render(clip, out, on_screen, start, length, cfg["look"], cfg["audio"])
+            meta = {"source": clip.name, "on_screen_text": on_screen, "caption": cap["post_caption"],
+                    "angle": cap["angle"], "inspired_by": cap["inspired_by"],
                     "start": round(start, 2), "seconds": round(length, 2),
                     "audio": track.name if track else "original"}
             out.with_suffix(".json").write_text(json.dumps(meta, ensure_ascii=False, indent=1))
-            print(f"  ✓ v{i} [{cap['angle']}] “{cap['text']}”")
+            print(f"  ✓ v{i} [{cap['angle']}] “{on_screen}”")
 
         shutil.move(str(clip), done / clip.name)
         if notes_file.exists():
@@ -107,20 +124,22 @@ def cmd_post(cfg, args):
             print(f"  (dry run) would post {video.name}: {caption!r}")
             continue
         print(f"  posting {video.name}…")
-        media_id = post_reel(video, caption, posting)
+        media_id = post_reel(video, caption, posting, slot=n)
         meta.update(media_id=media_id, posted_at=datetime.now(timezone.utc).isoformat())
+        if not str(media_id).startswith("metricool:"):
+            vision.remember(f"me:{media_id}", meta.get("on_screen_text", ""))  # no need to re-read it later
         meta_file.write_text(json.dumps(meta, ensure_ascii=False, indent=1))
         for f in (video, meta_file):
             shutil.move(str(f), POSTED / f.name)
         print(f"  ✓ live as trial reel (media id {media_id})")
-        if n < len(videos) - 1:
+        if posting.get("backend") != "metricool" and n < len(videos) - 1:
             time.sleep(posting["minutes_between_posts"] * 60)
 
 
 def cmd_run(cfg, args):
     """The whole loop: learn from latest stats, edit new clips, post what's ready."""
     try:
-        cmd_stats(cfg, argparse.Namespace(refresh=True, period="last_30d"))
+        cmd_stats(cfg, argparse.Namespace(refresh=True, period="last_30d", read_text=True))
     except SystemExit as e:
         print(f"(skipping stats refresh: {e})")
     cmd_make(cfg, argparse.Namespace(captions=None))
@@ -134,9 +153,12 @@ def main():
     p = sub.add_parser("stats", help="show what's working on your account")
     p.add_argument("--refresh", action="store_true", help="pull fresh numbers from Windsor first")
     p.add_argument("--period", default="last_30d")
+    p.add_argument("--read-text", action="store_true", help="read the on-screen text of your reels")
     p.set_defaults(func=cmd_stats)
 
-    sub.add_parser("research", help="study competitor accounts").set_defaults(func=cmd_research)
+    p = sub.add_parser("research", help="competitor radar + research brief (weekly)")
+    p.add_argument("--cached", action="store_true", help="re-score last pull without spending credits")
+    p.set_defaults(func=cmd_research)
 
     p = sub.add_parser("make", help="edit every clip in inbox/ into captioned reels")
     p.add_argument("--captions", help='skip the AI and use your own, e.g. "Caption one|Caption two"')
