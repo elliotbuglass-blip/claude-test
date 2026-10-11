@@ -1,0 +1,9 @@
+.env
+config.yaml
+__pycache__/
+*.pyc
+inbox/*
+!inbox/.gitkeep
+audio/*
+!audio/.gitkeep
+output/
