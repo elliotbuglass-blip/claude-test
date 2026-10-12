@@ -1,4 +1,4 @@
-# ReelBot settings. Copy to config.yaml and change whatever you like.
+# ReelBot settings. Edit this file right on GitHub (pencil icon) — no secrets go in here.
 
 niche: "menswear, cars (Aston Martin DB12) and fashion. Moody, aspirational, 'quiet luxury' tone."
 
@@ -47,7 +47,7 @@ posting:
   trial_reel: true
   graduation: MANUAL          # MANUAL = you choose in the app, SS_PERFORMANCE = Instagram decides
   require_approval: true      # true = you check videos in output/review before they post
-  max_posts_per_run: 5
+  max_posts_per_run: 1         # the cloud runs every 3 hours, so 1 per run spaces them out nicely
   minutes_between_posts: 20
   hashtags: ""                # e.g. "#astonmartin #db12" (added to the post caption)
   graph_api_version: v23.0

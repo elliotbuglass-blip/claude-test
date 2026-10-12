@@ -1,0 +1,50 @@
+name: ReelBot
+
+on:
+  schedule:
+    - cron: "40 6 * * *"        # every morning (07:40 UK summer time): stats → edit new clips → post 1
+    - cron: "40 9-21/3 * * *"   # every 3 hours after that: post the next approved video
+    - cron: "10 6 * * 1"        # Mondays: competitor radar + research brief
+  workflow_dispatch:            # the "Run workflow" button on GitHub
+    inputs:
+      task:
+        description: "What should the robot do?"
+        type: choice
+        options: [daily, make-only, post-only, research]
+        default: daily
+
+concurrency: reelbot            # never run two at once
+
+jobs:
+  reelbot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install video tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-inter fonts-dejavu-core
+      - run: pip install -r requirements.txt
+      - name: Run ReelBot
+        run: python -m reelbot cloud --task "$TASK"
+        env:
+          TASK: >-
+            ${{ github.event.inputs.task
+             || (github.event.schedule == '10 6 * * 1' && 'research')
+             || (github.event.schedule == '40 9-21/3 * * *' && 'post-only')
+             || 'daily' }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          WINDSOR_API_KEY: ${{ secrets.WINDSOR_API_KEY }}
+          HIKER_API_KEY: ${{ secrets.HIKER_API_KEY }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          METRICOOL_API_TOKEN: ${{ secrets.METRICOOL_API_TOKEN }}
+          METRICOOL_USER_ID: ${{ secrets.METRICOOL_USER_ID }}
+          METRICOOL_BLOG_ID: ${{ secrets.METRICOOL_BLOG_ID }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}

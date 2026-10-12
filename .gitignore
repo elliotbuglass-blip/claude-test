@@ -1,5 +1,4 @@
 .env
-config.yaml
 __pycache__/
 *.pyc
 inbox/*
@@ -7,3 +6,4 @@ inbox/*
 audio/*
 !audio/.gitkeep
 output/
+data/

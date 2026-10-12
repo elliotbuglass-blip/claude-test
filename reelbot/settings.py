@@ -27,14 +27,11 @@ def _load_env():
 
 def load_config():
     _load_env()
-    path = ROOT / "config.yaml"
-    if not path.exists():
-        path = ROOT / "config.example.yaml"
-    return yaml.safe_load(path.read_text())
+    return yaml.safe_load((ROOT / "config.yaml").read_text())
 
 
 def env(name, required=True):
     value = os.environ.get(name, "")
     if required and not value:
-        raise SystemExit(f"Missing {name}. Add it to your .env file (see .env.example).")
+        raise SystemExit(f"Missing {name}. Add it as a GitHub secret (Settings → Secrets and variables → Actions).")
     return value

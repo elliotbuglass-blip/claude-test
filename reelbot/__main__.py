@@ -54,41 +54,49 @@ def cmd_make(cfg, args):
 
     for clip in clips:
         print(f"\n▶ {clip.name}")
-        duration, has_audio = editor.probe(clip)
-        length = min(clips_cfg["reel_seconds"], duration)
-        start = 0.0
-        if clips_cfg["pick_moment"] == "loudest" and has_audio:
-            start = editor.loudest_start(clip, duration, length)
-        print(f"  using {start:.1f}s → {start + length:.1f}s of {duration:.1f}s")
-
-        notes_file = clip.with_suffix(".txt")
-        notes = notes_file.read_text().strip() if notes_file.exists() else clip.stem.replace("_", " ")
-
-        if args.captions:
-            captions = [{"on_screen_text": t.strip(), "post_caption": t.strip(), "angle": "manual",
-                         "inspired_by": ""} for t in args.captions.split("|")]
-        else:
-            from .captions import write_captions  # only needs the Anthropic key when used
-            frame = editor.extract_frame(clip, start + length / 2, REVIEW / f".{clip.stem}.jpg")
-            captions = write_captions(cfg["niche"], frame, notes, count)
-            frame.unlink(missing_ok=True)
-
-        for i, cap in enumerate(captions, 1):
-            out = REVIEW / f"{clip.stem}__v{i}.mp4"
-            on_screen = editor.clean_text(cap["on_screen_text"])
-            track = editor.render(clip, out, on_screen, start, length, cfg["look"], cfg["audio"])
-            meta = {"source": clip.name, "on_screen_text": on_screen, "caption": cap["post_caption"],
-                    "angle": cap["angle"], "inspired_by": cap["inspired_by"],
-                    "start": round(start, 2), "seconds": round(length, 2),
-                    "audio": track.name if track else "original"}
-            out.with_suffix(".json").write_text(json.dumps(meta, ensure_ascii=False, indent=1))
-            print(f"  ✓ v{i} [{cap['angle']}] “{on_screen}”")
-
-        shutil.move(str(clip), done / clip.name)
-        if notes_file.exists():
-            shutil.move(str(notes_file), done / notes_file.name)
+        try:
+            _make_one(cfg, args, clip, done, count)
+        except Exception as e:  # keep going: one bad clip shouldn't stop the batch
+            print(f"  ✗ skipped {clip.name}: {e}")
 
     print(f"\nDone. Watch them in {REVIEW.relative_to(ROOT)}/ then run: python -m reelbot approve all")
+
+
+def _make_one(cfg, args, clip, done, count):
+    clips_cfg = cfg["clips"]
+    duration, has_audio = editor.probe(clip)
+    length = min(clips_cfg["reel_seconds"], duration)
+    start = 0.0
+    if clips_cfg["pick_moment"] == "loudest" and has_audio:
+        start = editor.loudest_start(clip, duration, length)
+    print(f"  using {start:.1f}s → {start + length:.1f}s of {duration:.1f}s")
+
+    notes_file = clip.with_suffix(".txt")
+    notes = notes_file.read_text().strip() if notes_file.exists() else clip.stem.replace("_", " ")
+
+    if args.captions:
+        captions = [{"on_screen_text": t.strip(), "post_caption": t.strip(), "angle": "manual",
+                     "inspired_by": ""} for t in args.captions.split("|")]
+    else:
+        from .captions import write_captions  # only needs the Anthropic key when used
+        frame = editor.extract_frame(clip, start + length / 2, REVIEW / f".{clip.stem}.jpg")
+        captions = write_captions(cfg["niche"], frame, notes, count)
+        frame.unlink(missing_ok=True)
+
+    for i, cap in enumerate(captions, 1):
+        out = REVIEW / f"{clip.stem}__v{i}.mp4"
+        on_screen = editor.clean_text(cap["on_screen_text"])
+        track = editor.render(clip, out, on_screen, start, length, cfg["look"], cfg["audio"])
+        meta = {"source": clip.name, "on_screen_text": on_screen, "caption": cap["post_caption"],
+                "angle": cap["angle"], "inspired_by": cap["inspired_by"],
+                "start": round(start, 2), "seconds": round(length, 2),
+                "audio": track.name if track else "original"}
+        out.with_suffix(".json").write_text(json.dumps(meta, ensure_ascii=False, indent=1))
+        print(f"  ✓ v{i} [{cap['angle']}] “{on_screen}”")
+
+    shutil.move(str(clip), done / clip.name)
+    if notes_file.exists():
+        shutil.move(str(notes_file), done / notes_file.name)
 
 
 def cmd_approve(cfg, args):
@@ -146,6 +154,11 @@ def cmd_run(cfg, args):
     cmd_post(cfg, argparse.Namespace(dry_run=False))
 
 
+def cmd_cloud(cfg, args):
+    from . import cloud
+    cloud.run(cfg, args.task)
+
+
 def main():
     parser = argparse.ArgumentParser(prog="reelbot", description="Clips in → trial reels out.")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -173,6 +186,10 @@ def main():
     p.set_defaults(func=cmd_post)
 
     sub.add_parser("run", help="stats → make → post, all in one").set_defaults(func=cmd_run)
+
+    p = sub.add_parser("cloud", help="run on GitHub using your Google Drive folder")
+    p.add_argument("--task", default="daily", choices=["daily", "research", "make-only", "post-only"])
+    p.set_defaults(func=cmd_cloud)
 
     args = parser.parse_args()
     args.func(load_config(), args)

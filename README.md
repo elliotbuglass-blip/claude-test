@@ -1,105 +1,97 @@
 # ReelBot 🎬🏎️
 
-Drop in your raw clips → ReelBot cuts them, makes them moody, writes the **on-screen hook text** based on what's actually winning, and posts them as **trial reels**.
+Drop raw clips into a Google Drive folder → ReelBot edits them, writes the **on-screen hook** from what's actually winning, and posts them as **trial reels**. It all runs in the cloud. Nothing gets installed on your computer.
 
-## How it works (the simple version)
+## How it works
 
 ```
-  🛰️ RADAR (weekly)                        📖 TEXT READER
-  checks 10-20 competitor accounts   →    looks at frames of each winning reel
-  finds reels that beat that               and reads the words ON the video
-  creator's normal views                   (not the caption under the post)
-                │                                    │
-                └──────────────┬─────────────────────┘
-                               ▼
-                    🧠 RESEARCH BRIEF  ←── your own reels (also read on-screen)
-                    "these hook patterns win, these flop, here's why"
-                               │
-  inbox/        ✂️ EDITOR      ▼   ✍️ HOOK WRITER         👀 YOU         📬 POSTER
-  your clips →  finds the rev, →   3 different hooks  →  quick check →  trial reels
-                9:16, moody        per clip, from the     (optional)
-                                   winning patterns
+📱 YOU (phone or browser)                 ☁️ GITHUB (does the work on a timer)
+─────────────────────────                 ───────────────────────────────────
+Drop clips in Drive  ReelBot/inbox   →    every morning: checks your stats, edits new
+                                          clips, writes 3 different hooks per clip
+Watch them in        ReelBot/review  ←    finished videos land here
+Drag good ones to    ReelBot/approved →   every 3 hours: posts the next one as a trial reel
+They end up in       ReelBot/posted  ←
+Read on Mondays      ReelBot/picklist.md ← Competitor Radar: what's winning and why
 ```
 
-1. **The Radar** looks at your competitors' last ~40 reels each. It flags the ones that did *way* better than that creator usually does (5× their normal views, or 3× with real reach). These are "proven" hooks.
-2. **The Text Reader** grabs a few frames from each winning reel and has Claude read **the text burned onto the video**. That's the hook people actually see, which is often different from the post caption. It does the same for your own reels.
-3. **The Research Brief**: Claude compares the winners against the flops and writes down the patterns ("spec identity flex", "dupe callout", and so on), why they work, and which competitor hooks fit your content. You get a `output/picklist.md` to read.
-4. **The Editor** finds the best moment in your clip (it *listens* for the loudest bit, like a rev), cuts an 8-second vertical reel and gives it a moody look.
-5. **The Hook Writer** sees a frame of your clip and the research brief, and writes 3 *different* hooks, one video each. That's your trial-reel testing method.
-6. **You** check them in `output/review/`, then **the Poster** sends them out as trial reels.
+**What the robot does inside:**
+- **The Radar** (Mondays) checks 10-20 competitor accounts and finds reels that did way better than that creator usually does.
+- **The Text Reader** looks at frames of those reels, and of yours, and reads the words **on the video**, not the post caption.
+- **The Research Brief** writes down which hook patterns win, which flop, and why.
+- **The Editor** finds the rev or cold start in your clip, cuts 8 seconds, makes it vertical and moody, and burns on the hook.
 
-## What your stats already say (last 7 days, 49 reels)
+## Setup (one time, all in your web browser)
 
-| Did great 🔥 | Flopped 🧊 |
-|---|---|
-| "All black spec… always" **1.33M** (lowest skip rate: 38%) | "No trends here" ~2–4K (posted 4 times) |
-| "Aston Martin sounds…." **292K** | "No trending audio" 3K |
-| "DB12 cold starts never sounded better" **173K** | "The Aston is the therapy" 2K |
-| "Zara doing Barbour dupes now?" **107K** | "Barbour dupes in Zara now???" 3K ← same idea, different words! |
+### 1. Make the GitHub repo private (2 min)
+github.com/elliotbuglass-blip/claude-test → **Settings** → scroll to the bottom → **Change visibility** → **Private**.
 
-*(These are your post captions. Run `stats --read-text` once and ReelBot replaces them with what's actually on screen.)*
+### 2. Make your Drive folder (2 min)
+In Google Drive, make a folder called **ReelBot**. Open it and copy the long code at the end of the web address, after `folders/`. That's your **DRIVE_FOLDER_ID**. The robot creates the subfolders itself on its first run.
 
-## Setup (one time)
+### 3. Let the robot into your Drive (15 min, once)
+This gives the robot a "key" to your Drive. Everything happens on Google's websites.
+1. Go to **console.cloud.google.com** → create a project called `ReelBot`.
+2. Search **"Google Drive API"** → **Enable**.
+3. Open **Google Auth Platform** (also called "OAuth consent screen") → **Get started**. App name `ReelBot`, your email, Audience **External**.
+4. **Audience** → **Publish app** (set it to *In production*). Otherwise the key stops working after 7 days.
+5. **Clients** → **Create client** → type **Web application**. Under *Authorised redirect URIs*, add `https://developers.google.com/oauthplayground`. Copy the **Client ID** and **Client secret**.
+6. Go to **developers.google.com/oauthplayground** → ⚙️ (top right) → tick **Use your own OAuth credentials** → paste the ID and secret.
+7. In the box on the left, type `https://www.googleapis.com/auth/drive` → **Authorize APIs** → choose your Google account. If you see *"Google hasn't verified this app"*, click **Advanced → Go to ReelBot**. That's fine, because it's your own app.
+8. Click **Exchange authorization code for tokens** → copy the **Refresh token**.
 
-**Step 1: Install.** You need Python 3.10+ and ffmpeg (Mac: `brew install python ffmpeg`).
-```bash
-pip install -r requirements.txt
-cp .env.example .env
-cp config.example.yaml config.yaml
-```
+### 4. Get your other keys
+| Key | What it unlocks | Where |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Claude: hooks, reading on-screen text, research | console.anthropic.com → API Keys (add about $5 credit) |
+| `WINDSOR_API_KEY` | Your Instagram stats | your Windsor.ai account |
+| `HIKER_API_KEY` | Competitor Radar | hikerapi.com (add a few dollars) |
+| `IG_USER_ID` | Which account to post to | `17841400621094281` (that's yours) |
+| `IG_ACCESS_TOKEN` | Posting trial reels | see "Posting key" below |
 
-**Step 2: Fill in `.env`** (it's a locked drawer for passwords and never gets uploaded):
+### 5. Put all the keys into GitHub (5 min)
+Repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**. Add each one, using the name exactly as written:
 
-| Key | What it does | Where to get it | Cost |
-|---|---|---|---|
-| `ANTHROPIC_API_KEY` | Claude: reads on-screen text, writes the brief and hooks | console.anthropic.com | a few cents per run |
-| `WINDSOR_API_KEY` | Your own Instagram stats | your Windsor.ai account | (you have it) |
-| `HIKER_API_KEY` | Competitor Radar (views + videos) | hikerapi.com | cents per run |
-| `IG_ACCESS_TOKEN` | Posting trial reels (free route) | Step 3 below | free |
+`ANTHROPIC_API_KEY`, `WINDSOR_API_KEY`, `HIKER_API_KEY`, `IG_USER_ID`, `IG_ACCESS_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, `DRIVE_FOLDER_ID`
 
-**Step 3: Choose how to post** (`posting.backend` in `config.yaml`):
+Secrets are locked. Even you can't read them back after saving, and they never show up in the code.
 
-- **`graph`** (free): talks to Instagram directly. Do this once:
-  1. developers.facebook.com → **Create App** → "Business". Add the **Instagram** product.
-  2. Your Instagram must be a Creator/Business account linked to a Facebook Page.
-  3. In **Graph API Explorer**, tick `instagram_basic`, `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`, `business_management`, then click **Generate Access Token**.
-  4. Make it last 60 days with the Access Token Debugger's "Extend" button, and paste it into `.env`.
-- **`metricool`** (paid plan): schedules through Metricool, which the creator who shared their files uses for trial reels. Fill in the three `METRICOOL_*` keys instead.
+### 6. Add your competitors
+Open `config.yaml` on GitHub → ✏️ pencil icon → replace the two example usernames with 10-20 real ones → **Commit changes**.
 
-**Step 4: Edit `config.yaml`**: add 10-20 competitor usernames (a few big accounts, several mid-size, a few just ahead of you).
+### 7. Press go
+Repo → **Actions** tab → **ReelBot** → **Run workflow** → pick `daily` → green button. Click the run to watch it work. After that it runs by itself.
+
+## Posting key (`IG_ACCESS_TOKEN`)
+1. developers.facebook.com → **Create App** → "Business". Add the **Instagram** product.
+2. Your Instagram must be a Creator/Business account linked to a Facebook Page.
+3. **Graph API Explorer** → tick `instagram_basic`, `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`, `business_management` → **Generate Access Token**.
+4. **Access Token Debugger** → **Extend** (lasts 60 days) → paste it as the GitHub secret.
+
+⏰ This key runs out after 60 days, so set a reminder to repeat step 4. Until you have it, everything else still works. Just post the videos from `review/` yourself.
+
+*(Prefer Metricool? Set `backend: metricool` in `config.yaml` and add `METRICOOL_API_TOKEN`, `METRICOOL_USER_ID` and `METRICOOL_BLOG_ID` as secrets instead.)*
 
 ## Everyday use
+- **Add a clip:** upload it to `ReelBot/inbox` from your phone's Drive app. To tell the AI what's in it, add a text file with the same name (`db12_night.mp4` + `db12_night.txt`).
+- **Approve:** watch videos in `review/` and drag the good ones to `approved/`. The hook and caption are in each file's **description** (ⓘ details panel). Delete the ones you don't want.
+- **Want it now?** Actions tab → Run workflow → choose `make-only`, `post-only` or `research`.
+- **Change settings** (clip length, audio, posting times): edit `config.yaml` on GitHub.
 
-```bash
-# Weekly: what's winning out there and on your page?
-python -m reelbot stats --refresh --read-text   # your numbers + your on-screen hooks
-python -m reelbot research                      # radar + research brief → output/picklist.md
-
-# Whenever you have clips:
-python -m reelbot make                          # edits everything in inbox/
-#   → watch the videos in output/review/
-python -m reelbot approve all                   # or: approve db12_cold_start__v2
-python -m reelbot post                          # out they go as trial reels
-```
-
-Or do stats → make → post in one go: `python -m reelbot run`.
-
-**Tips**
-- Tell the AI what's in a clip by adding a text file with the same name: `db12_night.mp4` + `db12_night.txt` ("triple black DB12, night, London").
-- Write the hooks yourself: `python -m reelbot make --captions "All black spec… always|The only choice really"`
-- After the first `research` run, look at the "typical views per account" it prints and adjust `abs_floor_views` in `config.yaml` to about the median of your strongest competitor.
-- `research --cached` re-scores the last pull without spending HikerAPI credits.
-- Every `stats --refresh` saves a snapshot to `data/snapshots.jsonl`, so you can ask Claude things like "is my DB12 trial reel still climbing?"
+## When it runs (UK time, summer)
+| When | What |
+|---|---|
+| 07:40 daily | stats → edit new clips → post 1 approved video |
+| 10:40, 13:40, 16:40, 19:40, 22:40 | post the next approved video |
+| Mondays 07:10 | Competitor Radar + research brief → `picklist.md` |
 
 ## About trending audio 🎵
-
-Instagram **does not let any app add sounds from its music library**. Only the Instagram app can. So:
-
-- **`mode: original`** (default): keep your car's real sound. Your sound reels are already some of your best.
-- **`mode: music` / `mix`**: put moody tracks you have the rights to into the `audio/` folder. ReelBot loops them to fit and levels their volume.
-- For a specific *trending* sound: download the finished video from `output/review/` and post it from the app with the sound added (about 20 seconds).
+Instagram doesn't let any app add sounds from its music library. Only the Instagram app can.
+- `mode: original` (default): keep the engine sound. Your sound reels already do great.
+- `mode: music` / `mix`: put tracks you have the rights to in `ReelBot/audio`.
+- For a specific *trending* sound: download the video from `review/` and post it from the Instagram app with the sound added.
 
 ## Rules it follows on purpose
-- The Radar only takes **ideas and hook structures** from competitors, never their footage. It adapts their hooks to *your* clips and never copies a line word for word.
-- Emoji are kept out of the burned-in text (video tools can't draw them), but are fine in the post caption.
-- It spaces posts out so the account doesn't look like a spam bot.
+- It takes **ideas and hook structures** from competitors, never their footage, and never copies a line word for word.
+- Emoji stay out of the burned-in text (video tools can't draw them), but are fine in the post caption.
+- It posts at most one video per run, spaced about 3 hours apart, so the account doesn't look like a spam bot.
