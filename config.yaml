@@ -5,10 +5,44 @@ niche: "menswear, cars (Aston Martin DB12) and fashion. Moody, aspirational, 'qu
 # 10-20 accounts in your niche for the Competitor Radar. Mix sizes: a few big ones,
 # several mid-size, a few just ahead of you. Active accounts with original reels only.
 competitors:
-  - username: example_carspotter
-    notes: "car spotting, moody night edits"
-  - username: example_menswear_account
-    notes: "menswear, dupes"
+  - username: samrascals_
+    notes: ""
+  - username: itisbainz
+    notes: ""
+  - username: solomonx
+    notes: ""
+  - username: rowanrow
+    notes: ""
+  - username: ed_hansen
+    notes: ""
+  - username: danhendoo
+    notes: ""
+  - username: the.mattbook
+    notes: ""
+  - username: ollyclaxtonewman
+    notes: ""
+  - username: amai_nie
+    notes: ""
+  - username: williamjwade
+    notes: ""
+  - username: ismailstewart
+    notes: ""
+  - username: laymedownliam
+    notes: ""
+  - username: streetandgentle
+    notes: ""
+  - username: gv1n.n
+    notes: ""
+  - username: mmcorradi
+    notes: ""
+  - username: slimcargos
+    notes: ""
+  - username: georgecolbeanu
+    notes: ""
+  - username: hqfran
+    notes: ""
+  - username: jobstevens
+    notes: ""
 
 # Competitor Radar: a reel counts as an "outlier" when it beats its creator's OWN median views.
 radar:
