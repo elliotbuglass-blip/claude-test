@@ -19,11 +19,15 @@ OUTLIERS = DATA / "competitors.json"
 
 
 def _get(path, params):
+    # The key is either an env var, or added to every request by a Claude Code network secret
+    # (custom header x-access-key on api.hikerapi.com) — then it's blank here.
+    key = env("HIKER_API_KEY", required=False)
     for attempt in range(3):
         resp = requests.get(f"{HIKER}{path}", params=params,
-                            headers={"x-access-key": env("HIKER_API_KEY")}, timeout=60)
+                            headers={"x-access-key": key} if key else {}, timeout=60)
         if resp.status_code in (401, 403):
-            raise SystemExit("HikerAPI rejected the key (401/403). Check HIKER_API_KEY in .env.")
+            raise SystemExit("HikerAPI rejected the key (401/403). Check the HikerAPI secret's "
+                             "header name is x-access-key, with no prefix.")
         if resp.status_code == 404:
             return None
         if resp.status_code >= 500 and attempt < 2:

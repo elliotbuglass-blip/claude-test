@@ -59,14 +59,17 @@ def _metricool(video_path, caption, posting, when):
 def _graph(video_path, caption, posting):
     version = posting["graph_api_version"]
     user_id = env("IG_USER_ID")
-    token = env("IG_ACCESS_TOKEN")
+    # The token is either an env var, or added to requests by a Claude Code network secret
+    # (Authorization header on graph.facebook.com / rupload.facebook.com) — then it's blank here.
+    token = env("IG_ACCESS_TOKEN", required=False)
+    auth = {"access_token": token} if token else {}
     graph = f"https://graph.facebook.com/{version}"
 
     params = {
         "media_type": "REELS",
         "upload_type": "resumable",
         "caption": caption,
-        "access_token": token,
+        **auth,
     }
     if posting.get("trial_reel"):
         params["trial_params"] = json.dumps({"graduation_strategy": posting.get("graduation", "MANUAL")})
@@ -75,14 +78,15 @@ def _graph(video_path, caption, posting):
     video = Path(video_path).read_bytes()
     _ok(requests.post(
         f"https://rupload.facebook.com/ig-api-upload/{version}/{container}",
-        headers={"Authorization": f"OAuth {token}", "offset": "0", "file_size": str(len(video))},
+        headers={**({"Authorization": f"OAuth {token}"} if token else {}),
+                 "offset": "0", "file_size": str(len(video))},
         data=video,
         timeout=600,
     ))
 
     for _ in range(60):  # Instagram processes the video; wait up to ~5 minutes
         status = _ok(requests.get(f"{graph}/{container}",
-                                  params={"fields": "status_code,status", "access_token": token},
+                                  params={"fields": "status_code,status", **auth},
                                   timeout=30))
         if status.get("status_code") == "FINISHED":
             break
@@ -93,7 +97,7 @@ def _graph(video_path, caption, posting):
         raise RuntimeError("Instagram took too long to process the video.")
 
     published = _ok(requests.post(f"{graph}/{user_id}/media_publish",
-                                  data={"creation_id": container, "access_token": token},
+                                  data={"creation_id": container, **auth},
                                   timeout=60))
     return published["id"]
 
