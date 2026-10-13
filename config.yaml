@@ -46,7 +46,7 @@ competitors:
 
 # Competitor Radar: a reel counts as an "outlier" when it beats its creator's OWN median views.
 radar:
-  source: apify            # apify (pay-as-you-go, free monthly credit) | hiker (HikerAPI)
+  source: meta             # meta = Instagram's own tool (free, allowed) | apify | hiker
   reels_per_account: 40
   min_age_hours: 72        # younger reels are still collecting views
   max_age_days: 30         # older topics may be stale
@@ -54,6 +54,9 @@ radar:
   hybrid_ratio: 3.0        # …or 3x, if the reel also has real reach:
   hybrid_min_views: 50000
   abs_floor_views: 20000   # tune after first run: ~ median views of your strongest competitor
+  meta_likes:              # Meta's tool gives likes, not views, so these floors are in likes
+    hybrid_min_views: 3000
+    abs_floor_views: 1000
 
 clips:
   inbox_dir: inbox            # drop your raw clips here

@@ -1,7 +1,9 @@
 """Competitor Radar: finds reels that beat their own creator's normal views, then reads their on-screen text.
 
-Gets public reel data from Apify (default, pay-as-you-go, free monthly credit) or HikerAPI
-(set radar.source in config.yaml). No login with your own account. Raw pulls are cached in
+Gets reel data from (radar.source in config.yaml):
+- meta  (default): Instagram's own Business Discovery API. Free, within Meta's rules; likes not views.
+- apify: Apify's Instagram Reel Scraper. Pay-as-you-go; has views. A scraper (grey area).
+- hiker: HikerAPI. Has views. A scraper; $50 minimum top-up. No login with your own account. Raw pulls are cached in
 data/hiker/ so re-scoring never re-spends credits.
 """
 
@@ -83,6 +85,49 @@ def fetch_account(username, want):
     reels.sort(key=lambda r: r["taken_at"], reverse=True)  # pinned reels come first in the feed
     data = {"username": username, "followers": user.get("follower_count"),
             "fetched_at": time.time(), "reels": reels[:want]}
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+    (RAW_DIR / f"{username}.json").write_text(json.dumps(data, ensure_ascii=False, indent=1))
+    return data
+
+
+def fetch_account_meta(username, want, api_version="v23.0"):
+    """Instagram's own Business Discovery API: free and within Meta's rules.
+
+    Works for Business/Creator accounts. Meta doesn't share other accounts' view counts here,
+    so "views" holds LIKES for this source (the radar thresholds for it are in likes too).
+    """
+    # The token is an env var, or added by a Claude Code network secret
+    # (Authorization: Bearer on graph.facebook.com) — then it's blank here.
+    token = env("IG_ACCESS_TOKEN", required=False)
+    fields = (f"business_discovery.username({username})"
+              f"{{followers_count,media.limit({want})"
+              "{caption,like_count,comments_count,media_type,media_product_type,"
+              "timestamp,permalink,media_url,thumbnail_url}}")
+    resp = requests.get(f"https://graph.facebook.com/{api_version}/{env('IG_USER_ID')}",
+                        params={"fields": fields, **({"access_token": token} if token else {})},
+                        timeout=60)
+    if not resp.ok:
+        message = resp.json().get("error", {}).get("message", resp.text) if resp.content else resp.text
+        print(f"  ! @{username}: {message}")
+        return None
+    info = resp.json()["business_discovery"]
+    reels = []
+    for m in info.get("media", {}).get("data", []):
+        if m.get("media_product_type") != "REELS":
+            continue
+        reels.append({
+            "code": m["permalink"].rstrip("/").split("/")[-1] if m.get("permalink") else m["id"],
+            "url": m.get("permalink"),
+            "views": m.get("like_count") or 0,  # likes (see docstring)
+            "likes": m.get("like_count") or 0,
+            "comments": m.get("comments_count") or 0,
+            "taken_at": _epoch(m.get("timestamp")),
+            "post_caption": (m.get("caption") or "")[:300],
+            "video": m.get("media_url"),
+            "thumbnail": m.get("thumbnail_url"),
+        })
+    data = {"username": username, "followers": info.get("followers_count"),
+            "fetched_at": time.time(), "reels": reels}
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     (RAW_DIR / f"{username}.json").write_text(json.dumps(data, ensure_ascii=False, indent=1))
     return data
@@ -170,13 +215,20 @@ def run(competitors, radar, use_cache=False):
         if use_cache and cached.exists():
             accounts.append(json.loads(cached.read_text()))
             continue
-        fetch = fetch_account if radar.get("source") == "hiker" else fetch_account_apify
-        acc = fetch(name, radar["reels_per_account"])
+        source = radar.get("source", "meta")
+        if source == "meta":
+            acc = fetch_account_meta(name, radar["reels_per_account"])
+        elif source == "hiker":
+            acc = fetch_account(name, radar["reels_per_account"])
+        else:
+            acc = fetch_account_apify(name, radar["reels_per_account"])
         if acc:
             print(f"  ✓ @{name}: {len(acc['reels'])} reels, {acc.get('followers') or '?'} followers")
             accounts.append(acc)
 
     _print_distribution(accounts)
+    if radar.get("source", "meta") == "meta":
+        radar = {**radar, **radar.get("meta_likes", {})}  # likes-based floors for Meta's data
     outliers = find_outliers(accounts, radar)
     print(f"\n  {len(outliers)} outlier reels found. Reading their on-screen text…")
     texts = vision.read_reels([{"key": f"comp:{o['code']}", "video": o["video"],
