@@ -1,5 +1,8 @@
 # ReelBot settings. Edit this file right on GitHub (pencil icon) — no secrets go in here.
 
+# Your clip drop folder (shared as "Anyone with the link can view").
+drive_folder: https://drive.google.com/drive/u/1/folders/1rXjInfkrTN38cSkAtTtVb-8ra4777FQk
+
 niche: "menswear, cars (Aston Martin DB12) and fashion. Moody, aspirational, 'quiet luxury' tone."
 
 # 10-20 accounts in your niche for the Competitor Radar. Mix sizes: a few big ones,
@@ -46,7 +49,7 @@ competitors:
 
 # Competitor Radar: a reel counts as an "outlier" when it beats its creator's OWN median views.
 radar:
-  source: meta             # meta = Instagram's own tool (free, allowed) | apify | hiker
+  source: apify            # apify (automatic, pay-as-you-go) | meta (needs Meta app review) | hiker
   reels_per_account: 40
   min_age_hours: 72        # younger reels are still collecting views
   max_age_days: 30         # older topics may be stale
@@ -84,7 +87,7 @@ posting:
   timezone: Europe/London     # used by Metricool scheduling
   trial_reel: true
   graduation: MANUAL          # MANUAL = you choose in the app, SS_PERFORMANCE = Instagram decides
-  require_approval: true      # true = you check videos in output/review before they post
+  require_approval: false     # false = posts automatically, true = you approve first
   max_posts_per_run: 1         # the cloud runs every 3 hours, so 1 per run spaces them out nicely
   minutes_between_posts: 20
   hashtags: ""                # e.g. "#astonmartin #db12" (added to the post caption)

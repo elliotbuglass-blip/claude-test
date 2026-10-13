@@ -6,4 +6,4 @@ inbox/*
 audio/*
 !audio/.gitkeep
 output/
-data/
+data/hiker/

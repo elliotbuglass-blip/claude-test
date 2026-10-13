@@ -154,6 +154,16 @@ def cmd_run(cfg, args):
     cmd_post(cfg, argparse.Namespace(dry_run=False))
 
 
+def cmd_pull(cfg, args):
+    from . import session
+    session.pull(cfg)
+
+
+def cmd_radar(cfg, args):
+    from . import session
+    session.radar(cfg)
+
+
 def cmd_cloud(cfg, args):
     from . import cloud
     cloud.run(cfg, args.task)
@@ -186,6 +196,9 @@ def main():
     p.set_defaults(func=cmd_post)
 
     sub.add_parser("run", help="stats → make → post, all in one").set_defaults(func=cmd_run)
+
+    sub.add_parser("pull", help="download new clips from your Google Drive folder").set_defaults(func=cmd_pull)
+    sub.add_parser("radar", help="find competitor outliers + save frames (Claude reads them)").set_defaults(func=cmd_radar)
 
     p = sub.add_parser("cloud", help="run on GitHub using your Google Drive folder")
     p.add_argument("--task", default="daily", choices=["daily", "research", "make-only", "post-only"])
