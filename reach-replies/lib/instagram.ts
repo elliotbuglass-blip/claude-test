@@ -1,5 +1,8 @@
-// Instagram Graph API client (the "Instagram API with Facebook Login" variant,
-// on graph.facebook.com), plus long-lived token refresh.
+// Instagram Graph API client, plus long-lived token refresh. Works with either
+// of Meta's two setups:
+//   - "Instagram API with Instagram Login" → graph.instagram.com (tokens start "IG")
+//   - "Instagram API with Facebook Login"  → graph.facebook.com (needs a linked Page)
+// The setup is picked from the token itself; IG_LOGIN=instagram|facebook overrides.
 //
 // METRIC NAMES: see docs/04-data.md. Everything Meta-specific lives in the
 // constants immediately below so a rename is a one-line change. Run
@@ -12,7 +15,18 @@ import { iso } from "./format";
 import type { GrowthRow } from "./growth";
 
 const VERSION = process.env.IG_GRAPH_VERSION || "v23.0";
-const BASE = `https://graph.facebook.com/${VERSION}`;
+
+type Login = "instagram" | "facebook";
+
+function loginFor(token: string): Login {
+  const forced = process.env.IG_LOGIN;
+  if (forced === "instagram" || forced === "facebook") return forced;
+  return token.startsWith("IG") ? "instagram" : "facebook";
+}
+
+function base(login: Login): string {
+  return login === "instagram" ? `https://graph.instagram.com/${VERSION}` : `https://graph.facebook.com/${VERSION}`;
+}
 
 export const METRICS = {
   views: "views",               // total plays; replaced `impressions`
@@ -38,19 +52,22 @@ async function accessToken(): Promise<string> {
   return token;
 }
 
+/** With Instagram Login the token already names the account, so "me" works without IG_USER_ID. */
 function userId(): string {
   const id = process.env.IG_USER_ID;
-  if (!id) throw new AppError("ig_not_configured");
-  return id;
+  if (id) return id;
+  if (process.env.IG_ACCESS_TOKEN && loginFor(process.env.IG_ACCESS_TOKEN) === "instagram") return "me";
+  throw new AppError("ig_not_configured");
 }
 
 interface GraphError { error?: { code?: number; error_subcode?: number; message?: string; type?: string } }
 
 async function graph<T>(path: string, params: Record<string, string | number | undefined> = {}, token?: string): Promise<T> {
-  const url = new URL(path.startsWith("http") ? path : BASE + path);
-  for (const [k, v] of Object.entries(params)) if (v !== undefined) url.searchParams.set(k, String(v));
   // token === "" means the call authenticates with its own params (token exchange).
   const auth = token ?? (await accessToken());
+  const login = loginFor(auth || process.env.IG_ACCESS_TOKEN || "");
+  const url = new URL(path.startsWith("http") ? path : base(login) + path);
+  for (const [k, v] of Object.entries(params)) if (v !== undefined) url.searchParams.set(k, String(v));
   if (auth) url.searchParams.set("access_token", auth);
 
   let res: Response;
@@ -276,26 +293,31 @@ async function tokenExpiry(token: string): Promise<Date | null> {
 
 /** If the long-lived token is within 10 days of expiry, exchange it and store the new one. */
 export async function refreshTokenIfDue(): Promise<RefreshResult> {
-  const appId = process.env.IG_APP_ID, secret = process.env.IG_APP_SECRET;
-  if (!appId || !secret) throw new AppError("ig_not_configured");
   const row = await getToken("instagram").catch(() => null);
   const token = row?.access || process.env.IG_ACCESS_TOKEN;
   if (!token) throw new AppError("ig_not_configured");
+  const login = loginFor(token);
+  const appId = process.env.IG_APP_ID, secret = process.env.IG_APP_SECRET;
+  if (login === "facebook" && (!appId || !secret)) throw new AppError("ig_not_configured");
 
   let expiresAt = row?.expiresAt ?? null;
-  if (!expiresAt) {
+  if (!expiresAt && login === "facebook") {
     expiresAt = await tokenExpiry(token);
     if (hasDb()) await saveToken("instagram", token, expiresAt);
   }
+  // Unknown expiry (a freshly seeded Instagram Login token) counts as due: refreshing early is harmless.
   const due = !expiresAt || expiresAt.getTime() - Date.now() < 10 * DAY * 1000;
   if (!due) return { refreshed: false, expiresAt: expiresAt?.toISOString() ?? null };
 
-  const r = await graph<{ access_token: string; expires_in?: number }>(
-    "/oauth/access_token",
-    { grant_type: "fb_exchange_token", client_id: appId, client_secret: secret, fb_exchange_token: token },
-    "",
-  );
-  const next = r.expires_in ? new Date(Date.now() + r.expires_in * 1000) : await tokenExpiry(r.access_token);
+  const r = login === "instagram"
+    ? await graph<{ access_token: string; expires_in?: number }>(
+        "https://graph.instagram.com/refresh_access_token", { grant_type: "ig_refresh_token" }, token)
+    : await graph<{ access_token: string; expires_in?: number }>(
+        "/oauth/access_token",
+        { grant_type: "fb_exchange_token", client_id: appId, client_secret: secret, fb_exchange_token: token },
+        "",
+      );
+  const next = r.expires_in ? new Date(Date.now() + r.expires_in * 1000) : login === "facebook" ? await tokenExpiry(r.access_token) : null;
   if (hasDb()) await saveToken("instagram", r.access_token, next);
   console.log(`[instagram] token refreshed, new expiry ${next?.toISOString() ?? "unknown"}`);
   return { refreshed: true, expiresAt: next?.toISOString() ?? null };
