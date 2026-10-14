@@ -1,0 +1,1031 @@
+<title>Reach &amp; Replies</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap">
+<style>
+/* Layout: the deck's language — white ground, hairline rules instead of cards, oversized
+   grotesque numerals, letterspaced uppercase eyebrows. Monochrome throughout; one red
+   reserved for overdue state only. */
+:root{
+  --bg:#ffffff; --surface:#ffffff; --surface-2:#f5f5f4; --line:#e4e3e1; --rule:#0d0d0d;
+  --fg:#0d0d0d; --muted:#767674; --ink-soft:#d8d7d4; --ink-mid:#a8a7a4;
+  --alert:#a8201a;
+  --font:"Archivo",Helvetica,"Helvetica Neue",Arial,system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0b0b0c; --surface:#0b0b0c; --surface-2:#161617; --line:#262627; --rule:#f2f1ef;
+    --fg:#f2f1ef; --muted:#8b8b89; --ink-soft:#2e2e30; --ink-mid:#5c5c5f;
+    --alert:#e8695f;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0b0b0c; --surface:#0b0b0c; --surface-2:#161617; --line:#262627; --rule:#f2f1ef;
+  --fg:#f2f1ef; --muted:#8b8b89; --ink-soft:#2e2e30; --ink-mid:#5c5c5f;
+  --alert:#e8695f;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:var(--font); font-size:15px; line-height:1.5; margin:0;
+  -webkit-font-smoothing:antialiased; letter-spacing:-0.004em;
+}
+.wrap{max-width:1080px; margin:0 auto; padding-inline:24px; padding-block:0 72px}
+@media (max-width:520px){ .wrap{padding-inline:16px} .head-in{padding-inline:16px!important} }
+
+/* ---- header ---- */
+header{
+  position:sticky; top:env(safe-area-inset-top,0px); z-index:30;
+  background:var(--bg); border-bottom:1px solid var(--line);
+}
+.head-in{max-width:1080px; margin:0 auto; padding:18px 24px 0}
+.brandrow{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap}
+h1{
+  font-weight:800; font-size:21px; letter-spacing:-0.02em; margin:0;
+  text-transform:uppercase;
+}
+.handle{font-size:12px; color:var(--muted); letter-spacing:0}
+.updated{margin-left:auto; font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums}
+
+nav{display:flex; gap:26px; margin-top:16px; overflow-x:auto; scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav button{
+  appearance:none; background:none; border:0; border-bottom:2px solid transparent;
+  color:var(--muted); font-family:inherit; font-weight:600; font-size:11px;
+  letter-spacing:.13em; text-transform:uppercase;
+  padding:0 0 12px; cursor:pointer; white-space:nowrap;
+}
+nav button[aria-selected="true"]{color:var(--fg); border-bottom-color:var(--rule)}
+nav button:hover{color:var(--fg)}
+nav button:focus-visible{outline:2px solid var(--fg); outline-offset:3px}
+.badge{
+  display:inline-block; margin-left:6px; font-variant-numeric:tabular-nums;
+  color:var(--muted); font-weight:500;
+}
+nav button[aria-selected="true"] .badge{color:var(--fg)}
+.badge.alert{color:var(--alert)}
+
+/* ---- type ---- */
+.eyebrow{
+  font-size:10px; font-weight:600; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--muted); margin:0;
+}
+.sec-head{
+  display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;
+  padding-bottom:10px; border-bottom:1px solid var(--rule); margin-bottom:18px;
+}
+.sec-note{font-size:12px; color:var(--muted); margin-left:auto; font-variant-numeric:tabular-nums}
+section{padding-block:38px 0}
+
+/* ---- hero ---- */
+.hero{display:flex; align-items:flex-end; gap:34px; flex-wrap:wrap; padding-block:4px 30px}
+.hero .big{
+  font-size:clamp(54px,12vw,104px); font-weight:800; line-height:.88;
+  letter-spacing:-0.045em; font-variant-numeric:tabular-nums;
+}
+.hero .lede{max-width:34ch; font-size:13px; color:var(--muted); padding-bottom:7px}
+
+/* ---- tiles: hairline grid, not cards ---- */
+.tiles{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(152px,1fr));
+  border-top:1px solid var(--line);
+}
+.tile{padding:18px 20px 20px; border-bottom:1px solid var(--line); border-right:1px solid var(--line); min-width:0}
+.tile:last-child{border-right:0}
+@media (max-width:620px){ .tile{border-right:0} }
+.tile .v{
+  font-size:34px; font-weight:800; line-height:1.02; letter-spacing:-0.035em;
+  font-variant-numeric:tabular-nums; margin-top:9px;
+}
+.tile .sub{font-size:11px; color:var(--muted); margin-top:5px; font-variant-numeric:tabular-nums}
+.tile .sub.up{color:var(--fg); font-weight:600}
+.tile .sub.down{color:var(--alert); font-weight:600}
+
+/* ---- charts ---- */
+.chartblock{padding-block:26px 6px; border-bottom:1px solid var(--line)}
+.chart-head{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:14px}
+.chart-cap{font-size:11px; color:var(--muted); margin-left:auto; max-width:40ch; text-align:right}
+.chartwrap{position:relative}
+svg.chart{display:block; width:100%; height:auto; max-width:100%; overflow:visible}
+.tip{
+  position:absolute; pointer-events:none; opacity:0; transition:opacity .08s;
+  background:var(--fg); color:var(--bg); border-radius:3px;
+  padding:5px 8px; font-size:11px; font-weight:600; white-space:nowrap;
+  transform:translate(-50%,-150%); z-index:5; font-variant-numeric:tabular-nums;
+}
+.legend{display:flex; gap:18px; flex-wrap:wrap; margin-top:12px; font-size:11px; color:var(--muted)}
+.legend i{display:inline-block; width:16px; height:0; border-top:2px solid var(--fg); margin-right:6px; vertical-align:middle}
+.legend i.dash{border-top-style:dashed}
+.legend i.band{height:9px; border:0; background:var(--ink-soft); vertical-align:-1px}
+
+/* ---- lists ---- */
+ul.rows{list-style:none; margin:0; padding:0}
+li.row{
+  padding:17px 0; border-bottom:1px solid var(--line);
+  display:flex; gap:20px; align-items:flex-start; min-width:0;
+}
+.row-main{flex:1; min-width:0}
+.row-title{font-weight:600; font-size:15px; letter-spacing:-0.01em; overflow-wrap:anywhere}
+.row-meta{font-size:11.5px; color:var(--muted); margin-top:4px; overflow-wrap:anywhere; font-variant-numeric:tabular-nums}
+.row-snip{font-size:13px; color:var(--muted); margin-top:7px; overflow-wrap:anywhere; max-width:72ch}
+.row-num{
+  font-size:25px; font-weight:800; letter-spacing:-0.035em;
+  font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; line-height:1;
+}
+.row-num .u{display:block; font-size:10px; font-weight:500; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted); margin-top:5px}
+.tag{
+  display:inline-block; font-size:10px; font-weight:600; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--muted);
+}
+.tag.win{color:var(--fg); border-bottom:2px solid var(--rule); padding-bottom:1px}
+.tag.due{color:var(--alert)}
+
+a{color:inherit; text-decoration:underline; text-underline-offset:2px; text-decoration-thickness:1px}
+a:hover{text-decoration-thickness:2px}
+
+button.act{
+  appearance:none; cursor:pointer; white-space:nowrap; font-family:inherit;
+  background:none; color:var(--fg); border:1px solid var(--rule); border-radius:0;
+  font-weight:600; font-size:11px; letter-spacing:.11em; text-transform:uppercase;
+  padding:8px 14px;
+}
+button.act:hover{background:var(--fg); color:var(--bg)}
+button.act:disabled{opacity:.4; cursor:default; background:none; color:var(--muted); border-color:var(--line)}
+button.act:focus-visible{outline:2px solid var(--fg); outline-offset:3px}
+button.act.primary{background:var(--fg); color:var(--bg)}
+button.act.primary:hover{opacity:.82}
+
+.draft{margin-top:15px; padding-top:15px; border-top:1px solid var(--line)}
+.draft textarea{
+  width:100%; min-height:200px; resize:vertical;
+  background:var(--surface-2); color:var(--fg);
+  border:1px solid var(--line); border-radius:0; padding:14px;
+  font-family:inherit; font-size:14px; line-height:1.6;
+}
+.draft textarea:focus-visible{outline:2px solid var(--fg); outline-offset:-1px}
+.draft-bar{display:flex; gap:10px; margin-top:11px; flex-wrap:wrap; align-items:center}
+.draft-note{font-size:11px; color:var(--muted)}
+
+.msg{padding:22px 0; color:var(--muted); font-size:13.5px; border-bottom:1px solid var(--line); max-width:64ch}
+.msg strong{color:var(--fg); font-weight:600}
+.skel{height:56px; border-bottom:1px solid var(--line); animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.35}50%{opacity:.7}}
+@media (prefers-reduced-motion: reduce){ .skel{animation:none; opacity:.5} *{transition:none!important} }
+.foot{margin-top:46px; padding-top:16px; border-top:1px solid var(--line); font-size:11px; color:var(--muted); max-width:66ch}
+</style>
+
+<header>
+  <div class="head-in">
+    <div class="brandrow">
+      <h1>Reach &amp; Replies</h1>
+      <span class="handle">@elliotcameron._</span>
+      <span class="updated" id="updated"></span>
+    </div>
+    <nav role="tablist" aria-label="Sections">
+      <button role="tab" id="tab-overview"  aria-selected="true"  aria-controls="p-overview">Overview</button>
+      <button role="tab" id="tab-growth"    aria-selected="false" aria-controls="p-growth">Growth</button>
+      <button role="tab" id="tab-content"   aria-selected="false" aria-controls="p-content">Content</button>
+      <button role="tab" id="tab-inbox"     aria-selected="false" aria-controls="p-inbox">Inbox<span class="badge" id="b-inbox"></span></button>
+      <button role="tab" id="tab-followups" aria-selected="false" aria-controls="p-followups">Follow-ups<span class="badge" id="b-follow"></span></button>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- OVERVIEW -->
+  <section id="p-overview" role="tabpanel" aria-labelledby="tab-overview">
+    <div class="hero">
+      <div>
+        <p class="eyebrow">Followers</p>
+        <div class="big" id="hero-followers">—</div>
+      </div>
+      <p class="lede" id="hero-lede">Reading Instagram…</p>
+    </div>
+
+    <div class="tiles" id="tiles">
+      <div class="tile"><p class="eyebrow">Views · 30 days</p><div class="v" id="v30">—</div><div class="sub">loading</div></div>
+      <div class="tile"><p class="eyebrow">Views · 7 days</p><div class="v" id="v7">—</div><div class="sub">loading</div></div>
+      <div class="tile"><p class="eyebrow">Reach · 30 days</p><div class="v" id="r30">—</div><div class="sub">unique accounts</div></div>
+      <div class="tile"><p class="eyebrow">New followers · 30d</p><div class="v" id="f30">—</div><div class="sub">loading</div></div>
+    </div>
+
+    <div class="chartblock">
+      <div class="chart-head">
+        <p class="eyebrow">Daily views · last 30 days</p>
+        <span class="chart-cap" id="cap-views"></span>
+      </div>
+      <div class="chartwrap">
+        <svg class="chart" id="chart-views" viewBox="0 0 760 210" role="img" aria-label="Daily views over the last 30 days"></svg>
+        <div class="tip" id="tip-views"></div>
+      </div>
+    </div>
+
+    <div class="chartblock">
+      <div class="chart-head">
+        <p class="eyebrow">New followers per day · last 30 days</p>
+        <span class="chart-cap" id="cap-foll"></span>
+      </div>
+      <div class="chartwrap">
+        <svg class="chart" id="chart-foll" viewBox="0 0 760 170" role="img" aria-label="New followers per day over the last 30 days"></svg>
+        <div class="tip" id="tip-foll"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GROWTH -->
+  <section id="p-growth" role="tabpanel" aria-labelledby="tab-growth" hidden>
+    <div class="sec-head">
+      <p class="eyebrow">Six-month projection</p>
+      <span class="sec-note" id="fc-note">Calculating…</span>
+    </div>
+    <div class="chartwrap">
+      <svg class="chart" id="chart-fc" viewBox="0 0 760 250" role="img" aria-label="Projected followers over the next six months, with a slow-to-fast range"></svg>
+      <div class="tip" id="tip-fc"></div>
+    </div>
+    <div class="legend">
+      <span><i></i>Last 30 days</span>
+      <span><i class="dash"></i>Projected at your current rate</span>
+      <span><i class="band"></i>15% either side</span>
+      <span id="lg-rate"></span>
+    </div>
+    <p class="foot" id="fc-caveat" style="margin-top:20px"></p>
+
+    <div class="chartblock" style="border-bottom:0">
+      <div class="chart-head">
+        <p class="eyebrow">Monthly views · since August 2025</p>
+        <span class="chart-cap">Instagram holds no follower history beyond 30 days. This is the long view that does exist.</span>
+      </div>
+      <div class="chartwrap">
+        <svg class="chart" id="chart-long" viewBox="0 0 760 210" role="img" aria-label="Monthly views since August 2025"></svg>
+        <div class="tip" id="tip-long"></div>
+      </div>
+    </div>
+
+    <div class="sec-head" style="margin-top:38px">
+      <p class="eyebrow">Follower history · banked here</p>
+      <span class="sec-note" id="bank-note"></span>
+    </div>
+    <div class="chartwrap">
+      <svg class="chart" id="chart-bank" viewBox="0 0 760 160" role="img" aria-label="Follower totals recorded by this page"></svg>
+      <div class="tip" id="tip-bank"></div>
+    </div>
+    <p class="foot" style="margin-top:14px">This page records your follower total once a day. Instagram won't give the past, so this builds the real history from here on.</p>
+  </section>
+
+  <!-- CONTENT -->
+  <section id="p-content" role="tabpanel" aria-labelledby="tab-content" hidden>
+    <div class="sec-head"><p class="eyebrow">Reels · last 7 days</p><span class="sec-note" id="content-note">Loading…</span></div>
+    <ul class="rows" id="reels"><li class="skel"></li><li class="skel"></li><li class="skel"></li></ul>
+  </section>
+
+  <!-- INBOX -->
+  <section id="p-inbox" role="tabpanel" aria-labelledby="tab-inbox" hidden>
+    <div class="sec-head"><p class="eyebrow">Inbox · last 24 hours</p><span class="sec-note" id="inbox-note">Loading…</span></div>
+    <ul class="rows" id="inbox"><li class="skel"></li><li class="skel"></li></ul>
+  </section>
+
+  <!-- FOLLOW-UPS -->
+  <section id="p-followups" role="tabpanel" aria-labelledby="tab-followups" hidden>
+    <div class="sec-head"><p class="eyebrow">Gone quiet · 5+ working days</p><span class="sec-note" id="follow-note">Loading…</span></div>
+    <ul class="rows" id="follow"><li class="skel"></li><li class="skel"></li></ul>
+  </section>
+
+  <p class="foot">Instagram figures read through Windsor. Email read through Gmail. Both use your own credentials; nothing is sent from this page.</p>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+var IG = "instagram";
+var WINDSOR_NAMES = ["Windsor.ai"];
+var GMAIL = "Gmail";
+var QUIET_DAYS = 5;
+var LONG_FROM = "2025-08-25";
+
+var mcp = null, sample = null, db = null, perms = null, windsorName = null;
+var drafts = {}, followerTotal = null;
+
+/* One retry for errors the runtime stamps retryable — including the first call on a
+   connector whose consent dialog couldn't be shown because another was already open. */
+function withRetry(fn){
+  return fn().catch(function(e){
+    if(e && e.retryable) return sleep(Math.min(e.retryAfterMs || 1500, 8000)).then(fn);
+    throw e;
+  });
+}
+
+function $(id){ return document.getElementById(id); }
+function fmt(n){
+  if(n == null || isNaN(n)) return "—";
+  n = Math.round(n);
+  if(Math.abs(n) >= 1000000) return (n/1000000).toFixed(Math.abs(n) >= 10000000 ? 1 : 2).replace(/\.?0+$/,"") + "M";
+  if(Math.abs(n) >= 10000) return Math.round(n/1000) + "k";
+  return n.toLocaleString("en-GB");
+}
+function esc(s){
+  return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+function iso(d){ return d.toISOString().slice(0,10); }
+function shortDate(d){
+  var t = new Date(d);
+  return isNaN(t.getTime()) ? String(d) : t.toLocaleDateString("en-GB",{day:"numeric",month:"short"});
+}
+function workingDaysBetween(from,to){
+  var d = new Date(from.getTime()), n = 0;
+  while(d < to){ d.setDate(d.getDate()+1); var w = d.getDay(); if(w && w !== 6) n++; }
+  return n;
+}
+function setNote(id,t){ var e = $(id); if(e) e.textContent = t; }
+function median(a){
+  if(!a.length) return 0;
+  var s = a.slice().sort(function(x,y){ return x-y; });
+  var m = Math.floor(s.length/2);
+  return s.length % 2 ? s[m] : (s[m-1]+s[m])/2;
+}
+
+function errorCopy(e){
+  var c = e && e.code;
+  if(c === "server_not_connected") return "That connector isn't added for this account. Add it in claude.ai Settings → Connectors.";
+  if(c === "needs_reauth") return "The connection has lapsed. Reconnect it in claude.ai Settings → Connectors.";
+  if(c === "selection_required") return "You have more than one connector with this name. Choose one when claude.ai asks.";
+  if(c === "not_in_manifest") return "This page isn't allowed to use that connector for you.";
+  if(c === "blocked_by_policy") return "Your organisation blocks this connector.";
+  if(c === "approval_required") return "This needs your approval before it can run.";
+  if(c === "server_unavailable") return "The connector didn't answer. Reload in a moment.";
+  if(c === "not_granted" || c === "capability_disabled") return "Live data isn't available in this view.";
+  if(c === "tool_error") return "The connector reported an error: " + ((e && e.message) || "unknown");
+  return (e && e.message) || "That didn't load.";
+}
+function showError(listId,noteId,e){
+  setNote(noteId,"Couldn't load");
+  var el = $(listId);
+  if(el) el.innerHTML = '<li class="msg">' + esc(errorCopy(e)) + '</li>';
+}
+
+/* ---- tabs ---- */
+var TABS = ["overview","growth","content","inbox","followups"];
+TABS.forEach(function(n){ $("tab-"+n).addEventListener("click", function(){ selectTab(n); }); });
+function selectTab(n){
+  TABS.forEach(function(t){
+    var s = t === n;
+    $("tab-"+t).setAttribute("aria-selected", s ? "true" : "false");
+    $("p-"+t).hidden = !s;
+  });
+  try{ localStorage.setItem("rr-tab", n); }catch(_){}
+}
+try{ var sv = localStorage.getItem("rr-tab"); if(sv && TABS.indexOf(sv) > -1) selectTab(sv); }catch(_){}
+
+/* ---- connectors ---- */
+function windsor(input){
+  return withRetry(function(){ return windsorOnce(input); });
+}
+function windsorOnce(input){
+  var attempt = 0;
+  function go(){
+    return mcp.callTool(windsorName, "get_data", input, {cache:false}).then(function(res){
+      var p = res && res.payload;
+      if(p && p.status === "pending"){
+        if(++attempt > 7) throw {code:"server_unavailable", message:"Instagram report still generating. Reload in a minute."};
+        return sleep(Math.min(3000 + attempt*2500, 14000)).then(go);
+      }
+      if(p && p.data) return p.data;
+      if(p && p.result) return p.result;
+      if(Array.isArray(p)) return p;
+      return [];
+    });
+  }
+  return go();
+}
+function gmail(tool, input, opts){
+  return withRetry(function(){
+    return mcp.callTool(GMAIL, tool, input, opts || {cache:{staleTime:60000}})
+      .then(function(r){ return r && r.payload; });
+  });
+}
+
+/* ---- shared chart helpers ---- */
+function axis(parts, padL, padT, iw, ih, W, top, ticks){
+  for(var i=0;i<=ticks;i++){
+    var f = i/ticks, yy = padT + ih - f*ih;
+    parts.push('<line x1="'+padL+'" y1="'+yy.toFixed(1)+'" x2="'+(W-6)+'" y2="'+yy.toFixed(1)+'" stroke="var(--line)" stroke-width="1"/>');
+    parts.push('<text x="'+(padL-9)+'" y="'+(yy+3.5).toFixed(1)+'" text-anchor="end" fill="var(--muted)" font-size="10" font-weight="500">'+esc(fmt(top*f))+'</text>');
+  }
+}
+function niceTop(max){
+  if(max <= 0) return 1;
+  var step = Math.pow(10, Math.floor(Math.log10(max)));
+  var t = Math.ceil(max/step)*step;
+  if(t/max > 1.9) t = Math.ceil(max/(step/2))*(step/2);
+  return t;
+}
+function hover(svg, tip, xs, labels, W, H){
+  function move(ev){
+    var box = svg.getBoundingClientRect();
+    var cx = ((ev.touches ? ev.touches[0].clientX : ev.clientX) - box.left)/box.width*W;
+    var best = 0, bd = Infinity;
+    for(var i=0;i<xs.length;i++){ var d = Math.abs(xs[i]-cx); if(d < bd){ bd = d; best = i; } }
+    tip.style.opacity = "1";
+    tip.style.left = (xs[best]/W*100) + "%";
+    tip.style.top = (labels[best].y/H*100) + "%";
+    tip.textContent = labels[best].text;
+  }
+  function out(){ tip.style.opacity = "0"; }
+  svg.addEventListener("mousemove", move);
+  svg.addEventListener("touchmove", move, {passive:true});
+  svg.addEventListener("mouseleave", out);
+  svg.addEventListener("touchend", out);
+}
+
+/* ---- line chart ---- */
+function lineChart(svgId, tipId, rows, valueKey, unit){
+  var svg = $(svgId), tip = $(tipId);
+  if(!svg || !rows.length) return;
+  var vb = svg.getAttribute("viewBox").split(" ");
+  var W = +vb[2], H = +vb[3];
+  var padL = 48, padT = 10, padB = 26, iw = W - padL - 6, ih = H - padT - padB;
+  var vals = rows.map(function(r){ return +r[valueKey] || 0; });
+  var top = niceTop(Math.max.apply(null, vals));
+  var X = function(i){ return padL + (rows.length <= 1 ? iw/2 : i/(rows.length-1)*iw); };
+  var Y = function(v){ return padT + ih - (v/top)*ih; };
+
+  var parts = [];
+  axis(parts, padL, padT, iw, ih, W, top, 2);
+  var line = rows.map(function(r,i){ return (i?"L":"M") + X(i).toFixed(1) + " " + Y(vals[i]).toFixed(1); }).join(" ");
+  parts.push('<path d="'+line+' L '+X(rows.length-1).toFixed(1)+' '+(padT+ih)+' L '+X(0).toFixed(1)+' '+(padT+ih)+' Z" fill="var(--ink-soft)" opacity="0.55"/>');
+  parts.push('<path d="'+line+'" fill="none" stroke="var(--fg)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>');
+  var li = rows.length-1;
+  parts.push('<circle cx="'+X(li).toFixed(1)+'" cy="'+Y(vals[li]).toFixed(1)+'" r="4" fill="var(--fg)"/>');
+  parts.push('<text x="'+padL+'" y="'+(H-5)+'" fill="var(--muted)" font-size="10" font-weight="500">'+esc(shortDate(rows[0].date))+'</text>');
+  parts.push('<text x="'+(W-6)+'" y="'+(H-5)+'" text-anchor="end" fill="var(--muted)" font-size="10" font-weight="500">'+esc(shortDate(rows[li].date))+'</text>');
+  svg.innerHTML = parts.join("");
+
+  hover(svg, tip, rows.map(function(_,i){ return X(i); }),
+    rows.map(function(r,i){ return {y:Y(vals[i]), text: shortDate(r.date)+"  "+fmt(vals[i])+" "+unit}; }), W, H);
+}
+
+/* ---- bar chart ---- */
+function barChart(svgId, tipId, items, unit, labelEvery){
+  var svg = $(svgId), tip = $(tipId);
+  if(!svg || !items.length) return;
+  var vb = svg.getAttribute("viewBox").split(" ");
+  var W = +vb[2], H = +vb[3];
+  var padL = 48, padT = 10, padB = 26, iw = W - padL - 6, ih = H - padT - padB;
+  var vals = items.map(function(d){ return +d.value || 0; });
+  var top = niceTop(Math.max.apply(null, vals));
+  var gap = 2, bw = Math.max(2, iw/items.length - gap);
+  var X = function(i){ return padL + i*(iw/items.length); };
+  var Y = function(v){ return padT + ih - (v/top)*ih; };
+
+  var parts = [];
+  axis(parts, padL, padT, iw, ih, W, top, 2);
+  items.forEach(function(d,i){
+    var h = Math.max(1, padT + ih - Y(vals[i]));
+    parts.push('<rect x="'+X(i).toFixed(1)+'" y="'+Y(vals[i]).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+h.toFixed(1)+'" rx="1.5" fill="var(--fg)" opacity="'+(i === items.length-1 ? "1" : "0.72")+'"/>');
+    if(labelEvery && i % labelEvery === 0){
+      parts.push('<text x="'+(X(i)+bw/2).toFixed(1)+'" y="'+(H-5)+'" text-anchor="middle" fill="var(--muted)" font-size="10" font-weight="500">'+esc(d.label)+'</text>');
+    }
+  });
+  svg.innerHTML = parts.join("");
+  hover(svg, tip, items.map(function(_,i){ return X(i)+bw/2; }),
+    items.map(function(d,i){ return {y:Y(vals[i]), text: d.label+"  "+fmt(vals[i])+" "+unit}; }), W, H);
+}
+
+/* ---- overview ---- */
+function loadOverview(){
+  return windsor({connector:IG, fields:["date","views","reach","follower_count"], date_preset:"last_30d"})
+    .then(function(rows){
+      rows = (rows||[]).filter(function(r){ return r && r.date; })
+        .sort(function(a,b){ return String(a.date) < String(b.date) ? -1 : 1; });
+      if(!rows.length) throw {code:"tool_error", message:"No daily data came back."};
+
+      var v30 = 0, r30 = 0, f30 = 0, v7 = 0, vPrev7 = 0;
+      rows.forEach(function(r,i){
+        v30 += +r.views||0; r30 += +r.reach||0; f30 += +r.follower_count||0;
+        var k = rows.length - i;
+        if(k <= 7) v7 += +r.views||0; else if(k <= 14) vPrev7 += +r.views||0;
+      });
+
+      $("v30").textContent = fmt(v30);
+      $("v7").textContent = fmt(v7);
+      $("r30").textContent = fmt(r30);
+      $("f30").textContent = "+" + fmt(f30);
+
+      var subs = document.querySelectorAll("#tiles .sub");
+      subs[0].textContent = "across " + rows.length + " days";
+      if(vPrev7 > 0){
+        var pc = Math.round((v7 - vPrev7)/vPrev7*100);
+        subs[1].textContent = (pc >= 0 ? "+" : "") + pc + "% on previous 7";
+        subs[1].className = "sub " + (pc >= 0 ? "up" : "down");
+      } else subs[1].textContent = "last 7 days";
+      subs[3].textContent = Math.round(f30/rows.length) + " a day on average";
+
+      var best = rows.reduce(function(a,b){ return (+b.views||0) > (+a.views||0) ? b : a; });
+      $("cap-views").textContent = "Best day " + shortDate(best.date) + " · " + fmt(best.views) + " views";
+      lineChart("chart-views","tip-views", rows, "views", "views");
+
+      var gains = rows.map(function(r){ return {label: shortDate(r.date), value: +r.follower_count||0}; });
+      $("cap-foll").textContent = "Median " + fmt(median(gains.map(function(g){ return g.value; }))) + " a day";
+      barChart("chart-foll","tip-foll", gains, "followers", 7);
+
+      $("updated").textContent = "Updated " + new Date().toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+      return rows;
+    })
+    .catch(function(e){
+      $("tiles").innerHTML = '<div class="msg" style="grid-column:1/-1">' + esc(errorCopy(e)) + '</div>';
+      $("hero-lede").textContent = errorCopy(e);
+      setNote("fc-note","Unavailable");
+    });
+}
+
+function loadFollowerTotal(){
+  return windsor({connector:IG, fields:["followers_count","media_count"], date_preset:"last_1d"})
+    .then(function(rows){
+      var r = (rows && rows[0]) || {};
+      followerTotal = +r.followers_count || null;
+      if(followerTotal){
+        $("hero-followers").textContent = followerTotal.toLocaleString("en-GB");
+        $("hero-lede").textContent = "Across " + (r.media_count || "—") + " posts. Instagram keeps only 30 days of follower history, so the long view is built from here on.";
+        bankToday();
+      }
+    })
+    .catch(function(){ /* hero stays blank; tiles carry the error */ });
+}
+
+/* ---- growth: real 30 days behind, straight projection ahead ----
+   Instagram reports gross new follows (follower_count) and total follow+unfollow
+   activity (follows_and_unfollows), so net = 2*follows - activity. History is walked
+   backwards from today's real total, which keeps the curve anchored to the truth. */
+var MILESTONES = [25000,30000,40000,50000,60000,75000,100000,150000,200000,250000,500000,1000000];
+var BAND = 0.15, HORIZON = 182;
+
+function buildForecast(rows){
+  var base = followerTotal || 0;
+  if(!base || !rows || !rows.length) return;
+
+  var clean = rows.filter(function(r){
+    return r && r.date && !((+r.follower_count||0) === 0 && (+r.follows_and_unfollows||0) === 0);
+  });
+  if(!clean.length) return;
+
+  var net = clean.map(function(r){
+    var gross = +r.follower_count||0, activity = +r.follows_and_unfollows||0;
+    return activity ? (2*gross - activity) : gross;
+  });
+  var gainedNet = net.reduce(function(a,b){ return a+b; },0);
+  var grossTotal = clean.reduce(function(s,r){ return s + (+r.follower_count||0); },0);
+  var rate = gainedNet/net.length;
+
+  /* walk backwards from today's true total */
+  var hist = [], running = base, today = new Date();
+  for(var i = clean.length-1; i >= 0; i--){
+    hist.unshift({ day: -(clean.length-1-i), date: new Date(clean[i].date), value: running });
+    running -= net[i];
+  }
+  hist[hist.length-1].value = base;
+
+  var proj = [];
+  for(var k = 0; k <= HORIZON; k += 7){
+    proj.push({
+      day: k,
+      date: new Date(today.getTime() + k*86400000),
+      mid: base + rate*k, lo: base + rate*(1-BAND)*k, hi: base + rate*(1+BAND)*k
+    });
+  }
+
+  var end = proj[proj.length-1];
+  var crossings = MILESTONES.filter(function(m){ return m > base && m <= end.mid; })
+    .map(function(m){
+      var days = (m-base)/rate;
+      return { value:m, days:days, date:new Date(today.getTime() + days*86400000) };
+    });
+
+  drawGrowth(hist, proj, base, crossings);
+
+  setNote("fc-note", fmt(end.mid) + " by " + end.date.toLocaleDateString("en-GB",{month:"long",year:"numeric"}));
+  setNote("lg-rate", "+" + Math.round(rate) + " a day, net");
+  $("fc-caveat").textContent =
+    "Over the last " + clean.length + " days you gained " + grossTotal.toLocaleString("en-GB") + " followers and lost " +
+    (grossTotal - gainedNet).toLocaleString("en-GB") + ", a net " + gainedNet.toLocaleString("en-GB") + " — about " +
+    Math.round(rate) + " a day. The dashed line carries that same rate forward; the shading is 15% either side. " +
+    "Hover the line for the date you cross each round number. It assumes nothing changes, and most of this growth comes from car content, so it holds only while that access does.";
+}
+
+function drawGrowth(hist, proj, base, crossings){
+  var svg = $("chart-fc"), tip = $("tip-fc");
+  if(!svg) return;
+  var W = 760, H = 250, padL = 56, padT = 20, padB = 30;
+  var iw = W - padL - 12, ih = H - padT - padB;
+  var dayMin = hist[0].day, dayMax = HORIZON;
+  var end = proj[proj.length-1];
+  var top = niceTop(end.hi);
+  var bottom = Math.max(0, Math.floor(Math.min(hist[0].value, base)*0.95/1000)*1000);
+  var X = function(day){ return padL + (day - dayMin)/(dayMax - dayMin)*iw; };
+  var Y = function(v){ return padT + ih - ((v-bottom)/(top-bottom))*ih; };
+
+  var parts = [], t;
+  for(t=0;t<=3;t++){
+    var f = t/3, yy = padT + ih - f*ih, val = bottom + (top-bottom)*f;
+    parts.push('<line x1="'+padL+'" y1="'+yy.toFixed(1)+'" x2="'+(W-12)+'" y2="'+yy.toFixed(1)+'" stroke="var(--line)" stroke-width="1"/>');
+    parts.push('<text x="'+(padL-10)+'" y="'+(yy+3.5).toFixed(1)+'" text-anchor="end" fill="var(--muted)" font-size="10" font-weight="500">'+esc(fmt(val))+'</text>');
+  }
+
+  /* projection band */
+  var hiPath = proj.map(function(p,i){ return (i?"L":"M") + X(p.day).toFixed(1) + " " + Y(p.hi).toFixed(1); }).join(" ");
+  var loPath = proj.slice().reverse().map(function(p){ return "L" + X(p.day).toFixed(1) + " " + Y(p.lo).toFixed(1); }).join(" ");
+  parts.push('<path d="'+hiPath+" "+loPath+' Z" fill="var(--ink-soft)" opacity="0.85"/>');
+
+  /* history, solid */
+  var hPath = hist.map(function(p,i){ return (i?"L":"M") + X(p.day).toFixed(1) + " " + Y(p.value).toFixed(1); }).join(" ");
+  parts.push('<path d="'+hPath+'" fill="none" stroke="var(--fg)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>');
+
+  /* projection, dashed */
+  var pPath = proj.map(function(p,i){ return (i?"L":"M") + X(p.day).toFixed(1) + " " + Y(p.mid).toFixed(1); }).join(" ");
+  parts.push('<path d="'+pPath+'" fill="none" stroke="var(--fg)" stroke-width="2" stroke-dasharray="7 5" stroke-linecap="round"/>');
+
+  /* you are here */
+  var tx = X(0), ty = Y(base);
+  parts.push('<line x1="'+tx.toFixed(1)+'" y1="'+padT+'" x2="'+tx.toFixed(1)+'" y2="'+(padT+ih)+'" stroke="var(--ink-mid)" stroke-width="1"/>');
+  parts.push('<circle cx="'+tx.toFixed(1)+'" cy="'+ty.toFixed(1)+'" r="7" fill="var(--bg)"/>');
+  parts.push('<circle cx="'+tx.toFixed(1)+'" cy="'+ty.toFixed(1)+'" r="5" fill="var(--fg)"/>');
+  parts.push('<text x="'+(tx+11).toFixed(1)+'" y="'+(padT+11).toFixed(1)+'" fill="var(--fg)" font-size="10.5" font-weight="700" letter-spacing="0.08em">YOU ARE HERE</text>');
+  parts.push('<text x="'+(tx+11).toFixed(1)+'" y="'+(padT+24).toFixed(1)+'" fill="var(--muted)" font-size="10.5" font-weight="500">'+esc(base.toLocaleString("en-GB"))+' today</text>');
+
+  /* end value */
+  parts.push('<circle cx="'+X(end.day).toFixed(1)+'" cy="'+Y(end.mid).toFixed(1)+'" r="4" fill="var(--fg)"/>');
+  parts.push('<text x="'+(W-12)+'" y="'+(Y(end.mid)-12).toFixed(1)+'" text-anchor="end" fill="var(--fg)" font-size="12" font-weight="700">'+esc(fmt(end.mid))+'</text>');
+
+  parts.push('<text x="'+padL+'" y="'+(H-7)+'" fill="var(--muted)" font-size="10" font-weight="500">'+esc(hist[0].date.toLocaleDateString("en-GB",{day:"numeric",month:"short"}))+'</text>');
+  parts.push('<text x="'+(W-12)+'" y="'+(H-7)+'" text-anchor="end" fill="var(--muted)" font-size="10" font-weight="500">'+esc(end.date.toLocaleDateString("en-GB",{month:"short",year:"numeric"}))+'</text>');
+  svg.innerHTML = parts.join("");
+
+  /* hover across both halves; milestones surface here rather than on the chart */
+  var all = hist.map(function(p){
+      return { x: X(p.day), y: Y(p.value),
+        text: p.date.toLocaleDateString("en-GB",{day:"numeric",month:"short"}) + "   " + Math.round(p.value).toLocaleString("en-GB") };
+    }).concat(proj.slice(1).map(function(p){
+      var near = null;
+      crossings.forEach(function(c){ if(Math.abs(c.days - p.day) <= 3.5) near = c; });
+      return { x: X(p.day), y: Y(p.mid),
+        text: p.date.toLocaleDateString("en-GB",{day:"numeric",month:"short"}) + "   " + fmt(p.mid) +
+              (near ? "   ·   crosses " + fmt(near.value) : "") };
+    }));
+  hover(svg, tip, all.map(function(a){ return a.x; }), all, W, H);
+}
+
+/* ---- growth data (separate call: the unfollow breakdown is its own table) ---- */
+function loadGrowth(){
+  return windsor({connector:IG, fields:["date","follower_count","follows_and_unfollows"], date_preset:"last_30d"})
+    .then(function(rows){
+      rows = (rows||[]).filter(function(r){ return r && r.date; })
+        .sort(function(a,b){ return String(a.date) < String(b.date) ? -1 : 1; });
+      buildForecast(rows);
+    })
+    .catch(function(e){ setNote("fc-note", errorCopy(e)); });
+}
+
+/* ---- long view ---- */
+function loadLongView(){
+  return windsor({connector:IG, fields:["date","views"], date_from:LONG_FROM, date_to:iso(new Date())})
+    .then(function(rows){
+      var byMonth = {};
+      (rows||[]).forEach(function(r){
+        if(!r || !r.date) return;
+        var k = String(r.date).slice(0,7);
+        byMonth[k] = (byMonth[k]||0) + (+r.views||0);
+      });
+      var keys = Object.keys(byMonth).sort();
+      if(!keys.length) return;
+      var items = keys.map(function(k){
+        var d = new Date(k + "-01");
+        return { label: d.toLocaleDateString("en-GB",{month:"short"}), value: byMonth[k] };
+      });
+      barChart("chart-long","tip-long", items, "views", 1);
+    })
+    .catch(function(){ $("chart-long").innerHTML = ""; });
+}
+
+/* ---- banked follower history ---- */
+function bankToday(){
+  if(!db || !followerTotal) return;
+  var key = iso(new Date());
+  db.doc("followers/" + key).set({ date:key, total:followerTotal })
+    .then(loadBank, loadBank);
+}
+function loadBank(){
+  if(!db){ setNote("bank-note","Recording unavailable in this view"); return; }
+  db.collection("followers").get().then(function(snap){
+    var docs = [];
+    (snap && snap.docs ? snap.docs : (snap||[])).forEach(function(d){
+      var v = d.data ? d.data() : d;
+      if(v && v.date && v.total) docs.push(v);
+    });
+    docs.sort(function(a,b){ return a.date < b.date ? -1 : 1; });
+    if(docs.length < 2){
+      setNote("bank-note", docs.length + " day recorded — the chart fills in from here");
+      $("chart-bank").innerHTML = '<text x="54" y="80" fill="var(--muted)" font-size="12">Recording started today. Come back tomorrow for the first line.</text>';
+      return;
+    }
+    setNote("bank-note", docs.length + " days recorded · " + (docs[docs.length-1].total - docs[0].total >= 0 ? "+" : "") + fmt(docs[docs.length-1].total - docs[0].total) + " since");
+    lineChart("chart-bank","tip-bank", docs.map(function(d){ return {date:d.date, total:d.total}; }), "total", "followers");
+  }, function(){ setNote("bank-note","Couldn't read the record"); });
+}
+
+/* ---- content ---- */
+function loadContent(){
+  return windsor({connector:IG, fields:["date","media_views","media_like_count","media_caption","media_permalink"], date_preset:"last_7d"})
+    .then(function(rows){
+      rows = (rows||[]).filter(function(r){ return r && r.media_views != null; })
+        .sort(function(a,b){ return (+b.media_views||0) - (+a.media_views||0); });
+      if(!rows.length){
+        $("reels").innerHTML = '<li class="msg">Nothing posted in the last 7 days.</li>';
+        setNote("content-note","Nothing posted"); return;
+      }
+      var wins = rows.filter(function(r){ return (+r.media_views||0) >= 50000; }).length;
+      var total = rows.reduce(function(s,r){ return s + (+r.media_views||0); },0);
+      setNote("content-note", rows.length + " reels · " + fmt(total) + " views · " + wins + " over 50k");
+      $("reels").innerHTML = rows.slice(0,40).map(function(r){
+        var v = +r.media_views||0, likes = +r.media_like_count||0;
+        var rate = v ? likes/v*100 : 0;
+        var tag = v >= 50000 ? '<span class="tag win">cleared</span>' : (v < 5000 ? '<span class="tag">flat</span>' : '<span class="tag">mid</span>');
+        var cap = (r.media_caption || "No caption").split("\n")[0];
+        return '<li class="row"><div class="row-main">' +
+          '<div class="row-title">' + esc(cap) + '</div>' +
+          '<div class="row-meta">' + esc(shortDate(r.date)) + ' · ' + fmt(likes) + ' likes · ' + rate.toFixed(1) + '% like rate' +
+          (r.media_permalink ? ' · <a href="'+esc(r.media_permalink)+'" target="_blank" rel="noopener">open</a>' : '') + '</div>' +
+          '<div style="margin-top:8px">' + tag + '</div>' +
+        '</div><div class="row-num">' + fmt(v) + '<span class="u">views</span></div></li>';
+      }).join("");
+    })
+    .catch(function(e){ showError("reels","content-note",e); });
+}
+
+/* ---- email ---- */
+function threadMessages(t){
+  return ((t && t.messages) || []).slice().sort(function(a,b){
+    return new Date(a.date||a.internalDate||0) - new Date(b.date||b.internalDate||0);
+  });
+}
+function isMine(m){ return !!(m && m.labelIds && m.labelIds.indexOf("SENT") > -1); }
+function decodeEntities(s){ var d = document.createElement("textarea"); d.innerHTML = String(s||""); return d.value; }
+function when(d){
+  var t = new Date(d);
+  if(isNaN(t.getTime())) return "";
+  var h = (Date.now() - t.getTime())/3600000;
+  if(h < 1) return Math.max(1,Math.round(h*60)) + " min ago";
+  if(h < 24) return Math.round(h) + " hours ago";
+  return t.toLocaleDateString("en-GB",{day:"numeric",month:"short"});
+}
+function pickAddress(a){
+  if(!a || !a.length) return "";
+  var m = String(a[0]).match(/<([^>]+)>/);
+  return m ? m[1] : String(a[0]).trim();
+}
+function displayName(s){
+  if(!s) return "them";
+  return String(s).replace(/<.*/,"").trim().replace(/^"|"$/g,"") || String(s);
+}
+
+function loadInbox(){
+  return gmail("search_threads", {query:"in:inbox newer_than:1d -category:promotions -category:social -category:updates -in:draft", pageSize:25})
+    .then(function(res){
+      var th = (res && res.threads) || [];
+      $("b-inbox").textContent = th.length ? th.length : "";
+      if(!th.length){
+        $("inbox").innerHTML = '<li class="msg"><strong>Nothing new.</strong> No brand or outreach mail in the last 24 hours.</li>';
+        setNote("inbox-note","All clear"); return;
+      }
+      setNote("inbox-note", th.length + " new");
+      $("inbox").innerHTML = th.map(function(t){
+        var m = threadMessages(t), last = m[m.length-1] || {};
+        return '<li class="row"><div class="row-main">' +
+          '<div class="row-title">' + esc(last.subject || t.subject || "(no subject)") + '</div>' +
+          '<div class="row-meta">' + esc(displayName(last.sender)) + ' · ' + esc(when(last.date)) + '</div>' +
+          (last.snippet ? '<div class="row-snip">' + esc(decodeEntities(last.snippet)) + '</div>' : "") +
+          (t.viewUrl ? '<div style="margin-top:9px"><a href="'+esc(t.viewUrl)+'" target="_blank" rel="noopener">Open in Gmail</a></div>' : "") +
+        '</div></li>';
+      }).join("");
+    })
+    .catch(function(e){ $("b-inbox").textContent = "!"; showError("inbox","inbox-note",e); });
+}
+
+function loadFollowups(){
+  return gmail("search_threads", {query:"in:sent newer_than:120d older_than:4d -category:promotions", pageSize:50})
+    .then(function(res){
+      var th = (res && res.threads) || [], now = new Date(), due = [];
+      th.forEach(function(t){
+        var m = threadMessages(t);
+        if(!m.length) return;
+        var last = m[m.length-1];
+        if(!isMine(last)) return;
+        var sent = new Date(last.date || last.internalDate);
+        if(isNaN(sent.getTime())) return;
+        var wd = workingDaysBetween(sent, now);
+        if(wd < QUIET_DAYS) return;
+        var them = m.filter(function(x){ return !isMine(x); }).pop();
+        due.push({
+          threadId: t.id,
+          subject: last.subject || t.subject || "(no subject)",
+          to: pickAddress(last.toRecipients) || (them ? pickAddress([them.sender]) : ""),
+          theirName: them ? displayName(them.sender) : (pickAddress(last.toRecipients) || "them"),
+          lastMessageId: last.id, sentAt: sent, workingDays: wd,
+          viewUrl: t.viewUrl || last.viewUrl || ""
+        });
+      });
+      due.sort(function(a,b){ return b.workingDays - a.workingDays; });
+      var badge = $("b-follow");
+      badge.textContent = due.length ? due.length : "";
+      badge.className = "badge" + (due.length ? " alert" : "");
+
+      if(!due.length){
+        $("follow").innerHTML = '<li class="msg"><strong>Nothing owed.</strong> No thread has gone past ' + QUIET_DAYS + ' working days without a reply.</li>';
+        setNote("follow-note","Up to date"); return;
+      }
+      setNote("follow-note", due.length + " waiting");
+      $("follow").innerHTML = due.map(function(d,i){
+        drafts["t"+i] = d;
+        return '<li class="row"><div class="row-main">' +
+          '<div class="row-title">' + esc(d.subject) + '</div>' +
+          '<div class="row-meta">' + esc(d.theirName) + ' · you wrote ' + esc(d.sentAt.toLocaleDateString("en-GB",{day:"numeric",month:"short"})) + '</div>' +
+          '<div style="margin-top:11px; display:flex; gap:14px; align-items:center; flex-wrap:wrap">' +
+            '<button class="act" data-draft="t'+i+'">Draft a follow-up</button>' +
+            (d.viewUrl ? '<a href="'+esc(d.viewUrl)+'" target="_blank" rel="noopener">Open in Gmail</a>' : "") +
+          '</div>' +
+          '<div class="draft" id="draft-t'+i+'" hidden></div>' +
+        '</div><div class="row-num" style="color:var(--alert)">' + d.workingDays + '<span class="u">working days</span></div></li>';
+      }).join("");
+      Array.prototype.forEach.call(document.querySelectorAll("[data-draft]"), function(b){
+        b.addEventListener("click", function(){ makeDraft(b.getAttribute("data-draft"), b); });
+      });
+    })
+    .catch(function(e){ $("b-follow").textContent = "!"; showError("follow","follow-note",e); });
+}
+
+/* ---- drafting ---- */
+var STYLE = [
+  "You are drafting a short follow-up email for Elliot Cameron, a Newcastle-based content creator and part-time model (@elliotcameron._) working across menswear, automotive and lifestyle.",
+  "He is chasing a conversation that has gone quiet. Write the follow-up he would send.",
+  "",
+  "Rules, which matter more than anything else:",
+  "- Plain, natural English. No marketing language. Nothing that sounds like a pitch deck.",
+  "- Short: three or four sentences at most. Cut anything not earning its place.",
+  "- Never apologise for following up and never grovel. He is not asking for a favour.",
+  "- Never invent facts, figures, dates or commitments that are not in the thread.",
+  "- Do not restate the thread back at them.",
+  "- Give them an easy way to reply, or one specific small next step.",
+  "- Sign off 'Cheers,' then 'Elliot'.",
+  "- Output the email body only. No subject line, no preamble, no notes."
+].join("\n");
+
+function makeDraft(key, btn){
+  var d = drafts[key]; if(!d) return;
+  var box = $("draft-"+key);
+  btn.disabled = true; btn.textContent = "Reading thread";
+  box.hidden = false;
+  box.innerHTML = '<div class="draft-note">Reading the thread…</div>';
+
+  gmail("get_thread", {threadId:d.threadId, messageFormat:"PLAIN_TEXT"}, {cache:{staleTime:30000}})
+    .then(function(thread){
+      if(!sample) throw {code:"not_granted", message:"Drafting isn't available in this view."};
+      btn.textContent = "Drafting";
+      box.innerHTML = '<div class="draft-note">Writing a draft…</div>';
+      var msgs = threadMessages(thread).slice(-6);
+      var transcript = msgs.map(function(m){
+        return "--- " + (isMine(m) ? "Elliot" : displayName(m.sender)) + " (" + (m.date||"") + ") ---\n" +
+          (m.plaintext_body || m.snippet || "").slice(0,1800);
+      }).join("\n\n");
+      return sample(STYLE + "\n\nIt has been " + d.workingDays + " working days since Elliot's last message.\n\nThe thread so far:\n\n" + transcript, {modelTier:"default"});
+    })
+    .then(function(out){
+      box.innerHTML =
+        '<textarea id="ta-'+key+'" spellcheck="true"></textarea>' +
+        '<div class="draft-bar">' +
+          '<button class="act primary" data-save="'+key+'">Save to Gmail</button>' +
+          '<button class="act" data-copy="'+key+'">Copy</button>' +
+          '<span class="draft-note" id="note-'+key+'">Edit before sending. Nothing is sent from here.</span>' +
+        '</div>';
+      $("ta-"+key).value = (out && out.text) || "";
+      box.querySelector("[data-save]").addEventListener("click", function(){ saveDraft(key); });
+      box.querySelector("[data-copy]").addEventListener("click", function(ev){ copyDraft(key, ev.currentTarget); });
+      btn.disabled = false; btn.textContent = "Redraft";
+    })
+    .catch(function(e){
+      box.innerHTML = '<div class="draft-note">' + esc(errorCopy(e)) + '</div>';
+      btn.disabled = false; btn.textContent = "Try again";
+    });
+}
+function saveDraft(key){
+  var d = drafts[key], ta = $("ta-"+key), note = $("note-"+key);
+  if(!d || !ta) return;
+  var btn = document.querySelector('[data-save="'+key+'"]');
+  btn.disabled = true; btn.textContent = "Saving";
+  var input = {
+    subject: /^re:/i.test(d.subject) ? d.subject : ("Re: " + d.subject),
+    body: ta.value, replyToMessageId: d.lastMessageId
+  };
+  if(d.to) input.to = [d.to];
+  mcp.callTool(GMAIL, "create_draft", input, {cache:false})
+    .then(function(res){
+      var p = res && res.payload;
+      btn.textContent = "Saved";
+      note.innerHTML = "Waiting in Gmail as a draft" + (p && p.viewUrl ? ' · <a href="'+esc(p.viewUrl)+'" target="_blank" rel="noopener">open it</a>' : "") + ".";
+    })
+    .catch(function(e){
+      btn.disabled = false; btn.textContent = "Save to Gmail";
+      note.textContent = errorCopy(e);
+    });
+}
+function copyDraft(key, btn){
+  var ta = $("ta-"+key); if(!ta) return;
+  var done = function(){ btn.textContent = "Copied"; setTimeout(function(){ btn.textContent = "Copy"; },1600); };
+  try{ navigator.clipboard.writeText(ta.value).then(done, function(){ ta.focus(); ta.select(); }); }
+  catch(_){ ta.focus(); ta.select(); }
+}
+
+/* ---- consent, then load ----
+   Both connectors asked in ONE dialog before any call. Asking lazily meant two
+   dialogs raced and whichever lost never got shown. */
+function loadAll(){
+  loadFollowerTotal().then(function(){ loadOverview(); loadGrowth(); });
+  loadLongView(); loadContent(); loadInbox(); loadFollowups();
+}
+function askThenLoad(){
+  if(!perms){ loadAll(); return; }
+  var names = ["mcp:" + windsorName, "mcp:" + GMAIL];
+  return perms.request(names).then(function(map){
+    var denied = names.filter(function(n){ return map && map[n] === "denied"; });
+    if(denied.length) showReconnect(denied);
+    loadAll();
+  }, function(){ loadAll(); });
+}
+function showReconnect(denied){
+  var bar = document.createElement("div");
+  bar.className = "msg";
+  bar.style.cssText = "border-bottom:1px solid var(--line); padding:16px 0; display:flex; gap:14px; align-items:center; flex-wrap:wrap";
+  bar.innerHTML = '<span>' + esc(denied.map(function(n){ return n.replace("mcp:",""); }).join(" and ")) +
+    (denied.length > 1 ? " are" : " is") + ' switched off for this page, so those sections will be empty.</span>';
+  var btn = document.createElement("button");
+  btn.className = "act";
+  btn.textContent = "Turn them on";
+  btn.addEventListener("click", function(){
+    if(!perms) return;
+    perms.manage().then(function(){ location.reload(); }, function(){
+      btn.disabled = true;
+      btn.textContent = "Use the page's Permissions menu";
+    });
+  });
+  bar.appendChild(btn);
+  var host = document.querySelector(".wrap");
+  host.insertBefore(bar, host.firstChild);
+}
+
+/* ---- boot ---- */
+function offline(reason){
+  $("tiles").innerHTML = '<div class="msg" style="grid-column:1/-1">' + esc(reason) + '</div>';
+  $("hero-lede").textContent = reason;
+  ["reels","inbox","follow"].forEach(function(id){ $(id).innerHTML = '<li class="msg">' + esc(reason) + '</li>'; });
+  ["content-note","inbox-note","follow-note","fc-note","bank-note"].forEach(function(id){ setNote(id,"Unavailable"); });
+}
+
+if(window.claude && window.claude.use){
+  window.claude.use("mcp").then(function(m){
+    mcp = m;
+    if(!mcp){ offline("Live data isn't available in this view. Open the page from your own claude.ai account."); return; }
+    window.claude.use("sample").then(function(s){ sample = s; }, function(){});
+    window.claude.use("db").then(function(x){ db = x; loadBank(); }, function(){ setNote("bank-note","Recording unavailable"); });
+    return window.claude.use("permissions").then(function(p){ perms = p; }, function(){ perms = null; }).then(function(){
+    return mcp.listTools().then(function(list){
+      var servers = (list && list.servers) || [];
+      /* Prefer a name the viewer actually has connected: a declared-but-absent
+         connector still lists, with no tools and authStatus "unknown". */
+      servers.forEach(function(s){
+        if(windsorName || WINDSOR_NAMES.indexOf(s.server) < 0) return;
+        if((s.tools && s.tools.length) || s.authStatus === "connected") windsorName = s.server;
+      });
+      if(!windsorName){
+        servers.forEach(function(s){
+          if(!windsorName && WINDSOR_NAMES.indexOf(s.server) > -1) windsorName = s.server;
+        });
+      }
+      if(!windsorName) windsorName = WINDSOR_NAMES[0];
+      return askThenLoad();
+    }, function(){
+      windsorName = WINDSOR_NAMES[0];
+      return askThenLoad();
+    });
+    });
+  }, function(){ offline("Live data couldn't start in this view."); });
+} else {
+  offline("Live data isn't available in this view.");
+}
+
+})();
+</script>

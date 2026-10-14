@@ -1,0 +1,195 @@
+/* Carried from prototype/dashboard.html. Layout: the deck's language — white ground, hairline rules instead of cards, oversized
+   grotesque numerals, letterspaced uppercase eyebrows. Monochrome throughout; one red
+   reserved for overdue state only. */
+:root{
+  --bg:#ffffff; --surface:#ffffff; --surface-2:#f5f5f4; --line:#e4e3e1; --rule:#0d0d0d;
+  --fg:#0d0d0d; --muted:#767674; --ink-soft:#d8d7d4; --ink-mid:#a8a7a4;
+  --alert:#a8201a;
+  --font:"Archivo",Helvetica,"Helvetica Neue",Arial,system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0b0b0c; --surface:#0b0b0c; --surface-2:#161617; --line:#262627; --rule:#f2f1ef;
+    --fg:#f2f1ef; --muted:#8b8b89; --ink-soft:#2e2e30; --ink-mid:#5c5c5f;
+    --alert:#e8695f;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0b0b0c; --surface:#0b0b0c; --surface-2:#161617; --line:#262627; --rule:#f2f1ef;
+  --fg:#f2f1ef; --muted:#8b8b89; --ink-soft:#2e2e30; --ink-mid:#5c5c5f;
+  --alert:#e8695f;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:var(--font); font-size:15px; line-height:1.5; margin:0;
+  -webkit-font-smoothing:antialiased; letter-spacing:-0.004em;
+}
+.wrap{max-width:1080px; margin:0 auto; padding-inline:24px; padding-block:0 72px}
+@media (max-width:520px){ .wrap{padding-inline:16px} .head-in{padding-inline:16px!important} }
+
+/* ---- header ---- */
+header{
+  position:sticky; top:env(safe-area-inset-top,0px); z-index:30;
+  background:var(--bg); border-bottom:1px solid var(--line);
+}
+.head-in{max-width:1080px; margin:0 auto; padding:18px 24px 0}
+.brandrow{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap}
+h1{
+  font-weight:800; font-size:21px; letter-spacing:-0.02em; margin:0;
+  text-transform:uppercase;
+}
+.handle{font-size:12px; color:var(--muted); letter-spacing:0}
+.updated{margin-left:auto; font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums}
+
+nav{display:flex; gap:26px; margin-top:16px; overflow-x:auto; scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav button{
+  appearance:none; background:none; border:0; border-bottom:2px solid transparent;
+  color:var(--muted); font-family:inherit; font-weight:600; font-size:11px;
+  letter-spacing:.13em; text-transform:uppercase;
+  padding:0 0 12px; cursor:pointer; white-space:nowrap;
+}
+nav button[aria-selected="true"]{color:var(--fg); border-bottom-color:var(--rule)}
+nav button:hover{color:var(--fg)}
+nav button:focus-visible{outline:2px solid var(--fg); outline-offset:3px}
+.badge{
+  display:inline-block; margin-left:6px; font-variant-numeric:tabular-nums;
+  color:var(--muted); font-weight:500;
+}
+nav button[aria-selected="true"] .badge{color:var(--fg)}
+.badge.alert{color:var(--alert)}
+
+/* ---- type ---- */
+.eyebrow{
+  font-size:10px; font-weight:600; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--muted); margin:0;
+}
+.sec-head{
+  display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;
+  padding-bottom:10px; border-bottom:1px solid var(--rule); margin-bottom:18px;
+}
+.sec-note{font-size:12px; color:var(--muted); margin-left:auto; font-variant-numeric:tabular-nums}
+section{padding-block:38px 0}
+
+/* ---- hero ---- */
+.hero{display:flex; align-items:flex-end; gap:34px; flex-wrap:wrap; padding-block:4px 30px}
+.hero .big{
+  font-size:clamp(54px,12vw,104px); font-weight:800; line-height:.88;
+  letter-spacing:-0.045em; font-variant-numeric:tabular-nums;
+}
+.hero .lede{max-width:34ch; font-size:13px; color:var(--muted); padding-bottom:7px}
+
+/* ---- tiles: hairline grid, not cards ---- */
+.tiles{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(152px,1fr));
+  border-top:1px solid var(--line);
+}
+.tile{padding:18px 20px 20px; border-bottom:1px solid var(--line); border-right:1px solid var(--line); min-width:0}
+.tile:last-child{border-right:0}
+@media (max-width:620px){ .tile{border-right:0} }
+.tile .v{
+  font-size:34px; font-weight:800; line-height:1.02; letter-spacing:-0.035em;
+  font-variant-numeric:tabular-nums; margin-top:9px;
+}
+.tile .sub{font-size:11px; color:var(--muted); margin-top:5px; font-variant-numeric:tabular-nums}
+.tile .sub.up{color:var(--fg); font-weight:600}
+.tile .sub.down{color:var(--alert); font-weight:600}
+
+/* ---- charts ---- */
+.chartblock{padding-block:26px 6px; border-bottom:1px solid var(--line)}
+.chart-head{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:14px}
+.chart-cap{font-size:11px; color:var(--muted); margin-left:auto; max-width:40ch; text-align:right}
+.chartwrap{position:relative}
+svg.chart{display:block; width:100%; height:auto; max-width:100%; overflow:visible}
+.tip{
+  position:absolute; pointer-events:none; opacity:0; transition:opacity .08s;
+  background:var(--fg); color:var(--bg); border-radius:3px;
+  padding:5px 8px; font-size:11px; font-weight:600; white-space:nowrap;
+  transform:translate(-50%,-150%); z-index:5; font-variant-numeric:tabular-nums;
+}
+.legend{display:flex; gap:18px; flex-wrap:wrap; margin-top:12px; font-size:11px; color:var(--muted)}
+.legend i{display:inline-block; width:16px; height:0; border-top:2px solid var(--fg); margin-right:6px; vertical-align:middle}
+.legend i.dash{border-top-style:dashed}
+.legend i.band{height:9px; border:0; background:var(--ink-soft); vertical-align:-1px}
+
+/* ---- lists ---- */
+ul.rows{list-style:none; margin:0; padding:0}
+li.row{
+  padding:17px 0; border-bottom:1px solid var(--line);
+  display:flex; gap:20px; align-items:flex-start; min-width:0;
+}
+.row-main{flex:1; min-width:0}
+.row-title{font-weight:600; font-size:15px; letter-spacing:-0.01em; overflow-wrap:anywhere}
+.row-meta{font-size:11.5px; color:var(--muted); margin-top:4px; overflow-wrap:anywhere; font-variant-numeric:tabular-nums}
+.row-snip{font-size:13px; color:var(--muted); margin-top:7px; overflow-wrap:anywhere; max-width:72ch}
+.row-num{
+  font-size:25px; font-weight:800; letter-spacing:-0.035em;
+  font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; line-height:1;
+}
+.row-num .u{display:block; font-size:10px; font-weight:500; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted); margin-top:5px}
+.tag{
+  display:inline-block; font-size:10px; font-weight:600; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--muted);
+}
+.tag.win{color:var(--fg); border-bottom:2px solid var(--rule); padding-bottom:1px}
+.tag.due{color:var(--alert)}
+
+a{color:inherit; text-decoration:underline; text-underline-offset:2px; text-decoration-thickness:1px}
+a:hover{text-decoration-thickness:2px}
+
+button.act{
+  appearance:none; cursor:pointer; white-space:nowrap; font-family:inherit;
+  background:none; color:var(--fg); border:1px solid var(--rule); border-radius:0;
+  font-weight:600; font-size:11px; letter-spacing:.11em; text-transform:uppercase;
+  padding:8px 14px;
+}
+button.act:hover{background:var(--fg); color:var(--bg)}
+button.act:disabled{opacity:.4; cursor:default; background:none; color:var(--muted); border-color:var(--line)}
+button.act:focus-visible{outline:2px solid var(--fg); outline-offset:3px}
+button.act.primary{background:var(--fg); color:var(--bg)}
+button.act.primary:hover{opacity:.82}
+
+.draft{margin-top:15px; padding-top:15px; border-top:1px solid var(--line)}
+.draft textarea{
+  width:100%; min-height:200px; resize:vertical;
+  background:var(--surface-2); color:var(--fg);
+  border:1px solid var(--line); border-radius:0; padding:14px;
+  font-family:inherit; font-size:14px; line-height:1.6;
+}
+.draft textarea:focus-visible{outline:2px solid var(--fg); outline-offset:-1px}
+.draft-bar{display:flex; gap:10px; margin-top:11px; flex-wrap:wrap; align-items:center}
+.draft-note{font-size:11px; color:var(--muted)}
+
+.msg{padding:22px 0; color:var(--muted); font-size:13.5px; border-bottom:1px solid var(--line); max-width:64ch}
+.msg strong{color:var(--fg); font-weight:600}
+.skel{height:56px; border-bottom:1px solid var(--line); animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.35}50%{opacity:.7}}
+@media (prefers-reduced-motion: reduce){ .skel{animation:none; opacity:.5} *{transition:none!important} }
+.foot{margin-top:46px; padding-top:16px; border-top:1px solid var(--line); font-size:11px; color:var(--muted); max-width:66ch}
+
+/* ---- app additions (not in the prototype) ---- */
+html{-webkit-text-size-adjust:100%; background:var(--bg)}
+body{min-height:100dvh; padding-bottom:env(safe-area-inset-bottom,0px)}
+/* Home-screen app: the status bar sits over the page, so the header pads under it. */
+header{top:0; padding-top:env(safe-area-inset-top,0px)}
+.head-in{padding-left:max(24px, env(safe-area-inset-left)); padding-right:max(24px, env(safe-area-inset-right))}
+nav button{min-height:32px}
+button.act{min-height:36px}
+.tip{transition:opacity .08s}
+.signout{appearance:none; background:none; border:0; padding:0; font:inherit; font-size:11px; color:var(--muted); cursor:pointer; text-decoration:underline; text-underline-offset:2px}
+.login{min-height:100dvh; display:flex; align-items:center; justify-content:center; padding:24px}
+.login form{width:100%; max-width:340px}
+.login h1{margin-bottom:6px}
+.login p{font-size:13px; color:var(--muted); margin:0 0 22px}
+.login input{
+  width:100%; font:inherit; font-size:16px; padding:12px 14px; margin:8px 0 14px;
+  background:var(--surface-2); color:var(--fg); border:1px solid var(--line); border-radius:0;
+}
+.login input:focus-visible{outline:2px solid var(--fg); outline-offset:-1px}
+.login .wrong{color:var(--alert); font-size:12px; margin:-6px 0 14px}
