@@ -1,5 +1,5 @@
 // Gmail over IMAP with an app password. See docs/03-auth-and-setup.md for why
-// this is not OAuth. Read-only except for one thing: appending drafts.
+// this is not OAuth. Read-only: this app never writes to the mailbox.
 //
 // Threads: Gmail's IMAP exposes X-GM-THRID (imapflow's `threadId`), the same
 // thread id the web UI uses, so threads are grouped by that rather than
@@ -7,7 +7,6 @@
 
 import { ImapFlow, type FetchMessageObject, type ListResponse } from "imapflow";
 import { simpleParser } from "mailparser";
-import MailComposer from "nodemailer/lib/mail-composer";
 import { AppError } from "./errors";
 import { QUIET_DAYS, workingDaysBetween } from "./format";
 
@@ -17,7 +16,7 @@ function email(): string {
   return e.toLowerCase();
 }
 
-async function withImap<T>(fn: (c: ImapFlow, boxes: { all: string; drafts: string }) => Promise<T>): Promise<T> {
+async function withImap<T>(fn: (c: ImapFlow, boxes: { all: string }) => Promise<T>): Promise<T> {
   const user = email();
   const client = new ImapFlow({
     host: "imap.gmail.com", port: 993, secure: true,
@@ -36,7 +35,7 @@ async function withImap<T>(fn: (c: ImapFlow, boxes: { all: string; drafts: strin
     // UK accounts may use "[Google Mail]/…" — find folders by special-use flag, not name.
     const list: ListResponse[] = await client.list();
     const by = (flag: string, fallback: string) => list.find((b) => b.specialUse === flag)?.path ?? fallback;
-    return await fn(client, { all: by("\\All", "[Gmail]/All Mail"), drafts: by("\\Drafts", "[Gmail]/Drafts") });
+    return await fn(client, { all: by("\\All", "[Gmail]/All Mail") });
   } catch (e) {
     if (e instanceof AppError) throw e;
     throw new AppError("gmail_unreachable", e);
@@ -161,81 +160,7 @@ export async function followUps(now = new Date()): Promise<FollowUp[]> {
   });
 }
 
-// ---- one thread, plain text -----------------------------------------------
-
-export interface ThreadMessage { from: string; mine: boolean; date: string; text: string }
-interface FullMessage extends ThreadMessage { messageId?: string; references: string[]; replyTo?: string; to: string[]; subject: string }
-
-async function loadThread(c: ImapFlow, all: string, threadId: string): Promise<FullMessage[]> {
-  if (!/^\d+$/.test(threadId)) throw new AppError("bad_request");
-  const lock = await c.getMailboxLock(all, { readOnly: true });
-  try {
-    const uids = await c.search({ threadId }, { uid: true });
-    if (!uids || !uids.length) throw new AppError("gmail_not_found");
-    const msgs = (await c.fetchAll(uids, { uid: true, envelope: true, labels: true, flags: true, internalDate: true, source: true }, { uid: true }))
-      .filter((m) => !isDraft(m))
-      .sort((a, b) => +sentAt(a) - +sentAt(b));
-    return Promise.all(msgs.map(async (m) => {
-      const p = m.source ? await simpleParser(m.source).catch(() => null) : null;
-      const refs = p?.references ? (Array.isArray(p.references) ? p.references : [p.references]) : [];
-      const replyTo = p?.replyTo?.value?.[0]?.address || m.envelope?.from?.[0]?.address;
-      return {
-        from: name(m.envelope?.from?.[0]),
-        mine: isMine(m),
-        date: sentAt(m).toISOString(),
-        text: (p?.text ?? "").trim(),
-        messageId: m.envelope?.messageId,
-        references: refs,
-        replyTo,
-        to: (m.envelope?.to ?? []).map((a) => a.address || "").filter(Boolean),
-        subject: m.envelope?.subject || "",
-      };
-    }));
-  } finally {
-    lock.release();
-  }
-}
-
-export async function thread(threadId: string): Promise<{ subject: string; messages: ThreadMessage[] }> {
-  return withImap(async (c, boxes) => {
-    const msgs = await loadThread(c, boxes.all, threadId);
-    return {
-      subject: msgs[msgs.length - 1]?.subject || "(no subject)",
-      messages: msgs.map(({ from, mine, date, text }) => ({ from, mine, date, text })),
-    };
-  });
-}
-
-// ---- save a draft (never send) --------------------------------------------
-
-/**
- * Appends a reply draft to the Drafts folder with \Draft set. Recipients and
- * threading headers are worked out here from the thread itself — never taken
- * from the browser.
- */
-export async function saveDraft(threadId: string, body: string): Promise<{ url: string }> {
-  const from = email();
-  return withImap(async (c, boxes) => {
-    const msgs = await loadThread(c, boxes.all, threadId);
-    const last = msgs[msgs.length - 1];
-    if (!last) throw new AppError("gmail_not_found");
-    const them = [...msgs].reverse().find((m) => !m.mine);
-    const to = last.mine ? last.to : [last.replyTo].filter(Boolean) as string[];
-    const recipients = to.length ? to : them?.replyTo ? [them.replyTo] : [];
-    const subject = /^re:/i.test(last.subject) ? last.subject : `Re: ${last.subject}`;
-    const references = [...last.references, last.messageId].filter(Boolean) as string[];
-
-    const raw = await new MailComposer({
-      from, to: recipients, subject, text: body,
-      inReplyTo: last.messageId, references,
-    }).compile().build();
-
-    await c.append(boxes.drafts, raw, ["\\Draft"], new Date());
-    return { url: gmailUrl(threadId) };
-  });
-}
-
 /** Login + mailbox list, for /api/health. */
-export async function check(): Promise<{ all: string; drafts: string }> {
+export async function check(): Promise<{ all: string }> {
   return withImap(async (_c, boxes) => boxes);
 }

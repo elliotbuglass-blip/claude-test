@@ -28,10 +28,6 @@ export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   throw body?.error ?? FALLBACK;
 }
 
-export function post<T>(url: string, payload: unknown): Promise<T> {
-  return api<T>(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-}
-
 export function useApi<T>(url: string, refreshMs?: number): [Load<T>, () => void] {
   const [state, setState] = useState<Load<T>>({ status: "loading" });
   const load = useCallback(() => {

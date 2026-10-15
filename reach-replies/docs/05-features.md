@@ -98,6 +98,10 @@ mail in the last 24 hours."
 Threads where his was the last message and 5+ working days have passed, sorted
 by most overdue first. Working-day count shown in alert red.
 
+> **Removed Oct 2026** — drafting is not in the current build (see
+> `07-decisions.md`). Rows show the thread and an Open in Gmail link. The
+> original spec is kept below in case it returns.
+
 Each row has **Draft a follow-up**, which:
 
 1. `GET /api/gmail/thread/[id]` — fetches the full thread as plain text

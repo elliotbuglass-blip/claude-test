@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const config: NextConfig = {
   // imapflow and mailparser use Node built-ins; keep them out of the bundle.
-  serverExternalPackages: ["imapflow", "mailparser", "nodemailer"],
+  serverExternalPackages: ["imapflow", "mailparser"],
   poweredByHeader: false,
   async headers() {
     return [

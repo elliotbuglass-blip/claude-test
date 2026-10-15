@@ -9,7 +9,6 @@ export type ErrorCode =
   | "gmail_auth"
   | "gmail_unreachable"
   | "gmail_not_found"
-  | "draft_failed"
   | "db_unavailable"
   | "bad_request"
   | "unauthorised"
@@ -23,7 +22,6 @@ const COPY: Record<ErrorCode, string> = {
   gmail_auth: "The Gmail connection isn't working. Check the app password.",
   gmail_unreachable: "Couldn't reach Gmail. Try again in a moment.",
   gmail_not_found: "That thread couldn't be found in Gmail.",
-  draft_failed: "Couldn't write a draft just now. Try again.",
   db_unavailable: "The database isn't connected, so history can't be recorded.",
   bad_request: "That request was missing something.",
   unauthorised: "Sign in again to carry on.",

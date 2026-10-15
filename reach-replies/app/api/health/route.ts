@@ -23,8 +23,8 @@ export async function GET() {
     probe(async () => { const o = await ig.overview(); return `${o.rows.length} days, 30-day reach ${o.reach30}; latest ${JSON.stringify(o.rows[o.rows.length - 1])}`; }),
     probe(async () => { const r = await ig.growth(); return `${r.length} days; latest ${JSON.stringify(r[r.length - 1])}`; }),
     probe(async () => `${(await ig.reels()).length} reels in the last 7 days`),
-    probe(async () => { const b = await gmail.check(); return `signed in; all mail = ${b.all}, drafts = ${b.drafts}`; }),
+    probe(async () => { const b = await gmail.check(); return `signed in; all mail = ${b.all}`; }),
     probe(async () => (hasDb() ? `${(await listSnapshots()).length} banked days` : Promise.reject(new AppError("db_unavailable")))),
   ]);
-  return Response.json({ instagram: { total, overview, growth, media }, gmail: inbox, database, drafting: { ok: !!process.env.ANTHROPIC_API_KEY, detail: process.env.ANTHROPIC_API_KEY ? "key set" : "ANTHROPIC_API_KEY not set" } });
+  return Response.json({ instagram: { total, overview, growth, media }, gmail: inbox, database });
 }

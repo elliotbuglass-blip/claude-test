@@ -21,6 +21,19 @@ plumbing.
 
 ---
 
+## Follow-up drafting removed (Oct 2026)
+
+**Why.** It was the only part of the app with a running cost (Anthropic API,
+pay per use). Elliot chose a free app over in-app drafts. The Follow-ups tab
+still lists overdue threads with a link into Gmail. Removing it also made the
+Gmail connection read-only.
+
+**If it comes back,** the tone rules in `01-product.md` and the flow in
+`05-features.md` still describe it; the previous implementation is in git
+history (`lib/anthropic.ts`, `app/api/draft`, `app/api/gmail/draft`).
+
+---
+
 ## Single-user, deliberately
 
 **Why.** One person uses this. Multi-tenancy would add user accounts, per-user

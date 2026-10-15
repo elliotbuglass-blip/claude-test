@@ -2,8 +2,8 @@
 
 A private dashboard for Elliot Cameron (@elliotcameron._), a Newcastle-based
 Instagram content creator and part-time model. It puts his live Instagram
-performance and his brand-outreach email pipeline on one page, and drafts
-follow-up emails for threads that have gone quiet.
+performance and his brand-outreach email pipeline on one page, and lists the
+threads that have gone quiet.
 
 **Single-user application.** One person uses this: Elliot. There is no signup,
 no user table, no multi-tenancy. Every architectural decision follows from
@@ -52,7 +52,6 @@ plumbing is worth nothing.
 - No charting library — inline SVG, carried over from the prototype
 - **Vercel Postgres** (or Vercel KV) for the daily follower snapshot and tokens
 - **Vercel Cron** for the daily snapshot
-- Anthropic API for follow-up drafting
 
 ## House rules
 
@@ -61,9 +60,8 @@ plumbing is worth nothing.
   from this page get quoted in emails to press offices. A wrong number here
   becomes a wrong number in an email.
 - Lead with views and reach, not follower count.
-- Plain English in all copy, including generated drafts. Nothing that sounds
-  like a pitch deck.
+- Plain English in all copy. Nothing that sounds like a pitch deck.
 - Monochrome. One red, reserved for overdue state.
 - No secrets in client code. Every third-party call goes through a route
   handler.
-- Nothing is ever sent from this app. Drafts are saved to Gmail for review.
+- Gmail access is read-only. Nothing is sent or written from this app.
