@@ -1,10 +1,13 @@
 name: ReelBot
 
+# The timer is off: ReelBot runs inside Claude Code (see ROUTINE.md), and this
+# workflow's secrets were never set up, so scheduled runs only failed. To run it
+# from GitHub again, add the secrets below and restore the schedule block:
+#   schedule:
+#     - cron: "40 6 * * *"        # every morning: stats → edit new clips → post 1
+#     - cron: "40 9-21/3 * * *"   # every 3 hours after that: post the next approved video
+#     - cron: "10 6 * * 1"        # Mondays: competitor radar + research brief
 on:
-  schedule:
-    - cron: "40 6 * * *"        # every morning (07:40 UK summer time): stats → edit new clips → post 1
-    - cron: "40 9-21/3 * * *"   # every 3 hours after that: post the next approved video
-    - cron: "10 6 * * 1"        # Mondays: competitor radar + research brief
   workflow_dispatch:            # the "Run workflow" button on GitHub
     inputs:
       task:
