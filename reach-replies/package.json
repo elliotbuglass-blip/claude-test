@@ -1,0 +1,30 @@
+{
+  "name": "reach-replies",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "db:seed": "node scripts/seed-snapshots.mjs",
+    "db:backup": "node scripts/backup-snapshots.mjs"
+  },
+  "dependencies": {
+    "imapflow": "1.0.191",
+    "mailparser": "3.7.4",
+    "next": "15.5.27",
+    "postgres": "3.4.7",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@types/mailparser": "3.4.6",
+    "@types/node": "22.18.0",
+    "@types/react": "19.1.12",
+    "@types/react-dom": "19.1.9",
+    "typescript": "5.9.2",
+    "vitest": "3.2.4"
+  }
+}
