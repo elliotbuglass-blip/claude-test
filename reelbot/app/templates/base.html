@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ReelBot</title>
+  <link rel="stylesheet" href="/static/style.css">
+  {% if busy %}<meta http-equiv="refresh" content="20">{% endif %}
+</head>
+<body>
+<header><div class="bar">
+  <a class="logo" href="/">ReelBot</a>
+  <nav>
+    {% for path, label in [("/review","Review"),("/clips","Clips"),("/schedule","Schedule"),("/results","Results"),("/research","Research"),("/settings","Settings")] %}
+      <a href="{{ path }}" class="{{ 'on' if nav.startswith(path) }}">{{ label }}</a>
+    {% endfor %}
+  </nav>
+  <span class="pill {{ 'auto' if mode == 'autopilot' }}">{{ '🤖 Autopilot' if mode == 'autopilot' else '👀 Review mode' }}</span>
+  {% if busy %}<span class="pill busy">⏳ working on {{ busy }} job{{ 's' if busy > 1 }}…</span>{% endif %}
+</div></header>
+<main>{% block main %}{% endblock %}</main>
+<footer>
+  {% for e in events %}<div>{{ e.created_at[5:16].replace('T', ' ') }} · {{ e.message }}</div>{% endfor %}
+</footer>
+</body>
+</html>

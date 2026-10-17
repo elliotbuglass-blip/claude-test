@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% from "_score.html" import score %}
+{% block main %}
+<h1>Results</h1>
+<p class="sub">Every trial reel ReelBot posted, checked at 24, 48 and 72 hours. ReelBot learns from this table for every new batch.</p>
+{% if summary %}<div class="row" style="margin-bottom:16px"><span class="tag">{{ summary.reels }} reel{{ "s" if summary.reels != 1 }} with results</span><span class="tag">median {{ summary.median|num }} views</span><span class="tag ok">best {{ summary.best|num }} views</span></div>{% endif %}
+{% if not reels %}<div class="empty">No posted reels yet.</div>{% else %}
+<div class="scroll"><table>
+<tr><th>Reel</th><th>Predicted</th><th>Posted</th><th>24h views</th><th>48h views</th><th>72h views</th><th>Shares</th><th>Saves</th><th>Avg watch</th></tr>
+{% for r in reels %}
+<tr>
+  <td><b>“{{ r.on_screen_text }}”</b><div class="meta">{{ r.angle }} · 🎵 {{ r.sound_suggestion }}{% if r.permalink %} · <a href="{{ r.permalink }}" target="_blank">open ↗</a>{% endif %}</div></td>
+  <td>{{ score(r.virality_score) }}</td>
+  <td class="meta">{{ r.posted_at|when }}</td>
+  {% for h in (24, 48, 72) %}<td>{{ r.snaps[h].views|num if h in r.snaps else '⏳' }}</td>{% endfor %}
+  <td>{{ r.latest.shares|num if r.latest else '–' }}</td>
+  <td>{{ r.latest.saved|num if r.latest else '–' }}</td>
+  <td>{{ ('%.1fs'|format(r.latest.avg_watch_ms / 1000)) if r.latest and r.latest.avg_watch_ms else '–' }}</td>
+</tr>
+{% endfor %}
+</table></div>{% endif %}
+{% endblock %}

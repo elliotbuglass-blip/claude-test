@@ -1,3 +1,7 @@
 anthropic>=1.13
 requests>=2.31
 PyYAML>=6.0
+starlette>=1.6
+uvicorn>=0.53
+Jinja2>=3.1
+python-multipart>=0.0.32

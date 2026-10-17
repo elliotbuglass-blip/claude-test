@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block main %}
+<h1>Settings</h1>
+<form method="post">
+<div class="cols">
+<div class="card"><div class="body">
+  <p class="hook">🤖 Mode</p>
+  <label>How ReelBot works</label>
+  <select name="mode"><option value="review" {{ 'selected' if s.mode == 'review' }}>👀 Review: I approve every reel</option>
+    <option value="autopilot" {{ 'selected' if s.mode == 'autopilot' }}>🤖 Autopilot: plan, edit, schedule and post by itself</option></select>
+  <label>Posts per day (autopilot)</label><input name="posts_per_day" type="number" min="1" max="10" value="{{ s.posts_per_day }}">
+  <label>Posting times</label>
+  <select name="times_mode"><option value="best" {{ 'selected' if s.times_mode != 'manual' }}>Automatic: my best times from my history</option>
+    <option value="manual" {{ 'selected' if s.times_mode == 'manual' }}>Manual: use the times below</option></select>
+  <label>Manual times (UK, comma separated)</label><input name="post_times" value="{{ (s.post_times or [])|join(', ') }}">
+  <label>Reels to make per clip (review)</label><input name="reels_per_clip" type="number" min="1" max="6" value="{{ s.reels_per_clip }}">
+</div></div>
+<div class="card"><div class="body">
+  <p class="hook">🎬 Look</p>
+  <label>Text style</label><select name="text_style">{% for st in styles %}<option {{ 'selected' if s.text_style == st }}>{{ st }}</option>{% endfor %}</select>
+  <p class="meta">editorial = small thin serif (your style) · stacked = big serif, a word per line · classic = bold sans</p>
+  <label>Colour look</label><select name="grade">{% for g in grades %}<option {{ 'selected' if s.grade == g }}>{{ g }}</option>{% endfor %}</select>
+  <label>Reel length (seconds)</label><input name="reel_seconds" type="number" min="4" max="60" value="{{ s.reel_seconds }}">
+  <label>New b-roll clips</label><select name="broll_silent"><option value="1" {{ 'selected' if s.broll_silent }}>Silent</option><option value="0" {{ 'selected' if not s.broll_silent }}>Keep their sound</option></select>
+  <label>Hashtags added to every post</label><input name="hashtags" value="{{ s.hashtags or '' }}">
+</div></div>
+</div>
+<div class="card" style="margin-top:16px"><div class="body">
+  <p class="hook">👤 About my account</p>
+  <textarea name="niche" rows="2">{{ s.niche }}</textarea>
+  <label>Competitors (one per line)</label>
+  <textarea name="competitors" rows="8">{% for c in s.competitors or [] %}{{ c.username if c is mapping else c }}
+{% endfor %}</textarea>
+</div></div>
+<div class="row"><button>Save settings</button></div>
+</form>
+<div class="card" style="margin-top:16px"><div class="body">
+  <p class="hook">🔑 Connections</p>
+  {% for k, ok in keys.items() %}<div class="meta">{{ '✅' if ok else '❌' }} {{ k }}</div>{% endfor %}
+  <p class="meta">Keys are set on the server (never in this page).</p>
+</div></div>
+{% endblock %}

@@ -7,3 +7,4 @@ audio/*
 !audio/.gitkeep
 output/
 data/hiker/
+storage/

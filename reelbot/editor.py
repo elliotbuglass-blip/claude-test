@@ -194,8 +194,16 @@ def render(clip, out_path, caption, start, length, look, audio_cfg, broll=None):
     video += f";[{last}]{','.join(post)}[v]"
 
     fade = f"afade=t=out:st={max(length - 0.6, 0):.2f}:d=0.6"
+    broll_sound = ""
+    if broll and not broll.get("silent", True) and probe(broll["clip"])[1]:
+        # B-roll set to keep its own sound: lay it over the main sound while it's on screen.
+        ms = int(float(broll["at"]) * 1000)
+        broll_sound = f";[1:a]adelay={ms}|{ms},apad[bra]"
     if mode == "original":
-        audio = f";[0:a]{fade}[a]" if has_audio else ""
+        if has_audio and broll_sound:
+            audio = f"{broll_sound};[0:a][bra]amix=inputs=2:duration=first:normalize=0,{fade}[a]"
+        else:
+            audio = f";[0:a]{fade}[a]" if has_audio else ""
     else:
         # Loop the track if it's shorter than the reel, and level it so every track sits at the same loudness.
         cmd += ["-stream_loop", "-1", "-i", str(track)]

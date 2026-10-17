@@ -1,0 +1,43 @@
+{% extends "base.html" %}{% from "_score.html" import score %}
+{% block main %}
+<h1>Review</h1>
+<p class="sub">New reels waiting for your OK. Approve to schedule at the suggested time, or edit the text and re-make it.</p>
+{% if not reels %}<div class="empty">Nothing to review. <a href="/clips">Upload some clips</a> and ReelBot will make reels from them.</div>{% endif %}
+<div class="grid">
+{% for r in reels %}
+  <div class="card">
+    {% if r.status == 'rendering' %}<div class="placeholder">⏳ Making this reel…</div>
+    {% elif r.status == 'failed' %}<div class="placeholder s-low">Failed: {{ r.error }}</div>
+    {% else %}<video src="/video/{{ r.id }}.mp4" poster="/thumb/{{ r.id }}.jpg" controls playsinline preload="none"></video>{% endif %}
+    <div class="body">
+      <p class="hook">“{{ r.on_screen_text }}”</p>
+      <div class="row" style="margin-top:0">{{ score(r.virality_score) }} <span class="tag">{{ r.angle }}</span></div>
+      <p class="meta">{{ r.score_reason }}</p>
+      <p class="meta">📝 {{ r.post_caption }}</p>
+      <p class="meta">🎵 Use: <b>{{ r.sound_suggestion or 'original audio' }}</b>{% if r.track %} · mixed in: {{ r.track }}{% endif %}</p>
+      <p class="meta">🎬 {{ r.filename }}</p>
+      <form method="post" action="/reels/{{ r.id }}/approve" class="row">
+        <select name="post_at" style="flex:1">
+          {% for t in ([r.recommended_time] + times)|unique %}<option value="{{ t }}">{{ t|when }}{{ ' ⭐ best' if loop.first }}</option>{% endfor %}
+        </select>
+        <button>Approve</button>
+      </form>
+      <details>
+        <summary>Edit or add b-roll</summary>
+        <form method="post" action="/reels/{{ r.id }}/edit">
+          <label>On-screen text</label><input name="on_screen_text" value="{{ r.on_screen_text }}">
+          <label>Post caption</label><input name="post_caption" value="{{ r.post_caption }}">
+          <label>Sound to add in the app</label><input name="sound_suggestion" value="{{ r.sound_suggestion }}">
+          <label>B-roll cut-in (optional)</label>
+          <select name="broll_clip"><option value="">None</option>{% for b in brolls %}<option value="{{ b.id }}">{{ b.filename }} — {{ b.subject }}</option>{% endfor %}</select>
+          <div class="cols"><div><label>Starts at (s in reel)</label><input name="broll_at" value="2"></div>
+          <div><label>Length (s)</label><input name="broll_seconds" value="1.5"></div></div>
+          <div class="row"><button class="ghost">Re-make reel</button></div>
+        </form>
+      </details>
+      <form method="post" action="/reels/{{ r.id }}/reject" class="row"><button class="danger">Reject</button></form>
+    </div>
+  </div>
+{% endfor %}
+</div>
+{% endblock %}

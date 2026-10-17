@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block main %}
+<h1>Clips</h1>
+<p class="sub">Main clips become reels. B-roll clips are short detail shots that only get cut into other reels.</p>
+<form class="drop" method="post" action="/upload" enctype="multipart/form-data">
+  <div class="cols">
+    <div><label>Video clips</label><input type="file" name="files" accept="video/*" multiple></div>
+    <div><label>These clips are…</label>
+      <select name="kind"><option value="auto">Let ReelBot decide (main or b-roll)</option><option value="main">Main clips</option><option value="broll">B-roll</option></select></div>
+  </div>
+  <label>Music for your library (optional, tracks you have the rights to)</label><input type="file" name="music" accept="audio/*" multiple>
+  <div class="row"><button>Upload</button><span class="meta">Big 4K clips can take a minute to upload.</span></div>
+</form>
+<h2 class="hook" style="margin-top:28px">Your clips</h2>
+{% if not clips %}<div class="empty">No clips yet.</div>{% endif %}
+<div class="scroll"><table>
+<tr><th>Clip</th><th>What it is</th><th>Type</th><th>Reels</th><th></th></tr>
+{% for c in clips %}
+<tr>
+  <td>{{ c.filename }}<div class="meta">{{ '%.0f'|format(c.duration or 0) }}s · {{ c.status }}</div></td>
+  <td>{{ c.subject or '⏳ analysing…' }}<div class="meta">{{ c.notes }}</div></td>
+  <td>
+    <form method="post" action="/clips/{{ c.id }}/kind"><select name="kind" onchange="this.form.submit()">
+      <option value="main" {{ 'selected' if c.kind == 'main' }}>Main</option><option value="broll" {{ 'selected' if c.kind == 'broll' }}>B-roll</option></select></form>
+    {% if c.kind == 'broll' %}<form method="post" action="/clips/{{ c.id }}/silent"><select name="silent" onchange="this.form.submit()" style="margin-top:6px">
+      <option value="1" {{ 'selected' if c.broll_silent }}>Silent</option><option value="0" {{ 'selected' if not c.broll_silent }}>Keep its sound</option></select></form>{% endif %}
+  </td>
+  <td>{{ c.reels }}</td>
+  <td>
+    {% if c.kind == 'main' %}<form method="post" action="/clips/{{ c.id }}/make" class="row" style="margin:0"><input name="n" value="3" style="width:56px"><button class="ghost">Make reels</button></form>{% endif %}
+    <form method="post" action="/clips/{{ c.id }}/delete" onsubmit="return confirm('Delete this clip?')" class="row"><button class="danger">Delete</button></form>
+  </td>
+</tr>
+{% endfor %}
+</table></div>
+{% endblock %}

@@ -1,0 +1,3 @@
+{% macro score(v) -%}
+{% if v is not none %}<span class="score {{ 's-high' if v >= 70 else 's-mid' if v >= 45 else 's-low' }}"><b>{{ v }}</b>/100</span>{% endif %}
+{%- endmacro %}
