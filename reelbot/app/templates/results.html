@@ -7,13 +7,14 @@
 <div class="card" style="margin-bottom:16px"><div class="body">
   <p class="hook">📊 Research mix scoreboard</p>
   <div class="scroll" style="border:0"><table>
-    <tr><th>Source</th><th>Share of reels now</th><th>Reels with results</th><th>Median views (48–72h)</th><th>Last 30 days</th></tr>
-    {% for src in ("instagram", "tiktok", "trends") %}
+    <tr><th>Source</th><th>Share of reels now</th><th>Reels with results</th><th>Median views (48–72h)</th><th>Breakouts (3× usual)</th><th>Last 30 days</th></tr>
+    {% for src in SOURCE_LABELS %}
     <tr><td>{{ SOURCE_LABELS[src] }}</td><td>{{ mix[src] }}%</td><td>{{ by_source[src].reels if src in by_source else 0 }}</td>
-      <td><b>{{ by_source[src].median|num if src in by_source else '–' }}</b></td><td class="meta">{{ recent[src].median|num if src in recent else '–' }}</td></tr>
+      <td><b>{{ by_source[src].median|num if src in by_source else '–' }}</b></td>
+      <td>{{ by_source[src].breakouts if src in by_source else '–' }}</td><td class="meta">{{ recent[src].median|num if src in recent else '–' }}</td></tr>
     {% endfor %}
   </table></div>
-  <p class="meta">{% if auto %}Rebalancing is on: every Monday the mix moves up to 10% towards the winner.{% else %}Rebalancing is off (Settings).{% endif %}
+  <p class="meta">{% if auto %}Rebalancing is on: every Monday the mix moves up to 10% towards the winner (views, with extra credit for breakouts).{% else %}Rebalancing is off (Settings).{% endif %}
   {% if mix_change %} Last change: {{ mix_change.reason }}.{% endif %}</p>
 </div></div>
 {% if not reels %}<div class="empty">No posted reels yet.</div>{% else %}

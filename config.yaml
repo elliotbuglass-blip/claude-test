@@ -90,12 +90,14 @@ audio:
 mode: review
 
 # Research mix: like an investment portfolio. Each reel is mainly built on one source:
-#   instagram = proven on Instagram now (safe) · tiktok = rising on TikTok, early wave · trends = news & Google trends (riskiest)
+#   instagram = proven on Instagram now (safe) · tiktok = rising on TikTok, early wave · trends = news & Google trends (riskier)
+#   original  = something nobody in your niche is doing, in your voice; winners become a series (trend-setter)
 # auto_balance moves up to 10 points a week towards whichever source is getting the most views (never below 10% each).
 research_mix:
-  instagram: 50
-  tiktok: 30
-  trends: 20
+  instagram: 40
+  tiktok: 25
+  trends: 15
+  original: 20
   auto_balance: true
 
 autopilot:

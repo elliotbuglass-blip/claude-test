@@ -34,6 +34,7 @@ EDITABLE = {  # setting key -> (path in config.yaml, label)
     "mix_instagram": ("research_mix.instagram", "Research mix: Instagram (%)"),
     "mix_tiktok": ("research_mix.tiktok", "Research mix: TikTok (%)"),
     "mix_trends": ("research_mix.trends", "Research mix: news & Google trends, riskier (%)"),
+    "mix_original": ("research_mix.original", "Research mix: original, trend-setting (%)"),
     "mix_auto": ("research_mix.auto_balance", "Rebalance the mix from results"),
     "times_mode": ("autopilot.times_mode", "Posting times"),
     "post_times": ("autopilot.post_times", "Manual posting times"),
@@ -68,7 +69,7 @@ def cfg():
         if value is not None:
             _set(c, path, value)
     c.setdefault("autopilot", {}).setdefault("times_mode", "best")
-    c.setdefault("research_mix", {"instagram": 50, "tiktok": 30, "trends": 20, "auto_balance": True})
+    c.setdefault("research_mix", {"instagram": 40, "tiktok": 25, "trends": 15, "original": 20, "auto_balance": True})
     c.setdefault("clips", {}).setdefault("broll_silent", True)
     c["audio"]["folder"] = str(db.AUDIO_DIR)
     return c
@@ -357,15 +358,22 @@ def posting_times():
 # Like an investment portfolio: each reel is mainly built on one source of research.
 #   instagram = proven on Instagram now (your winners, topic winners, competitor outliers): the safe bet
 #   tiktok    = rising on TikTok, not yet big on Instagram: the early-wave bet
-#   trends    = news and Google trends that fit the clip: the riskiest bet
-SOURCES = ("instagram", "tiktok", "trends")
-SOURCE_LABELS = {"instagram": "📸 Instagram", "tiktok": "🎵 TikTok", "trends": "🔥 News & trends"}
+#   trends    = news and Google trends that fit the clip: a riskier bet
+#   original  = something nobody in the niche is doing, in your own voice; winners become a series: the trend-setter bet
+SOURCES = ("instagram", "tiktok", "trends", "original")
+SOURCE_LABELS = {"instagram": "📸 Instagram", "tiktok": "🎵 TikTok", "trends": "🔥 News & trends", "original": "✨ Original"}
 MIX_FLOOR, MIX_STEP = 10, 10  # rebalancing never drops a source below 10%, and moves 10 points at most a week
+BREAKOUT = 3  # a breakout = 3x your usual views
+
+# Starting estimates until your own results take over (needs 4+ reels with results per source):
+#   steady = typical views vs your usual reel · breakout = chance one reel does 3x+ your usual
+PRIORS = {"instagram": {"steady": 1.0, "breakout": 0.05}, "tiktok": {"steady": 0.9, "breakout": 0.08},
+          "trends": {"steady": 0.6, "breakout": 0.10}, "original": {"steady": 0.7, "breakout": 0.12}}
 
 
 def research_mix():
     mix = {s: int(cfg()["research_mix"].get(s) or 0) for s in SOURCES}
-    return mix if sum(mix.values()) > 0 else {"instagram": 100, "tiktok": 0, "trends": 0}
+    return mix if sum(mix.values()) > 0 else {s: 100 if s == "instagram" else 0 for s in SOURCES}
 
 
 def mix_counts(n, mix=None):
@@ -397,15 +405,51 @@ def mix_plan(n):
     return order
 
 
-def source_results(days=30):
-    """Median views (72h, or 48h) per research source for recent ReelBot reels."""
-    rows = db.q("""SELECT r.source, r.risky, s.views FROM reels r JOIN snapshots s ON s.reel_id = r.id
+def _result_rows(days):
+    return db.q("""SELECT r.id, r.source, r.risky, r.series, r.on_screen_text, r.angle, s.views
+                   FROM reels r JOIN snapshots s ON s.reel_id = r.id
                    WHERE s.hours = (SELECT MAX(hours) FROM snapshots WHERE reel_id = r.id) AND s.hours >= 48
                    AND r.posted_at >= ?""", (local_now() - timedelta(days=days)).isoformat())
+
+
+def usual_views():
+    """Your usual views per reel: from ReelBot's own trial reels once there are 8+, else your recent reels."""
+    views = [r["views"] or 0 for r in _result_rows(3650)]
+    if len(views) >= 8:
+        return int(statistics.median(views))
+    mine = db.latest_research("my_reels")
+    if mine and mine.get("reels"):
+        return int(statistics.median(r["views"] or 0 for r in mine["reels"]))
+    return 10000
+
+
+def source_results(days=30):
+    """Per research source: reels with results, median views (72h, or 48h) and how many broke out (3x usual)."""
+    usual = usual_views()
     by = defaultdict(list)
-    for r in rows:
+    for r in _result_rows(days):
         by[r["source"] or ("trends" if r["risky"] else "instagram")].append(r["views"] or 0)
-    return {s: {"reels": len(v), "median": int(statistics.median(v))} for s, v in by.items() if v}
+    out = {}
+    for s, v in by.items():
+        med, hits = int(statistics.median(v)), sum(x >= BREAKOUT * usual for x in v)
+        # Rebalancing score: views, with extra credit for breakouts (a trend-setter can win on breakouts alone).
+        out[s] = {"reels": len(v), "median": med, "breakouts": hits, "score": int(med * (1 + 2 * hits / len(v)))}
+    return out
+
+
+def outlook():
+    """What each source tends to do: steady views per reel and chance of a breakout.
+    Starts from estimates, blends in your real results as they come in (fully yours after ~8 reels)."""
+    usual, res = usual_views(), source_results(days=90)
+    out = {}
+    for s in SOURCES:
+        prior, r = PRIORS[s], res.get(s)
+        w = min(r["reels"] / 8, 1) if r else 0
+        steady = (1 - w) * prior["steady"] * usual + w * (r["median"] if r else 0)
+        rate = (r["breakouts"] + prior["breakout"] * 4) / (r["reels"] + 4) if r else prior["breakout"]
+        out[s] = {"steady": int(steady), "breakout": round(rate, 3), "reels": r["reels"] if r else 0,
+                  "from_results": bool(r and r["reels"] >= 4)}
+    return {"usual": usual, "sources": out}
 
 
 def rebalance_mix(min_reels=4):
@@ -417,18 +461,19 @@ def rebalance_mix(min_reels=4):
     if len(res) < 2:
         db.log("Research mix: not enough results yet to rebalance (needs 4+ reels per source)")
         return
-    best = max(res, key=lambda s: res[s]["median"])
-    worst = min(res, key=lambda s: res[s]["median"])
+    best = max(res, key=lambda s: res[s]["score"])
+    worst = min(res, key=lambda s: res[s]["score"])
     move = min(MIX_STEP, mix[worst] - MIX_FLOOR)
-    if best == worst or res[best]["median"] < res[worst]["median"] * 1.2 or move <= 0:
+    if best == worst or res[best]["score"] < res[worst]["score"] * 1.2 or move <= 0:
         db.log("Research mix: no clear winner this week, keeping " + " / ".join(f"{mix[s]}%" for s in SOURCES))
         return
     mix[best] += move
     mix[worst] -= move
     for s in SOURCES:
         db.set_setting(f"mix_{s}", mix[s])
-    reason = (f"{SOURCE_LABELS[best]} reels got a median {res[best]['median']:,} views vs "
-              f"{res[worst]['median']:,} for {SOURCE_LABELS[worst]}")
+    hits = lambda s: f", {res[s]['breakouts']} breakout{'s' if res[s]['breakouts'] != 1 else ''}" if res[s]["breakouts"] else ""
+    reason = (f"{SOURCE_LABELS[best]} reels got a median {res[best]['median']:,} views{hits(best)} vs "
+              f"{res[worst]['median']:,}{hits(worst)} for {SOURCE_LABELS[worst]}")
     db.save_research("mix_change", {"checked_at": local_now().isoformat(), "mix": mix, "from": worst, "to": best,
                                     "points": move, "reason": reason, "results": res})
     db.log(f"Research mix rebalanced: +{move}% {SOURCE_LABELS[best]}, −{move}% {SOURCE_LABELS[worst]} ({reason})")
@@ -511,10 +556,29 @@ def build_context(topic, tiktok=None):
         parts.append("COMPETITOR OUTLIERS (beat their own median):\n" + "\n".join(
             f'- @{o["account"]}: "{o.get("on_screen_text") or o.get("post_caption", "")[:60]}" {o["ratio"]}x, {o["views"]:,} views'
             for o in radar["outliers"][:12]))
+    series = series_to_continue()
+    if series:
+        parts.append("SERIES TO CONTINUE (your Original reels that beat your usual views; make the next part in the same format):\n"
+                     + "\n".join(f'- series "{s["series"]}": part {s["next_part"]} next. Best so far: "{s["hook"]}" → {s["views"]:,} views ({s["angle"]})'
+                                  for s in series))
     used = [r["on_screen_text"] for r in db.q("SELECT on_screen_text FROM reels WHERE status != 'rejected'")]
     if used:
         parts.append("HOOKS ALREADY USED (don't repeat):\n" + "\n".join(used[-60:]))
     return "\n\n".join(parts)
+
+
+def series_to_continue(limit=4):
+    """Original reels that beat your usual views by 1.5x+: formats worth turning into a series."""
+    usual, best = usual_views(), {}
+    for r in _result_rows(60):
+        if (r["source"] == "original") and (r["views"] or 0) >= 1.5 * usual:
+            name = r["series"] or r["on_screen_text"]
+            if name not in best or r["views"] > best[name]["views"]:
+                best[name] = {"series": name, "hook": r["on_screen_text"], "views": r["views"], "angle": r["angle"]}
+    for s in best.values():
+        s["next_part"] = db.one("SELECT COUNT(*) n FROM reels WHERE series = ? OR (series IS NULL AND on_screen_text = ?)",
+                                s["series"], s["series"])["n"] + 1
+    return sorted(best.values(), key=lambda s: -s["views"])[:limit]
 
 
 def make_reels(clip_id, n=None, post_at=None, sources=None):
@@ -555,7 +619,8 @@ def make_reels(clip_id, n=None, post_at=None, sources=None):
         trend = plan.get("trend") or ""
         db.insert("reels", {
             "id": reel_id, "clip_id": clip_id,
-            **{k: plan[k] for k in plan if k not in ("track", "positives", "negatives", "trend", "source")},
+            **{k: plan[k] for k in plan if k not in ("track", "positives", "negatives", "trend", "source", "series")},
+            "series": plan.get("series") or None,
             "source": plan.get("source") or "instagram", "risky": 1 if plan.get("source") == "trends" else 0,
             "positives": json.dumps(plan.get("positives", [])), "negatives": json.dumps(plan.get("negatives", [])),
             "trend": trend, "research": json.dumps(research | {"trend": next(

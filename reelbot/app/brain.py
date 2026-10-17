@@ -104,11 +104,12 @@ PLAN_SCHEMA = {
             "score_reason": {"type": "string"},
             "positives": {"type": "array", "items": {"type": "string"}},
             "trend": {"type": "string"},
-            "source": {"type": "string", "enum": ["instagram", "tiktok", "trends"]},
+            "source": {"type": "string", "enum": ["instagram", "tiktok", "trends", "original"]},
+            "series": {"type": "string"},
             "negatives": {"type": "array", "items": {"type": "string"}},
         },
         "required": ["on_screen_text", "post_caption", "angle", "inspired_by", "sound_suggestion", "sound_reason",
-                     "track", "virality_score", "score_reason", "positives", "negatives", "trend", "source"],
+                     "track", "virality_score", "score_reason", "positives", "negatives", "trend", "source", "series"],
         "additionalProperties": False}}},
     "required": ["reels"],
     "additionalProperties": False,
@@ -133,7 +134,15 @@ Research mix: every reel has a source = the research it is mainly built on. The 
   trends fit naturally, make it a bold experiment instead (an angle the creator has never tried, a polarising opinion,
   a cultural reference) with trend "". A forced trend tie-in looks cringe. Never use tragedies, politics or news about
   real people's misfortune.
-Only trends reels may have a trend; all others have trend "". inspired_by must name research from the reel's own source.
+- original: the trend-setter bet. Don't adapt anything that already exists. Use the research to spot the WHITE
+  SPACE (what nobody in this niche is doing: a format, a point of view, a recurring bit) and make something only this
+  creator could post, in their voice, built around their car, style and life. Make it repeatable, so it could become
+  a series people recognise as theirs. Set series to a short name for the format (e.g. "Rules of the DB12",
+  "Things nobody tells you about owning an Aston"). If SERIES TO CONTINUE lists a winning series, at least one
+  original reel should be its next part: use that series name exactly and keep the format, with a fresh line.
+  inspired_by: say what gap it fills ("none of the top 30 DB12 reels do X") or which of the creator's own reels it builds on.
+Only trends reels may have a trend; all others have trend "". Only original reels have a series; all others have series "".
+inspired_by must name research from the reel's own source.
 
 post_caption: usually the hook or a close variant, one emoji allowed.
 sound_suggestion: the best-fitting trending Instagram sound from the research (name — artist), or "original audio (engine)" when the clip's own sound is the point (start-ups, revs). Most winning car reels use original audio.

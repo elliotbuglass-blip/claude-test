@@ -32,7 +32,8 @@
   <p class="meta">Like an investment portfolio: what each day's reels are mainly built on.</p>
   {% set hints = {"instagram": "Proven on Instagram right now: your winners, top reels for your topic, competitor outliers. The safe bet.",
                   "tiktok": "Hooks, formats and sounds rising on TikTok that haven't hit Instagram yet. The early-wave bet.",
-                  "trends": "Riding news and Google trends that fit the clip (Batman → “Bruce Wayne spec”). The riskiest bet."} %}
+                  "trends": "Riding news and Google trends that fit the clip (Batman → “Bruce Wayne spec”). A riskier bet.",
+                  "original": "Something nobody in your niche is doing, in your own voice. Winners become a series. The trend-setter bet."} %}
   {% for src in sources %}
   <div class="mixrow">
     <label>{{ SOURCE_LABELS[src] }} <b class="mixv" data-src="{{ src }}"></b></label>
@@ -42,11 +43,23 @@
   {% endfor %}
   <div class="mixbar" id="mixbar">{% for src in sources %}<i class="mb-{{ src }}"></i>{% endfor %}</div>
   <p class="meta" id="mixsum"></p>
+  <div class="gauge">
+    <div class="g-row"><span>Chasing trends</span><div class="g-bar"><i id="g-create"></i></div><span>Creating trends</span></div>
+    <div class="g-row"><span>Safe</span><div class="g-bar risk"><b id="g-risk"></b></div><span>Bold</span></div>
+    <div class="g-stats">
+      <div><small>Steady views</small><b id="g-steady"></b><small>a typical reel</small></div>
+      <div><small>Breakouts</small><b id="g-break"></b><small>reels doing 3× your usual ({{ (outlook.usual * 3)|num }}+)</small></div>
+      <div><small>Chance of one</small><b id="g-day"></b><small>on any given day</small></div>
+    </div>
+    <p class="meta" id="g-note"></p>
+  </div>
   <label class="opt"><input type="checkbox" name="mix_auto" value="1" {{ 'checked' if s.mix_auto }}> Rebalance automatically from results</label>
   <p class="meta">Every Monday ReelBot moves up to 10% towards whichever source is getting you the most views. It never drops one below 10%, so it keeps testing.
   {% if mix_change %}<br>Last change: {{ mix_change.reason }} (+{{ mix_change.points }}% {{ SOURCE_LABELS[mix_change.to] }}).{% endif %}</p>
   <script>
     const sliders = [...document.querySelectorAll('input.mix')], ppd = document.getElementById('ppd');
+    const OUT = {{ outlook|tojson }}, LABELS = {{ labels|tojson }}, RISK = {instagram: 0, tiktok: 1, trends: 2, original: 3};
+    const k1 = v => v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'K' : String(v);
     const SRC = sliders.map(s => s.dataset.src);
     function split(n, mix) {  // same rounding as ReelBot: 10 reels at 50/30/20 = 5/3/2
       const total = mix.reduce((a, b) => a + b, 0) || 1, q = mix.map(m => n * m / total), c = q.map(Math.floor);
@@ -63,7 +76,21 @@
       const mix = sliders.map(s => +s.value), n = +ppd.value || 0, k = split(n, mix);
       document.querySelectorAll('.mixv').forEach((el, i) => el.textContent = `${mix[i]}%`);
       document.querySelectorAll('#mixbar i').forEach((el, i) => el.style.flex = mix[i]);
-      document.getElementById('mixsum').textContent = `At ${n} reels a day: ` + SRC.map((s, i) => `${k[i]} ${['Instagram', 'TikTok', 'news & trends'][i]}`).join(' · ');
+      document.getElementById('mixsum').textContent = `At ${n} reels a day: ` + SRC.map((s, i) => `${k[i]} ${LABELS[s]}`).join(' · ');
+      // The gauge: what this mix should do, from estimates at first and your own results as they come in.
+      const st = SRC.map(s => OUT.sources[s]), total = mix.reduce((a, b) => a + b, 0) || 1, days = Math.max(n, 1);
+      const steady = n ? k.reduce((a, c, i) => a + c * st[i].steady, 0) / n : 0;
+      const perWeek = 7 * k.reduce((a, c, i) => a + c * st[i].breakout, 0);
+      const day = 1 - k.reduce((a, c, i) => a * Math.pow(1 - st[i].breakout, c), 1);
+      document.getElementById('g-steady').textContent = '~' + k1(Math.round(steady / 100) * 100);
+      document.getElementById('g-break').textContent = !perWeek ? '–' : perWeek >= 1 ? `~${perWeek.toFixed(1)} a week` : `~1 every ${(1 / perWeek).toFixed(1)} weeks`;
+      document.getElementById('g-day').textContent = Math.round(day * 100) + '%';
+      document.getElementById('g-create').style.width = (mix[SRC.indexOf('original')] / total * 100) + '%';
+      document.getElementById('g-risk').style.left = (SRC.reduce((a, s, i) => a + mix[i] * RISK[s], 0) / total / 3 * 100) + '%';
+      const known = SRC.filter(s => OUT.sources[s].from_results);
+      document.getElementById('g-note').textContent = known.length === SRC.length ? 'From your own results.' :
+        (known.length ? `From your results for ${known.map(s => LABELS[s]).join(', ')}; estimates for the rest` : 'Estimates for now')
+        + ' until each source has 4+ reels with results. It gets more accurate every week.';
     }
     sliders.forEach(s => s.oninput = () => show(s)); ppd.addEventListener('input', () => show()); show();
   </script>

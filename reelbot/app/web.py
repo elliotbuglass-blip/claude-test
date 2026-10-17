@@ -320,6 +320,7 @@ async def settings_page(request: Request):
     c = jobs.cfg()
     keys = {k: bool(env(k, required=False)) for k in ("ANTHROPIC_API_KEY", "IG_ACCESS_TOKEN", "IG_USER_ID", "APIFY_TOKEN", "APP_PASSWORD")}
     return page("settings.html", request, c=c, mix=jobs.research_mix(), mix_change=db.latest_research("mix_change"),
+                outlook=jobs.outlook(), labels=jobs.SOURCE_LABELS,
                 sources=jobs.SOURCES, s={k: jobs.setting(k) for k in jobs.EDITABLE}, keys=keys,
                 styles=list(editor.TEXT_STYLES), grades=list(editor.GRADES))
 

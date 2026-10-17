@@ -14,7 +14,7 @@
       <p class="hook">“{{ r.on_screen_text }}”</p>
       <div class="row" style="margin-top:0">{{ score(r.virality_score) }} <span class="tag">{{ r.angle }}</span>
         {% set src = r.source or ('trends' if r.risky else 'instagram') %}
-        <span class="tag src-{{ src }}">{{ SOURCE_LABELS[src] }}{% if src == 'trends' %} · {{ r.trend or 'bold experiment' }}{% endif %}</span></div>
+        <span class="tag src-{{ src }}">{{ SOURCE_LABELS[src] }}{% if src == 'trends' %} · {{ r.trend or 'bold experiment' }}{% endif %}{% if r.series %} · series: {{ r.series }}{% endif %}</span></div>
       <p class="meta">{{ r.score_reason }}</p>
       {% if pos or neg %}<ul class="reasons">
         {% for p in pos %}<li class="plus">{{ p }}</li>{% endfor %}
@@ -26,7 +26,7 @@
       <details class="why">
         <summary>🔍 Why this reel</summary>
         <div class="why-b">
-          <h4>📊 Research source</h4><p>{{ SOURCE_LABELS[src] }}-led: {{ {"instagram": "built on what is proven on Instagram right now", "tiktok": "built on something rising on TikTok before it hits Instagram", "trends": "a riskier reel riding news or a Google trend"}[src] }}.</p>
+          <h4>📊 Research source</h4><p>{{ SOURCE_LABELS[src] }}-led: {{ {"instagram": "built on what is proven on Instagram right now", "tiktok": "built on something rising on TikTok before it hits Instagram", "trends": "a riskier reel riding news or a Google trend", "original": "a trend-setter: something nobody in your niche is doing, made to become your own series" + (" (“" ~ r.series ~ "”)" if r.series else "")}[src] }}.</p>
           <h4>✍️ The words</h4><p>{{ r.inspired_by or '—' }}</p>
           {% if res.trend %}<h4>🔥 The trend</h4><p>“{{ res.trend.term }}” is trending on Google ({{ res.trend.searches }} searches, {{ res.trend.geo }}){% if res.trend.headline %}: {{ res.trend.headline }}{% endif %}{% if res.trend.url %} · <a href="{{ res.trend.url }}" target="_blank">news ↗</a>{% endif %}. This is a riskier test.</p>{% endif %}
           <h4>✂️ The cut</h4><p>{{ r.cut_reason or 'Picked when the reel was made.' }} · from {{ r.filename }}</p>

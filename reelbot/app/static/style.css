@@ -137,3 +137,16 @@ button.mini { padding: 5px 8px; font-size: 12px; border-radius: 8px; }
 .mixbar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; margin: 14px 0 6px; background: var(--panel2); }
 .mixbar i { display: block; } .mb-instagram { background: #d58bd0; } .mb-tiktok { background: #6fd3d8; } .mb-trends { background: #ff8a5c; }
 .opt input[type=checkbox] { width: auto; accent-color: var(--accent); }
+.tag.src-original { color: #e8d27a; } .mb-original { background: #e8d27a; }
+.gauge { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin: 12px 0; }
+.g-row { display: grid; grid-template-columns: 110px 1fr 110px; gap: 10px; align-items: center; font-size: 12px; color: var(--muted); margin: 6px 0; }
+.g-row span:last-child { text-align: right; }
+.g-bar { height: 8px; border-radius: 4px; background: #2e2e33; position: relative; overflow: hidden; }
+.g-bar i { position: absolute; right: 0; top: 0; bottom: 0; background: #e8d27a; transition: width .2s; }
+.g-bar.risk { background: linear-gradient(90deg, var(--good), var(--warn), var(--bad)); overflow: visible; }
+.g-bar.risk b { position: absolute; top: -4px; width: 4px; height: 16px; border-radius: 2px; background: #fff; transform: translateX(-2px); transition: left .2s; }
+.g-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+.g-stats div { display: flex; flex-direction: column; }
+.g-stats b { font-size: 22px; font-family: Georgia, "Liberation Serif", serif; font-weight: 400; color: var(--text); }
+.g-stats small { color: var(--muted); font-size: 12px; }
+@media (max-width: 500px) { .g-row { grid-template-columns: 80px 1fr 80px; } .g-stats b { font-size: 18px; } }
