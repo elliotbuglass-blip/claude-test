@@ -164,6 +164,11 @@ def cmd_radar(cfg, args):
     session.radar(cfg)
 
 
+def cmd_topic(cfg, args):
+    from . import session
+    session.topic(cfg, args.hashtags, per_tag=args.per_tag)
+
+
 def cmd_cloud(cfg, args):
     from . import cloud
     cloud.run(cfg, args.task)
@@ -199,6 +204,11 @@ def main():
 
     sub.add_parser("pull", help="download new clips from your Google Drive folder").set_defaults(func=cmd_pull)
     sub.add_parser("radar", help="find competitor outliers + save frames (Claude reads them)").set_defaults(func=cmd_radar)
+
+    p = sub.add_parser("topic", help="research a topic: top reels + sounds for some hashtags")
+    p.add_argument("hashtags", nargs="+", help="e.g. astonmartin db12 supercar")
+    p.add_argument("--per-tag", type=int, default=40)
+    p.set_defaults(func=cmd_topic)
 
     p = sub.add_parser("cloud", help="run on GitHub using your Google Drive folder")
     p.add_argument("--task", default="daily", choices=["daily", "research", "make-only", "post-only"])

@@ -91,3 +91,58 @@ def radar(cfg):
     for o in outliers[:15]:
         print(f"  {o['ratio']:>5}x {o['views']:>10,}  @{o['account']}  {o['url']}")
     return outliers
+
+
+APIFY_HASHTAG = "https://api.apify.com/v2/acts/apify~instagram-hashtag-scraper/run-sync-get-dataset-items"
+
+
+def topic(cfg, hashtags, per_tag=40, keywords=()):
+    """Research a topic (e.g. Aston Martin) two ways and save frames for Claude to read:
+
+    1. Instagram-wide: top recent reels for each hashtag (via Apify).
+    2. My competitors: their outlier reels whose caption mentions the topic.
+    Also tallies which sounds the top reels used.
+    """
+    from collections import Counter
+
+    token = env("APIFY_TOKEN", required=False)
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    tags = [h.lstrip("#").lower() for h in hashtags]
+    resp = requests.post(APIFY_HASHTAG, json={"hashtags": tags, "resultsType": "reels",
+                                              "resultsLimit": per_tag},
+                         headers=headers, timeout=900)
+    resp.raise_for_status()
+    now = __import__("time").time()
+    reels = [r for r in (competitors.apify_reel(i) for i in resp.json()) if r]
+    reels = [r for r in reels if now - r["taken_at"] <= 60 * 86400]  # last 2 months only
+    reels.sort(key=lambda r: r["views"], reverse=True)
+    top = reels[:15]
+
+    # Competitor outliers about the same topic (from the last radar run)
+    words = [w.lower() for w in (*tags, *keywords)]
+    comp = [o for o in competitors.load()
+            if any(w in (o.get("post_caption") or "").lower().replace(" ", "") for w in words)]
+
+    frames_dir = OUTPUT / "topic"
+    frames_dir.mkdir(parents=True, exist_ok=True)
+    for r in top:
+        r["frames"] = []
+        for i, img in enumerate(vision.gather_frames(r.get("video"), r.get("thumbnail")), 1):
+            path = frames_dir / f"{r['code']}_{i}.jpg"
+            path.write_bytes(img)
+            r["frames"].append(str(path.relative_to(ROOT)))
+        r.pop("video", None)
+        r.pop("thumbnail", None)
+
+    sounds = Counter(r["music"] for r in reels[:30] if r.get("music") and r["music"] != "original audio")
+    result = {"hashtags": tags, "top_reels": top, "competitor_matches": comp,
+              "trending_sounds": sounds.most_common(10)}
+    DATA.mkdir(exist_ok=True)
+    (DATA / "topic_research.json").write_text(json.dumps(result, ensure_ascii=False, indent=1))
+
+    print(f"{len(reels)} recent reels found for #{' #'.join(tags)}. Top 15 (frames in output/topic/):")
+    for r in top:
+        print(f"  {r['views']:>10,}  @{r['account']}  🎵 {r.get('music') or '?'}  {r['url']}")
+    print(f"\n{len(comp)} competitor outliers about this topic.")
+    print("Most-used sounds:", ", ".join(f"{s} ({n})" for s, n in sounds.most_common(5)) or "none")
+    return result

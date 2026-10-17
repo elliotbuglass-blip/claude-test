@@ -145,6 +145,42 @@ def _epoch(ts):
         return 0
 
 
+def _int(v):
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _music(item):
+    m = item.get("musicInfo") or {}
+    if not isinstance(m, dict) or not m.get("song_name"):
+        return None
+    if m.get("uses_original_audio") or m.get("song_name") == "Original audio":
+        return "original audio"
+    return f'{m["song_name"]} — {m.get("artist_name", "")}'.strip(" —")
+
+
+def apify_reel(item):
+    """Turn one Apify Instagram item into ReelBot's reel shape (None if it isn't a reel)."""
+    code = item.get("shortCode") or item.get("code")
+    if not code or item.get("error") or (item.get("type") not in (None, "Video")):
+        return None
+    return {
+        "code": code,
+        "url": item.get("url") or f"https://www.instagram.com/reel/{code}/",
+        "account": item.get("ownerUsername"),
+        "views": _int(item.get("videoPlayCount") or item.get("videoViewCount") or item.get("igPlayCount")),
+        "likes": _int(item.get("likesCount")),
+        "comments": _int(item.get("commentsCount")),
+        "taken_at": _epoch(item.get("timestamp")),
+        "post_caption": (item.get("caption") or "")[:300],
+        "music": _music(item),
+        "video": item.get("videoUrl"),
+        "thumbnail": item.get("displayUrl"),
+    }
+
+
 def fetch_account_apify(username, want):
     """One Apify run per account (the official Instagram Reel Scraper)."""
     # The token is either an env var, or added by a Claude Code network secret
@@ -158,24 +194,7 @@ def fetch_account_apify(username, want):
     if resp.status_code == 402:
         raise SystemExit("Apify account is out of credit. Top up at console.apify.com/billing.")
     resp.raise_for_status()
-    reels = []
-    for item in resp.json():
-        if item.get("error"):
-            continue
-        code = item.get("shortCode") or item.get("code")
-        if not code:
-            continue
-        reels.append({
-            "code": code,
-            "url": item.get("url") or f"https://www.instagram.com/reel/{code}/",
-            "views": item.get("videoPlayCount") or item.get("videoViewCount") or 0,
-            "likes": item.get("likesCount") or 0,
-            "comments": item.get("commentsCount") or 0,
-            "taken_at": _epoch(item.get("timestamp")),
-            "post_caption": (item.get("caption") or "")[:300],
-            "video": item.get("videoUrl"),
-            "thumbnail": item.get("displayUrl"),
-        })
+    reels = [r for r in (apify_reel(i) for i in resp.json()) if r]
     if not reels:
         print(f"  ! @{username}: no reels returned (private, renamed, or no reels)")
         return None
