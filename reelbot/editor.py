@@ -57,6 +57,41 @@ def loudest_start(path, duration, length, window=0.25):
     return max(min(onset * window - 1.0, duration - length), 0.0)
 
 
+# Instagram covers the top (header) and the bottom ~35% (profile, caption, buttons) of a reel.
+SAFE_TOP, SAFE_BOTTOM = 0.14, 0.62
+
+
+def auto_text_position(clip, start, length, n_lines=1, size=40):
+    """Pick where to put the text: the darkest, calmest band inside Instagram's safe zone.
+
+    Samples a few frames from the part of the clip we'll use and scores each horizontal band
+    (centre 70% of the width) by brightness + busyness, so white text stays readable.
+    """
+    w, h = 54, 96
+    frames = []
+    for i in range(5):
+        t = start + length * (i + 0.5) / 5
+        raw = subprocess.run(
+            ["ffmpeg", "-v", "error", "-ss", f"{t:.2f}", "-i", str(clip), "-frames:v", "1",
+             "-vf", f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},scale={w}:{h},format=gray",
+             "-f", "rawvideo", "-"], capture_output=True).stdout
+        if len(raw) == w * h:
+            frames.append(raw)
+    if not frames:
+        return 0.3
+    block = max(int(h * (n_lines * size * 1.18 / H)) + 1, 2)
+    x0, x1 = int(w * 0.15), int(w * 0.85)
+    best, best_score = SAFE_TOP, None
+    for top in range(int(h * SAFE_TOP), int(h * SAFE_BOTTOM) - block + 1):
+        vals = [f[y * w + x] for f in frames for y in range(top, top + block) for x in range(x0, x1)]
+        mean = sum(vals) / len(vals)
+        busy = (sum((v - mean) ** 2 for v in vals) / len(vals)) ** 0.5
+        score = mean + 0.6 * busy
+        if best_score is None or score < best_score:
+            best, best_score = top / h, score
+    return round(best, 3)
+
+
 def extract_frame(path, at_seconds, out_path):
     _run(["ffmpeg", "-y", "-v", "error", "-ss", f"{at_seconds:.2f}", "-i", str(path),
           "-frames:v", "1", "-vf", "scale=540:-2", str(out_path)])
@@ -94,8 +129,8 @@ FONT_DIR = Path(__file__).parent / "fonts"
 
 # Text looks. "editorial" matches @elliotcameron._'s reels: small, thin serif, plain white.
 TEXT_STYLES = {
-    "editorial": {"font": str(FONT_DIR / "LiberationSerif-Regular.ttf"), "size": 46, "wrap": 34, "shadow": 0.25},
-    "stacked":   {"font": str(FONT_DIR / "LiberationSerif-Regular.ttf"), "size": 96, "wrap": 8, "shadow": 0.25},
+    "editorial": {"font": str(FONT_DIR / "LiberationSerif-Regular.ttf"), "size": 38, "wrap": 36, "shadow": 0.3},
+    "stacked":   {"font": str(FONT_DIR / "LiberationSerif-Regular.ttf"), "size": 84, "wrap": 8, "shadow": 0.3},
     "classic":   {"font": "/usr/share/fonts/opentype/inter/Inter-SemiBold.otf", "size": 60, "wrap": 22, "shadow": 0.55},
 }
 
@@ -113,7 +148,9 @@ def _text_filters(caption, look):
     font = _font(look.get("font") or style["font"])
     lines = textwrap.wrap(clean_text(caption), width=style["wrap"]) or [""]
     line_h = int(size * 1.18)
-    top = int(H * look["text_position"])
+    # Never let the text slip into the parts Instagram covers.
+    pos = min(max(float(look["text_position"]), SAFE_TOP), SAFE_BOTTOM - len(lines) * line_h / H)
+    top = int(H * pos)
     shadow = f":shadowcolor=black@{style['shadow']}:shadowx=1:shadowy=2" if style["shadow"] else ""
     return [
         f"drawtext=fontfile='{font}':text='{_escape(line)}':fontsize={size}:fontcolor=white{shadow}"

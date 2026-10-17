@@ -86,6 +86,10 @@ def render_item(cfg, item):
     start = item.get("start")
     if start is None:
         start = editor.loudest_start(clip, duration, length) if has_audio else 0.0
+    if look.get("text_position") in (None, "auto") or item.get("text_position") is None:
+        style = editor.TEXT_STYLES[look.get("text_style", "editorial")]
+        n_lines = len(editor.textwrap.wrap(editor.clean_text(item["on_screen_text"]), style["wrap"]))
+        look["text_position"] = editor.auto_text_position(clip, start, length, n_lines, style["size"])
     out = OUTPUT / "review" / f"{item['id']}.mp4"
     out.parent.mkdir(parents=True, exist_ok=True)
     broll = None
