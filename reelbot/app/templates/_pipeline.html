@@ -6,7 +6,7 @@
       {% if it.type == 'clip' %}
         <div class="chip col"><div class="chip-t">🎬 {{ it.filename }}</div>
           <div class="meta">{% if key == 'analysing' %}⏳ watching the clip…{% else %}🔎 researching hooks, sounds &amp; trends…{% endif %}</div>
-          {% if it.subject %}<div class="meta">{{ it.subject }}</div>{% endif %}</div>
+          {% if it.subject %}<div class="meta">{{ it.subject }}</div>{% elif it.description %}<div class="meta">“{{ it.description[:80] }}”</div>{% endif %}</div>
       {% else %}
         <a class="chip" href="{{ '/review' if key == 'review' else '/calendar' if key == 'scheduled' else '/results' if key in ('posted','done') else '#' }}">
           {% if it.status not in ('rendering',) and it.video_path %}<img src="/thumb/{{ it.id }}.jpg" alt="" loading="lazy">{% endif %}

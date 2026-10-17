@@ -123,22 +123,23 @@ def _frames(path, n=3, start=0.0, length=None):
     return out
 
 
-def add_clip(path, filename, kind=None):
+def add_clip(path, filename, kind=None, description=""):
     clip_id = db.new_id()
     duration, _ = editor.probe(path)
     db.insert("clips", {"id": clip_id, "filename": filename, "path": str(path), "duration": duration,
+                        "description": description.strip() or None,
                         "kind": kind or "main", "notes": "kind set by you" if kind else "",
                         "broll_silent": 1 if setting("broll_silent") else 0})
     submit(f"analyse {filename}", analyse_clip, clip_id, kind is None)
     return clip_id
 
 
-def analyse_clip(clip_id, decide_kind=True):
+def analyse_clip(clip_id, decide_kind=True, make_after=True):
     clip = db.one("SELECT * FROM clips WHERE id = ?", clip_id)
     db.update("clips", clip_id, status="analysing")
     duration, has_audio = editor.probe(clip["path"])
     loud = editor.loudest_start(clip["path"], duration, min(8, duration)) + 1.0 if has_audio else 0.0
-    info = brain.analyse_clip(_frames(clip["path"], 4), duration, has_audio, loud, cfg()["niche"])
+    info = brain.analyse_clip(_frames(clip["path"], 4), duration, has_audio, loud, cfg()["niche"], clip["description"] or "")
     fields = {"subject": info["subject"], "hashtags": json.dumps(info["hashtags"]), "status": "analysed",
               "notes": f"{info['mood']} · {info['highlight']}"}
     if decide_kind:
@@ -146,7 +147,7 @@ def analyse_clip(clip_id, decide_kind=True):
         fields["notes"] += f" · {info['kind']}: {info['kind_reason']}"
     db.update("clips", clip_id, **fields)
     db.log(f"Analysed {clip['filename']}: {info['subject']} ({fields.get('kind', clip['kind'])})")
-    if fields.get("kind", clip["kind"]) == "main" and setting("mode") == "review":
+    if make_after and fields.get("kind", clip["kind"]) == "main" and setting("mode") == "review":
         submit(f"make reels for {clip['filename']}", make_reels, clip_id)
 
 
@@ -607,7 +608,8 @@ def make_reels(clip_id, n=None, post_at=None, sources=None):
         if not tiktok or not tiktok.get("winners"):  # no TikTok research: those reels lean on Instagram instead
             sources = ["instagram" if s == "tiktok" else s for s in sources]
     library = sorted(p.name for p in db.AUDIO_DIR.glob("*") if p.suffix.lower() in editor.AUDIO_EXTS)
-    info = {"filename": clip["filename"], "subject": clip["subject"], "notes": clip["notes"], "seconds": clip["duration"]}
+    info = {"filename": clip["filename"], "subject": clip["subject"], "notes": clip["notes"], "seconds": clip["duration"],
+            "creator_description": clip["description"] or ""}
     counts = Counter(sources)
     plans = brain.plan_reels(_frames(clip["path"], 3), info, n, build_context(topic, tiktok), library,
                              {s: counts.get(s, 0) for s in SOURCES})

@@ -202,7 +202,7 @@ async def upload(request: Request):
         dest = db.CLIPS_DIR / f"{db.new_id()}_{Path(f.filename).name}"
         with dest.open("wb") as out:
             shutil.copyfileobj(f.file, out, 1 << 20)
-        jobs.add_clip(dest, f.filename, None if kind == "auto" else kind)
+        jobs.add_clip(dest, f.filename, None if kind == "auto" else kind, form.get("description") or "")
         count += 1
     for f in form.getlist("music"):
         if getattr(f, "filename", None) and Path(f.filename).suffix.lower() in editor.AUDIO_EXTS:
@@ -221,6 +221,10 @@ async def clip_action(request: Request):
         db.update("clips", clip_id, kind=form["kind"])
     elif action == "silent":
         db.update("clips", clip_id, broll_silent=1 if form.get("silent") == "1" else 0)
+    elif action == "describe":
+        db.update("clips", clip_id, description=(form.get("description") or "").strip() or None)
+        if form.get("reanalyse"):
+            jobs.submit("re-analyse", jobs.analyse_clip, clip_id, False, False)
     elif action == "make":
         jobs.submit("make reels", jobs.make_reels, clip_id, int(form.get("n") or 3))
     elif action == "delete":

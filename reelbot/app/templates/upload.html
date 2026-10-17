@@ -2,6 +2,9 @@
 {% block main %}
 <h1>Upload</h1>
 <p class="sub">Drop clips in. ReelBot works out what's in them, does the research, makes the reels, and you watch each one move along below.</p>
+<label for="desc">What are these clips? <span class="meta">(optional, but it helps: what's in them, what they're for, anything ReelBot can't see)</span></label>
+<textarea id="desc" rows="2" placeholder="e.g. My new navy suit from Reiss, outfit check before a wedding. Want to push the tailoring angle."></textarea>
+<p class="meta" style="margin:4px 0 14px">Applies to the clips you drop next. ReelBot still watches every clip itself; your words fill in what it can't see.</p>
 <div class="drops">
   <label class="dropzone" data-kind="main"><input type="file" accept="video/*" multiple hidden>
     <b>🎬 Main clips</b><span>Walk-ups, start-ups, drives, POVs: clips that can be a reel on their own</span><em>Drop here or tap to choose</em></label>
@@ -24,7 +27,8 @@ function send(file, kind) {
   row.innerHTML = `<span>${file.name}</span><div class="bar2"><i></i></div><small>0%</small>`;
   list.prepend(row);
   const fd = new FormData();
-  if (kind === 'music') fd.append('music', file); else { fd.append('files', file); fd.append('kind', kind); }
+  if (kind === 'music') fd.append('music', file);
+  else { fd.append('files', file); fd.append('kind', kind); fd.append('description', document.getElementById('desc').value); }
   const x = new XMLHttpRequest();
   x.open('POST', '/upload'); x.setRequestHeader('X-Requested-With', 'fetch');
   x.upload.onprogress = e => { if (e.lengthComputable) { const p = Math.round(e.loaded / e.total * 100);

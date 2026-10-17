@@ -45,18 +45,23 @@ CLIP_SCHEMA = {
 }
 
 
-def analyse_clip(frames, duration, has_audio, loud_moment, niche):
+def analyse_clip(frames, duration, has_audio, loud_moment, niche, description=""):
     """Work out what a clip shows, and whether it can stand alone (main) or is a cut-in (b-roll)."""
-    text = f"""These are frames (in time order) from one raw clip for an Instagram creator: {niche}
-
+    said = f'\nThe creator describes this clip as: "{description}". Trust this for anything you can\'t see (names, models, brands, purpose).\n' if description else ""
+    text = f"""These are frames (in time order) from one raw clip for an Instagram creator. Their account in general: {niche}
+{said}
 Clip facts: {duration:.1f}s long, {"has sound" if has_audio else "no sound"}, loudest moment around {loud_moment:.1f}s.
 
-- kind: "main" if it can carry a reel on its own (a walk-up, start-up, drive, POV, reveal with a clear moment).
-  "broll" if it's a short detail or filler shot (door handle, badge, sill plate, interior detail) that only works cut into another clip.
+Describe THIS clip as it really is. Don't assume it's the creator's usual subject: a clip can be an outfit, a different
+car, a watch, a place, a lifestyle moment. Subject and hashtags must fit what's actually in it.
+
+- kind: "main" if it can carry a reel on its own (a walk-up, start-up, drive, POV, outfit reveal, a moment with a payoff).
+  "broll" if it's a short detail or filler shot (a door handle, badge, watch close-up, fabric detail) that only works cut into another clip.
 - kind_reason: one short line.
-- subject: what it shows, e.g. "black Aston Martin DB12, start-up from the driver's seat, overcast day".
+- subject: what it shows, specifically, e.g. "black Aston Martin DB12, start-up from the driver's seat, overcast day"
+  or "navy double-breasted suit, mirror outfit check in a hallway".
 - hashtags: 3–5 Instagram hashtags (no #) to research what similar reels are doing, specific to general,
-  e.g. ["astonmartindb12", "db12", "astonmartin", "supercar"].
+  e.g. ["astonmartindb12", "db12", "astonmartin", "supercar"] or ["doublebreastedsuit", "menswear", "mensstyle"].
 - mood: 2–4 words for music matching, e.g. "dark, confident, calm".
 - highlight: the best moment in one line (e.g. "engine fires up at ~10s")."""
     return _ask([*_images(frames), {"type": "text", "text": text}], CLIP_SCHEMA, effort="low", max_tokens=4000)
@@ -117,6 +122,10 @@ PLAN_SCHEMA = {
 
 PLAN_SYSTEM = """You plan Instagram trial reels for a creator. Each reel = one clip + one line of on-screen text (the hook) + a post caption + sound.
 
+Write about what THIS clip actually shows (see CLIP, and the creator's own description of it if given: it says what
+the clip is for, so follow it). The creator's past reels tell you their voice and what works for them; they don't
+mean every clip is about the same thing.
+
 Hook rules:
 - Under 8 words. The creator's own voice: calm, confident, a little cheeky, quiet-luxury. Plain text, no emoji, no hashtags.
 - Build from patterns that are proven to win (the creator's own winners first, then topic and competitor winners). Adapt them; never copy a line word for word, and never reuse one of the creator's past hooks.
@@ -138,20 +147,20 @@ Research mix: every reel has a source = the research it is mainly built on. The 
   SPACE (what nobody in this niche is doing: a format, a point of view, a recurring bit) and make something only this
   creator could post, in their voice, built around their car, style and life. Make it repeatable, so it could become
   a series people recognise as theirs. Set series to a short name for the format (e.g. "Rules of the DB12",
-  "Things nobody tells you about owning an Aston"). If SERIES TO CONTINUE lists a winning series, at least one
+  "One jacket, three ways"). Fit the series to THIS clip's subject. If SERIES TO CONTINUE lists a winning series, at least one
   original reel should be its next part: use that series name exactly and keep the format, with a fresh line.
-  inspired_by: say what gap it fills ("none of the top 30 DB12 reels do X") or which of the creator's own reels it builds on.
+  inspired_by: say what gap it fills ("none of the top 30 reels for this topic do X") or which of the creator's own reels it builds on.
 Only trends reels may have a trend; all others have trend "". Only original reels have a series; all others have series "".
 inspired_by must name research from the reel's own source.
 
 post_caption: usually the hook or a close variant, one emoji allowed.
 sound_suggestion: the best-fitting trending Instagram sound from the research (name — artist), or "original audio (engine)" when the clip's own sound is the point (start-ups, revs). Most winning car reels use original audio.
-sound_reason: one line on why this sound (cite the research, e.g. "9 of the top 12 DB12 reels use engine audio").
+sound_reason: one line on why this sound (cite the research, e.g. "9 of the top 12 reels for this topic use their own sound").
 track: a filename from the creator's own music library that fits the mood, or "" to keep the clip's own sound. Only use a library track when the clip's sound isn't the point.
 
 virality_score (0–100): your honest prediction of how this reel will do *for this creator*, relative to their normal trial reels (50 = typical, 80+ = likely a top-10% reel). Base it on: how well similar reels (topic and competitor) did, how the creator's past reels with this angle or sound did, the strength of the hook, and the clip's moment. score_reason: one line naming the main evidence.
 positives: 2–4 short reasons it could do well, each citing real evidence from the research or the creator's results (numbers where you have them).
-negatives: 1–3 short honest risks that could hold it back (e.g. "no text hooks in the top DB12 reels", "similar line flopped for you at 3.1K").
+negatives: 1–3 short honest risks that could hold it back (e.g. "no text hooks in the top reels for this topic", "similar line flopped for you at 3.1K").
 inspired_by: name the exact source — the winning reel(s) or pattern this hook adapts, with account and views, e.g. "@itisbainz 'POV: …' 412K (5.2x his median)" or "your own 'Sunday spec' reel, 61K"."""
 
 

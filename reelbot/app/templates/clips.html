@@ -1,16 +1,8 @@
 {% extends "base.html" %}
 {% block main %}
-<h1>Clips</h1>
+<h1>Library</h1>
 <p class="sub">Main clips become reels. B-roll clips are short detail shots that only get cut into other reels.</p>
-<form class="drop" method="post" action="/upload" enctype="multipart/form-data">
-  <div class="cols">
-    <div><label>Video clips</label><input type="file" name="files" accept="video/*" multiple></div>
-    <div><label>These clips are…</label>
-      <select name="kind"><option value="auto">Let ReelBot decide (main or b-roll)</option><option value="main">Main clips</option><option value="broll">B-roll</option></select></div>
-  </div>
-  <label>Music for your library (optional, tracks you have the rights to)</label><input type="file" name="music" accept="audio/*" multiple>
-  <div class="row"><button>Upload</button><span class="meta">Big 4K clips can take a minute to upload.</span></div>
-</form>
+<p><a class="btn" href="/upload">＋ Upload clips</a></p>
 <h2 class="hook" style="margin-top:28px">Your clips</h2>
 {% if not clips %}<div class="empty">No clips yet.</div>{% endif %}
 <div class="scroll"><table>
@@ -18,7 +10,11 @@
 {% for c in clips %}
 <tr>
   <td>{{ c.filename }}<div class="meta">{{ '%.0f'|format(c.duration or 0) }}s · {{ c.status }}</div></td>
-  <td>{{ c.subject or '⏳ analysing…' }}<div class="meta">{{ c.notes }}</div></td>
+  <td>{{ c.subject or '⏳ analysing…' }}<div class="meta">{{ c.notes }}</div>
+    <form method="post" action="/clips/{{ c.id }}/describe" class="desc">
+      <textarea name="description" rows="2" placeholder="Your description: what it is, what it's for">{{ c.description or '' }}</textarea>
+      <div class="row tight"><button class="mini ghost">Save</button><button class="mini ghost" name="reanalyse" value="1">Save &amp; re-analyse</button></div>
+    </form></td>
   <td>
     <form method="post" action="/clips/{{ c.id }}/kind"><select name="kind" onchange="this.form.submit()">
       <option value="main" {{ 'selected' if c.kind == 'main' }}>Main</option><option value="broll" {{ 'selected' if c.kind == 'broll' }}>B-roll</option></select></form>
