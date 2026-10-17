@@ -1,41 +1,46 @@
 # ReelBot daily routine (instructions for Claude)
 
-You are running ReelBot inside Claude Code. **You are the brain**: don't use the
-Anthropic API, Google Drive OAuth or GitHub Actions. Network secrets add the keys for
-Apify, Google Drive and Instagram automatically. Work on branch
-`claude/trusting-dijkstra-rrizs1` and commit `data/` changes back to it at the end.
+You are running ReelBot inside Claude Code. **You are the brain**: don't use the Anthropic API,
+Google Drive OAuth or GitHub Actions. Network secrets add the keys for Apify, Google Drive and
+Instagram automatically. Work on branch `claude/trusting-dijkstra-rrizs1`, and commit + push
+`data/` at the end of every run (that's the robot's memory between runs).
 
-## Every day
-1. **Learn.** Pull the last 14 days of reel stats with the Windsor connector
-   (`instagram`: media_id, timestamp, media_caption, media_views,
-   media_reel_skip_rate, media_shares, media_saved). Save them to `data/my_reels.json`.
-   Compare reels posted by ReelBot (`output/posted/*.json` and `data/post_log.json`)
-   by on-screen hook and angle. Note in `data/learnings.md` which angles won and lost.
-2. **New clips.** Run `python -m reelbot pull`.
-3. **Research this batch's topic.** Look at a frame of each new clip and name the subject
-   (e.g. "Aston Martin DB12, night, moody"). Pick 3–5 hashtags for it (e.g. `astonmartin db12
-   supercar`) and run `python -m reelbot topic astonmartin db12 supercar`. Look at the frames in
-   `output/topic/`, **ignore reels that aren't really about the subject** (hashtags attract junk),
-   and read the on-screen text of the rest. Also use `competitor_matches` (my creators' outliers
-   on the same topic) and `trending_sounds` from `data/topic_research.json`.
-4. **Write hooks.** For each clip in `inbox/`, extract a frame
-   (`ffmpeg -ss 2 -i CLIP -frames:v 1 -vf scale=540:-2 frame.jpg`) and look at it.
-   Write `variants_per_clip` (config.yaml) on-screen hooks, each a different angle,
-   based on the topic research, `data/research_brief.json`, `data/learnings.md` and the account's
-   own top reels. Keep each under 8 words, with no emoji or hashtags. For each video, pick the
-   trending sound that best fits its mood. Instagram doesn't let apps add library sounds, so
-   **list it in the report** for me to add in the app.
-5. **Edit.** For each clip, run `python -m reelbot make --captions "hook 1|hook 2|hook 3"`.
-   This takes one clip at a time: move other clips out of `inbox/` temporarily,
-   or run it once per clip.
-6. **Post.** Run `python -m reelbot post`. It posts up to `max_posts_per_run` trial reels.
-   Append what was posted to `data/post_log.json`.
-7. **Save memory.** Commit and push `data/` and `config.yaml`.
-8. **Report.** Write a 5-line summary: what was posted, yesterday's winners and losers,
-   what changes tomorrow, and the suggested sound for each new video.
+Check `mode` in `config.yaml`: **review** or **autopilot**.
 
-## Every Monday (also)
-Run `python -m reelbot radar`. Look at the frames in `output/radar/`, read each
-outlier's on-screen text yourself, and write `data/research_brief.json` with keys
-`winning_patterns` [{pattern, why_it_works, examples}], `avoid` [..] and
-`outlier_reads` [{code, why_it_won, fits_me, fit_reason}].
+## Morning run (both modes)
+1. **Learn from what I posted.** Run `python -m reelbot results`. It fetches views, reach,
+   shares, saves and watch time for every reel ReelBot posted. Also pull my last 14 days of
+   stats with the Windsor connector (`instagram`) into `data/my_reels.json`. Compare what
+   changed between reels (on-screen text, angle, post caption, track, seconds, text_position)
+   against results, and update `data/learnings.md` with what's winning, what's losing, and
+   what to test next. Only trust a result after ~24h.
+2. **New clips.** Run `python -m reelbot pull`. This also syncs music from the Drive `audio/` subfolder.
+3. **Research the topic.** Look at a frame of each new clip and name the subject. Run
+   `python -m reelbot topic <3–5 hashtags>`, look at the frames in `output/topic/`, ignore
+   reels that aren't really about the subject, and read the on-screen text of the rest. Use
+   `competitor_matches` and `trending_sounds` from `data/topic_research.json`.
+4. **Plan tomorrow's posts.** Get the times with `python -m reelbot slots <posts_per_day>`.
+   Write `data/plan.json` (format at the top of `reelbot/autopilot.py`). One item = one reel.
+   Each reel gets its own on-screen hook (under 8 words, no emoji), post caption, angle, and
+   anything listed in `autopilot.experiment_with`. Mostly reuse what's winning, but **change
+   one thing per reel vs a past winner**, so results teach something. Use every new clip
+   before reusing old ones; old clips can be reused with new hooks.
+   - **Music:** pick the track from `audio/` whose mood best fits the clip and the trending
+     sounds. Also put the matching trending Instagram sound in `sound_suggestion`.
+
+## Then, by mode
+- **review:** render each planned reel with `python -m reelbot post-due --dry-run`
+  (temporarily set `post_at` to now), send me the videos, and list each one's hook, caption and
+  suggested trending sound. Only `schedule` the ones I approve.
+- **autopilot:** run `python -m reelbot schedule data/plan.json`. The posting runs post them.
+
+## Posting runs (09:00, 12:00, 15:00, 18:00, 21:00)
+Run `python -m reelbot post-due`, then commit + push `data/`. Keep it short; nothing else.
+
+## Mondays (also)
+Run `python -m reelbot radar`, read the outlier frames in `output/radar/`, and refresh
+`data/research_brief.json` (winning_patterns, avoid, outlier_reads).
+
+## Report (end of the morning run)
+Five short lines: yesterday's best and worst reel and why, what's scheduled for tomorrow,
+the suggested sound for each, and what's being tested.

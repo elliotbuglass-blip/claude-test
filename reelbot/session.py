@@ -14,6 +14,7 @@ from .settings import DATA, OUTPUT, ROOT, env
 
 DRIVE = "https://www.googleapis.com/drive/v3/files"
 SEEN = DATA / "seen_clips.json"
+CLIPS = DATA / "clips.json"  # clip file name → Drive id, so later runs can re-download it
 VIDEO_EXTS = (".mp4", ".mov", ".m4v")
 
 
@@ -35,20 +36,51 @@ def folder_id(cfg):
     return m.group(1) if m else cfg.get("drive_folder", "")
 
 
+def list_folder(fid):
+    return _drive_get(DRIVE, q=f"'{fid}' in parents and trashed = false",
+                      fields="files(id,name,mimeType,size)", pageSize=1000).json().get("files", [])
+
+
+def download(file_id, dest):
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with _drive_get(f"{DRIVE}/{file_id}", alt="media") as r, dest.open("wb") as out:
+        for chunk in r.iter_content(1 << 20):
+            out.write(chunk)
+    return dest
+
+
+def sync_audio(cfg, files):
+    """Download music tracks from an 'audio' subfolder of the Drive folder (for autopilot)."""
+    sub = next((f for f in files if f["mimeType"].endswith("folder") and f["name"].lower() == "audio"), None)
+    if not sub:
+        return []
+    folder = ROOT / cfg["audio"]["folder"]
+    got = []
+    for f in list_folder(sub["id"]):
+        if f["name"].lower().endswith((".mp3", ".m4a", ".wav", ".aac")) and not (folder / f["name"]).exists():
+            download(f["id"], folder / f["name"])
+            got.append(f["name"])
+    if got:
+        print(f"  ♪ {len(got)} new track(s) from Drive audio/")
+    return got
+
+
 def pull(cfg):
     """Download clips from the Drive folder that haven't been used before."""
     seen = set(json.loads(SEEN.read_text())) if SEEN.exists() else set()
-    files = _drive_get(DRIVE, q=f"'{folder_id(cfg)}' in parents and trashed = false",
-                       fields="files(id,name,mimeType,size)", pageSize=1000).json().get("files", [])
+    files = list_folder(folder_id(cfg))
+    sync_audio(cfg, files)
+    clips = json.loads(CLIPS.read_text()) if CLIPS.exists() else {}
+    clips.update({f["name"]: f["id"] for f in files if f["name"].lower().endswith(VIDEO_EXTS)})
+    DATA.mkdir(exist_ok=True)
+    CLIPS.write_text(json.dumps(clips, indent=1))
     inbox = ROOT / cfg["clips"]["inbox_dir"]
     inbox.mkdir(exist_ok=True)
     new = []
     for f in files:
         if f["id"] in seen or not f["name"].lower().endswith(VIDEO_EXTS + (".txt",)):
             continue
-        with _drive_get(f"{DRIVE}/{f['id']}", alt="media") as r, (inbox / f["name"]).open("wb") as out:
-            for chunk in r.iter_content(1 << 20):
-                out.write(chunk)
+        download(f["id"], inbox / f["name"])
         seen.add(f["id"])
         new.append(f["name"])
         print(f"  ↓ {f['name']}")

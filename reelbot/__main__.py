@@ -169,6 +169,26 @@ def cmd_topic(cfg, args):
     session.topic(cfg, args.hashtags, per_tag=args.per_tag)
 
 
+def cmd_schedule(cfg, args):
+    from . import autopilot
+    autopilot.schedule(cfg, args.plan)
+
+
+def cmd_slots(cfg, args):
+    from . import autopilot
+    print("\n".join(autopilot.next_slots(cfg, args.count)))
+
+
+def cmd_post_due(cfg, args):
+    from . import autopilot
+    autopilot.post_due(cfg, dry_run=args.dry_run)
+
+
+def cmd_results(cfg, args):
+    from . import autopilot
+    autopilot.results(cfg)
+
+
 def cmd_cloud(cfg, args):
     from . import cloud
     cloud.run(cfg, args.task)
@@ -209,6 +229,20 @@ def main():
     p.add_argument("hashtags", nargs="+", help="e.g. astonmartin db12 supercar")
     p.add_argument("--per-tag", type=int, default=40)
     p.set_defaults(func=cmd_topic)
+
+    p = sub.add_parser("schedule", help="autopilot: add a plan of reels to the posting queue")
+    p.add_argument("plan", help="path to a plan JSON, e.g. data/plan.json")
+    p.set_defaults(func=cmd_schedule)
+
+    p = sub.add_parser("slots", help="autopilot: tomorrow's posting times")
+    p.add_argument("count", type=int, nargs="?", default=5)
+    p.set_defaults(func=cmd_slots)
+
+    p = sub.add_parser("post-due", help="autopilot: render + post queued reels that are due")
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(func=cmd_post_due)
+
+    sub.add_parser("results", help="autopilot: fetch results for every reel ReelBot posted").set_defaults(func=cmd_results)
 
     p = sub.add_parser("cloud", help="run on GitHub using your Google Drive folder")
     p.add_argument("--task", default="daily", choices=["daily", "research", "make-only", "post-only"])

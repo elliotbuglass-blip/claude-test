@@ -119,7 +119,12 @@ def render(clip, out_path, caption, start, length, look, audio_cfg):
 
     _, has_audio = probe(clip)
     mode = audio_cfg["mode"]
-    track = pick_track(audio_cfg["folder"]) if mode in ("music", "mix") else None
+    track = None
+    if mode in ("music", "mix"):
+        chosen = audio_cfg.get("track")
+        track = Path(audio_cfg["folder"]) / chosen if chosen else pick_track(audio_cfg["folder"])
+        if not track.exists():
+            track = None
     if mode in ("music", "mix") and not track:
         print(f"  (no tracks in {audio_cfg['folder']}/, keeping original sound)")
         mode = "original"

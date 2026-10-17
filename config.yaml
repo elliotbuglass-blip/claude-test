@@ -82,6 +82,17 @@ audio:
   music_volume: 0.8
   original_volume: 0.35       # only used in "mix"
 
+# review = Claude makes the videos + recommends a trending sound, you OK them before posting.
+# autopilot = researches, edits, adds music from your audio folder, schedules and posts by itself.
+mode: review
+
+autopilot:
+  posts_per_day: 5
+  post_times: ["09:00", "12:00", "15:00", "18:00", "21:00"]   # UK time
+  max_per_run: 2
+  # Things it's allowed to experiment with, and learn from:
+  experiment_with: [on_screen_text, post_caption, track, seconds, text_position]
+
 posting:
   backend: graph              # graph = Meta API directly (free) | metricool = via Metricool (paid)
   timezone: Europe/London     # used by Metricool scheduling
