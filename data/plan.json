@@ -1,7 +1,55 @@
 [
- {"clip":"IMG_8176.MOV","on_screen_text":"Black on black. No other spec.","post_caption":"Black on black. No other spec 🖤","angle":"spec flex","sound_suggestion":"original audio (engine)","seconds":8},
- {"clip":"IMG_8194.MOV","on_screen_text":"The DB12 cold start never gets old","post_caption":"Never gets old… 🔊","angle":"sound","sound_suggestion":"original audio (engine)","seconds":8},
- {"clip":"IMG_8194.mov","on_screen_text":"The neighbours love this every morning…","post_caption":"Sorry neighbours 😅","angle":"humour","sound_suggestion":"original audio (engine)","seconds":8},
- {"clip":"IMG_8195.MOV","on_screen_text":"POV: your Monday commute","post_caption":"Monday doesn't hit the same in this","angle":"relatable POV","sound_suggestion":"still love you (Slowed) — GLM-RST","seconds":8},
- {"clip":"IMG_8197.MOV","on_screen_text":"Worth every penny? Be honest…","post_caption":"Be honest… worth it?","angle":"question / debate","sound_suggestion":"Paradise — Sade","seconds":8}
+ {
+  "clip": "IMG_8176.MOV",
+  "on_screen_text": "Black on black. No other spec.",
+  "post_caption": "Black on black. No other spec 🖤",
+  "angle": "spec flex",
+  "sound_suggestion": "original audio (engine)",
+  "seconds": 9,
+  "start": 3.0,
+  "broll": {
+   "clip": "IMG_8197.MOV",
+   "start": 2.0,
+   "at": 4.0,
+   "seconds": 1.6
+  },
+  "text_position": 0.3,
+  "font_size": 50
+ },
+ {
+  "clip": "IMG_8194.MOV",
+  "on_screen_text": "The DB12 cold start never gets old",
+  "post_caption": "Never gets old… 🔊",
+  "angle": "sound",
+  "sound_suggestion": "original audio (engine)",
+  "seconds": 8,
+  "text_position": 0.74,
+  "font_size": 50
+ },
+ {
+  "clip": "IMG_8194.mov",
+  "on_screen_text": "The neighbours love this every morning…",
+  "post_caption": "Sorry neighbours 😅",
+  "angle": "humour",
+  "sound_suggestion": "original audio (engine)",
+  "seconds": 8,
+  "text_position": 0.74,
+  "font_size": 50
+ },
+ {
+  "clip": "IMG_8195.MOV",
+  "on_screen_text": "POV: your Monday commute",
+  "post_caption": "Monday doesn't hit the same in this",
+  "angle": "relatable POV",
+  "sound_suggestion": "still love you (Slowed) — GLM-RST",
+  "seconds": 8,
+  "broll": {
+   "clip": "IMG_8197.MOV",
+   "start": 4.5,
+   "at": 0.0,
+   "seconds": 1.4
+  },
+  "text_position": 0.72,
+  "font_size": 50
+ }
 ]

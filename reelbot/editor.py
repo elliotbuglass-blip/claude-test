@@ -90,20 +90,36 @@ def _font(path):
     raise SystemExit(f"Font not found: {path}. Set look.font in config.yaml to a .ttf/.otf on your computer.")
 
 
+FONT_DIR = Path(__file__).parent / "fonts"
+
+# Text looks. "editorial" matches @elliotcameron._'s reels: small, thin serif, plain white.
+TEXT_STYLES = {
+    "editorial": {"font": str(FONT_DIR / "LiberationSerif-Regular.ttf"), "size": 46, "wrap": 34, "shadow": 0.25},
+    "stacked":   {"font": str(FONT_DIR / "LiberationSerif-Regular.ttf"), "size": 96, "wrap": 8, "shadow": 0.25},
+    "classic":   {"font": "/usr/share/fonts/opentype/inter/Inter-SemiBold.otf", "size": 60, "wrap": 22, "shadow": 0.55},
+}
+
+# Colour looks. "natural" keeps real colour (blue calipers, deep blacks), slightly low exposure.
+GRADES = {
+    "natural": "eq=contrast=1.08:brightness=-0.045:saturation=1.1:gamma=0.95",
+    "moody": "eq=contrast=1.08:brightness=-0.03:saturation=0.82,vignette=PI/5",
+    "none": None,
+}
+
+
 def _text_filters(caption, look):
-    size = look["font_size"]
-    font = _font(look["font"])
-    lines = textwrap.wrap(clean_text(caption), width=22) or [""]
-    line_h = int(size * 1.25)
+    style = TEXT_STYLES[look.get("text_style", "editorial")]
+    size = look.get("font_size") or style["size"]
+    font = _font(look.get("font") or style["font"])
+    lines = textwrap.wrap(clean_text(caption), width=style["wrap"]) or [""]
+    line_h = int(size * 1.18)
     top = int(H * look["text_position"])
-    filters = []
-    for i, line in enumerate(lines):
-        filters.append(
-            f"drawtext=fontfile='{font}':text='{_escape(line)}':fontsize={size}"
-            f":fontcolor=white:shadowcolor=black@0.55:shadowx=2:shadowy=3"
-            f":x=(w-text_w)/2:y={top + i * line_h}"
-        )
-    return filters
+    shadow = f":shadowcolor=black@{style['shadow']}:shadowx=1:shadowy=2" if style["shadow"] else ""
+    return [
+        f"drawtext=fontfile='{font}':text='{_escape(line)}':fontsize={size}:fontcolor=white{shadow}"
+        f":x=(w-text_w)/2:y={top + i * line_h}"
+        for i, line in enumerate(lines)
+    ]
 
 
 def pick_track(folder):
@@ -111,11 +127,11 @@ def pick_track(folder):
     return random.choice(tracks) if tracks else None
 
 
-def render(clip, out_path, caption, start, length, look, audio_cfg):
-    vf = [f"scale={W}:{H}:force_original_aspect_ratio=increase", f"crop={W}:{H}", "fps=30"]
-    if look.get("moody_grade"):
-        vf += ["eq=contrast=1.08:brightness=-0.03:saturation=0.82", "vignette=PI/5"]
-    vf += _text_filters(caption, look)
+def render(clip, out_path, caption, start, length, look, audio_cfg, broll=None):
+    """Make one reel. broll = {"clip": path, "start": s, "at": s, "seconds": s} cuts a b-roll
+    shot in over the main clip (the main clip's sound keeps playing underneath)."""
+    frame = f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},fps=30"
+    grade = GRADES[look.get("grade") or ("moody" if look.get("moody_grade") else "natural")]
 
     _, has_audio = probe(clip)
     mode = audio_cfg["mode"]
@@ -123,29 +139,39 @@ def render(clip, out_path, caption, start, length, look, audio_cfg):
     if mode in ("music", "mix"):
         chosen = audio_cfg.get("track")
         track = Path(audio_cfg["folder"]) / chosen if chosen else pick_track(audio_cfg["folder"])
-        if not track.exists():
-            track = None
-    if mode in ("music", "mix") and not track:
-        print(f"  (no tracks in {audio_cfg['folder']}/, keeping original sound)")
-        mode = "original"
+        if track is None or not track.exists():
+            print(f"  (no music track found in {audio_cfg['folder']}/, keeping original sound)")
+            track, mode = None, "original"
 
-    tmp = out_path.with_suffix(".tmp.mp4")
     cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{start:.2f}", "-t", f"{length:.2f}", "-i", str(clip)]
+    video = f"[0:v]{frame},setpts=PTS-STARTPTS[base]"
+    last = "base"
+    n = 1
+    if broll:
+        at, dur = float(broll["at"]), float(broll["seconds"])
+        cmd += ["-ss", f"{float(broll.get('start', 0)):.2f}", "-t", f"{dur:.2f}", "-i", str(broll["clip"])]
+        video += (f";[{n}:v]{frame},setpts=PTS-STARTPTS+{at}/TB[br]"
+                  f";[base][br]overlay=enable='between(t,{at},{at + dur})':eof_action=pass[ov]")
+        last, n = "ov", n + 1
+    post = [f for f in [grade, *_text_filters(caption, look)] if f]
+    video += f";[{last}]{','.join(post)}[v]"
+
     fade = f"afade=t=out:st={max(length - 0.6, 0):.2f}:d=0.6"
     if mode == "original":
-        cmd += ["-vf", ",".join(vf)]
-        cmd += ["-map", "0:v", "-map", "0:a", "-af", fade] if has_audio else ["-map", "0:v", "-an"]
+        audio = f";[0:a]{fade}[a]" if has_audio else ""
     else:
         # Loop the track if it's shorter than the reel, and level it so every track sits at the same loudness.
         cmd += ["-stream_loop", "-1", "-i", str(track)]
-        music = f"[1:a]loudnorm=I=-14:TP=-1.5:LRA=11,volume={audio_cfg['music_volume']}"
+        music = f"[{n}:a]loudnorm=I=-14:TP=-1.5:LRA=11,volume={audio_cfg['music_volume']}"
         if mode == "mix" and has_audio:
-            audio = (f"{music}[m];[0:a]volume={audio_cfg['original_volume']}[o];"
+            audio = (f";{music}[m];[0:a]volume={audio_cfg['original_volume']}[o];"
                      f"[m][o]amix=inputs=2:duration=first:normalize=0,{fade}[a]")
         else:
-            audio = f"{music},{fade}[a]"
-        cmd += ["-filter_complex", f"[0:v]{','.join(vf)}[v];{audio}", "-map", "[v]", "-map", "[a]"]
+            audio = f";{music},{fade}[a]"
+    cmd += ["-filter_complex", video + audio, "-map", "[v]"]
+    cmd += ["-map", "[a]"] if audio else ["-an"]
 
+    tmp = out_path.with_suffix(".tmp.mp4")
     cmd += ["-t", f"{length:.2f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", "44100",
             "-movflags", "+faststart", str(tmp)]

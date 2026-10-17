@@ -6,6 +6,7 @@ Results are cached in data/onscreen_text.json so each reel is only read once.
 import base64
 import json
 import subprocess
+import tempfile
 
 import anthropic
 import requests
@@ -56,7 +57,15 @@ def _download(url):
 
 def gather_frames(video=None, thumbnail=None):
     frames = []
-    if video:
+    if video and str(video).startswith("http"):
+        # Download with requests first: it goes through the network proxy, ffmpeg doesn't.
+        data = _download(video)
+        if data:
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as tmp:
+                tmp.write(data)
+                tmp.flush()
+                frames = [f for f in (_frame_from_video(tmp.name, t) for t in FRAME_TIMES) if f]
+    elif video:
         frames = [f for f in (_frame_from_video(video, t) for t in FRAME_TIMES) if f]
     if not frames and thumbnail:
         # No video available (e.g. reels with licensed music) — the cover frame

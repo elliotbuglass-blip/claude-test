@@ -76,7 +76,7 @@ def _clip_path(cfg, name):
 def render_item(cfg, item):
     """Render one planned reel with its own edit settings (hook, length, text spot, music)."""
     clip = _clip_path(cfg, item["clip"])
-    look = {**cfg["look"], **{k: item[k] for k in ("text_position", "font_size", "moody_grade") if k in item}}
+    look = {**cfg["look"], **{k: item[k] for k in ("text_position", "font_size", "text_style", "grade") if k in item}}
     audio = copy.deepcopy(cfg["audio"])
     if item.get("track"):
         audio.update(mode=item.get("audio_mode", "mix"), track=item["track"])
@@ -88,7 +88,11 @@ def render_item(cfg, item):
         start = editor.loudest_start(clip, duration, length) if has_audio else 0.0
     out = OUTPUT / "review" / f"{item['id']}.mp4"
     out.parent.mkdir(parents=True, exist_ok=True)
-    editor.render(clip, out, editor.clean_text(item["on_screen_text"]), start, length, look, audio)
+    broll = None
+    if item.get("broll"):
+        b = item["broll"]
+        broll = {**b, "clip": _clip_path(cfg, b["clip"])}
+    editor.render(clip, out, editor.clean_text(item["on_screen_text"]), start, length, look, audio, broll)
     return out
 
 

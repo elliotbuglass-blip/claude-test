@@ -65,13 +65,16 @@ clips:
   inbox_dir: inbox            # drop your raw clips here
   reel_seconds: 8             # how long each finished reel is
   pick_moment: loudest        # "loudest" = grab the rev / cold start, "start" = from the beginning
-  variants_per_clip: 3        # how many different captions to try per clip (your trial-reel method)
+  variants_per_clip: 3
+  broll: [IMG_8197.MOV]        # clips only used as cut-ins (door / detail shots), never posted alone
 
 look:
-  font: /usr/share/fonts/opentype/inter/Inter-SemiBold.otf
-  font_size: 60
-  text_position: 0.16         # 0 = top, 1 = bottom
-  moody_grade: true           # darker, slightly desaturated, vignette
+  text_style: editorial       # editorial = small thin serif (my style) | stacked = big serif, word per line | classic
+  grade: natural              # natural = real colour, slightly dark | moody = desaturated | none
+  text_position: 0.30         # 0 = top, 1 = bottom
+  font: ""                    # leave empty to use the style's font
+  font_size: 0                # 0 = the style's size
+
 
 audio:
   # original = keep the clip's own sound (your engine sounds do great!)
