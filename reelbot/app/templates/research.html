@@ -20,6 +20,14 @@
   {% else %}<p class="meta">Appears after ReelBot researches your first clips.</p>{% endif %}
 </div></div>
 </div>
+<h2 class="hook" style="margin-top:28px">🎵 TikTok{% if tiktok %} — #{{ tiktok.hashtags|join(' #') }}{% endif %}</h2>
+{% if tiktok %}
+<p class="meta">{{ tiktok.found }} TikToks from the last 30 days · {{ (tiktok.original_audio_share * 100)|round|int }}% use their own sound · checked {{ tiktok.checked_at[:16].replace('T', ' ') }}</p>
+{% if tiktok.sounds_7d %}<p class="meta">Rising this week: {% for s, n in tiktok.sounds_7d %}<b>{{ s }}</b> ({{ n }}){{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+<div class="scroll"><table><tr><th>Views</th><th>Shares</th><th>Account</th><th>On-screen text / caption</th><th>Sound</th></tr>
+{% for w in tiktok.winners %}<tr><td>{{ w.views|num }}</td><td>{{ w.shares|num }}</td><td>@{{ w.account }}</td><td>{{ w.on_screen_text or (w.post_caption or '')[:90] }}</td><td class="meta">{{ w.music }} · <a href="{{ w.url }}" target="_blank">open ↗</a></td></tr>{% endfor %}
+</table></div>
+{% else %}<div class="empty">TikTok research runs when ReelBot makes reels with TikTok in the research mix.</div>{% endif %}
 <h2 class="hook" style="margin-top:28px">🔥 Trending on Google right now</h2>
 <form method="post" class="row" style="margin-bottom:10px"><button class="ghost" name="run" value="trends">Check trends now</button>
 <span class="meta">Checked before every batch of reels. When a trend fits your clip (e.g. Batman → a black car), ReelBot makes 1–2 riskier "wildcard" reels with it.</span></form>

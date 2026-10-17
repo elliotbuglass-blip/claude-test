@@ -13,7 +13,8 @@
     <div class="body">
       <p class="hook">“{{ r.on_screen_text }}”</p>
       <div class="row" style="margin-top:0">{{ score(r.virality_score) }} <span class="tag">{{ r.angle }}</span>
-        {% if r.trend %}<span class="tag wild">🔥 Riskier · {{ r.trend }}</span>{% elif r.risky %}<span class="tag wild">🔥 Riskier · bold experiment</span>{% endif %}</div>
+        {% set src = r.source or ('trends' if r.risky else 'instagram') %}
+        <span class="tag src-{{ src }}">{{ SOURCE_LABELS[src] }}{% if src == 'trends' %} · {{ r.trend or 'bold experiment' }}{% endif %}</span></div>
       <p class="meta">{{ r.score_reason }}</p>
       {% if pos or neg %}<ul class="reasons">
         {% for p in pos %}<li class="plus">{{ p }}</li>{% endfor %}
@@ -25,6 +26,7 @@
       <details class="why">
         <summary>🔍 Why this reel</summary>
         <div class="why-b">
+          <h4>📊 Research source</h4><p>{{ SOURCE_LABELS[src] }}-led: {{ {"instagram": "built on what is proven on Instagram right now", "tiktok": "built on something rising on TikTok before it hits Instagram", "trends": "a riskier reel riding news or a Google trend"}[src] }}.</p>
           <h4>✍️ The words</h4><p>{{ r.inspired_by or '—' }}</p>
           {% if res.trend %}<h4>🔥 The trend</h4><p>“{{ res.trend.term }}” is trending on Google ({{ res.trend.searches }} searches, {{ res.trend.geo }}){% if res.trend.headline %}: {{ res.trend.headline }}{% endif %}{% if res.trend.url %} · <a href="{{ res.trend.url }}" target="_blank">news ↗</a>{% endif %}. This is a riskier test.</p>{% endif %}
           <h4>✂️ The cut</h4><p>{{ r.cut_reason or 'Picked when the reel was made.' }} · from {{ r.filename }}</p>
@@ -35,6 +37,9 @@
             {% if res.sounds_7d %}<br>Posted with in the last 7 days: {% for s, n in res.sounds_7d %}{{ s }} ({{ n }} reels){{ ', ' if not loop.last }}{% endfor %}.{% endif %}</p>
           {% if res.winners %}<h4>🏆 Research it looked at</h4>
             <ul class="src">{% for w in res.winners %}<li><b>{{ w.views|num }}</b> · @{{ w.account }} · “{{ w.on_screen_text or '(no text)' }}” · {{ w.music or '?' }} <a href="{{ w.url }}" target="_blank">↗</a></li>{% endfor %}</ul>{% endif %}
+          {% if res.tiktok %}<h4>🎵 TikTok it looked at</h4>
+            <ul class="src">{% for w in res.tiktok %}<li><b>{{ w.views|num }}</b> · @{{ w.account }} · “{{ w.on_screen_text or (w.post_caption or '')[:60] }}” · {{ w.music }} <a href="{{ w.url }}" target="_blank">↗</a></li>{% endfor %}</ul>
+            {% if res.tiktok_sounds_7d %}<p>Rising on TikTok this week: {% for s, n in res.tiktok_sounds_7d %}{{ s }} ({{ n }}){{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}{% endif %}
           {% if res.outliers %}<h4>🛰️ Competitor outliers</h4>
             <ul class="src">{% for o in res.outliers %}<li><b>{{ o.ratio }}×</b> their normal · @{{ o.account }} · “{{ o.on_screen_text or (o.post_caption or '')[:60] }}” <a href="{{ o.url }}" target="_blank">↗</a></li>{% endfor %}</ul>{% endif %}
         </div>

@@ -39,6 +39,7 @@ def _fmt_time(value):
 
 templates.filters["when"] = _fmt_time
 templates.filters["num"] = lambda v: f"{v:,}" if isinstance(v, (int, float)) else "–"
+templates.globals["SOURCE_LABELS"] = jobs.SOURCE_LABELS
 templates.filters["fromjson"] = lambda v: json.loads(v) if v else None
 
 
@@ -268,10 +269,10 @@ async def results(request: Request):
     if scored:
         views = [(r["snaps"].get(72) or r["snaps"].get(48))["views"] or 0 for r in scored]
         summary = {"reels": len(scored), "median": int(statistics.median(views)), "best": max(views)}
-        for flag, key in ((1, "risky"), (0, "normal")):
-            v = [(r["snaps"].get(72) or r["snaps"].get(48))["views"] or 0 for r in scored if (r["risky"] or 0) == flag]
-            summary[key] = {"n": len(v), "median": int(statistics.median(v))} if v else None
-    return page("results.html", request, reels=reels, summary=summary)
+
+    return page("results.html", request, reels=reels, summary=summary, by_source=jobs.source_results(days=3650),
+                recent=jobs.source_results(), mix=jobs.research_mix(), mix_change=db.latest_research("mix_change"),
+                auto=jobs.setting("mix_auto"))
 
 
 # --------------------------------------------------------------------------- research + settings
@@ -288,6 +289,7 @@ async def research(request: Request):
         return RedirectResponse("/research", 303)
     return page("research.html", request, best=db.latest_research("best_times"), topic=db.latest_research("topic"),
                 radar=db.latest_research("radar"), times=jobs.posting_times(), trends=db.latest_research("trends"),
+                tiktok=db.latest_research("tiktok"),
                 look=db.latest_research("look"))
 
 
@@ -297,9 +299,16 @@ async def settings_page(request: Request):
         for key in ("mode", "niche", "times_mode", "text_style", "grade", "hashtags"):
             if key in form:
                 db.set_setting(key, form[key])
-        for key in ("posts_per_day", "risky_share", "reels_per_clip", "reel_seconds"):
+        for key in ("posts_per_day", "reels_per_clip", "reel_seconds"):
             if form.get(key):
                 db.set_setting(key, int(form[key]))
+        if all(form.get(f"mix_{s}") not in (None, "") for s in jobs.SOURCES):
+            mix = {s: max(int(form[f"mix_{s}"]), 0) for s in jobs.SOURCES}
+            total = sum(mix.values()) or 1
+            scaled = jobs.mix_counts(100, mix) if total != 100 else mix  # always save a mix that adds up to 100%
+            for s in jobs.SOURCES:
+                db.set_setting(f"mix_{s}", scaled[s])
+            db.set_setting("mix_auto", form.get("mix_auto") == "1")
         db.set_setting("broll_silent", form.get("broll_silent") == "1")
         if form.get("post_times") is not None:
             db.set_setting("post_times", [t.strip() for t in form["post_times"].split(",") if t.strip()])
@@ -310,7 +319,8 @@ async def settings_page(request: Request):
         return RedirectResponse("/settings", 303)
     c = jobs.cfg()
     keys = {k: bool(env(k, required=False)) for k in ("ANTHROPIC_API_KEY", "IG_ACCESS_TOKEN", "IG_USER_ID", "APIFY_TOKEN", "APP_PASSWORD")}
-    return page("settings.html", request, c=c, s={k: jobs.setting(k) for k in jobs.EDITABLE}, keys=keys,
+    return page("settings.html", request, c=c, mix=jobs.research_mix(), mix_change=db.latest_research("mix_change"),
+                sources=jobs.SOURCES, s={k: jobs.setting(k) for k in jobs.EDITABLE}, keys=keys,
                 styles=list(editor.TEXT_STYLES), grades=list(editor.GRADES))
 
 

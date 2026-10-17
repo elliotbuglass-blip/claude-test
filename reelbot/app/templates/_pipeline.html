@@ -16,7 +16,7 @@
             {% elif key == 'scheduled' %}⏰ {{ it.post_at|when }}{% if it.status == 'posting' %} · posting…{% endif %}
             {% elif key in ('posted','done') %}{{ it.posted_at|when }}{% if it.snap %} · {{ it.snap.views|num }} views ({{ it.snap.hours }}h){% endif %}
             {% else %}{{ it.virality_score }}/100 · {{ it.angle }}{% endif %}
-            {% if it.trend %} · 🔥 {{ it.trend }}{% endif %}
+            {% set src = it.source or ('trends' if it.risky else 'instagram') %} · {{ SOURCE_LABELS[src].split(' ')[0] }}{% if it.trend %} {{ it.trend }}{% endif %}
           </div></div></a>
       {% endif %}
     {% else %}<div class="meta empty-s">—</div>{% endfor %}

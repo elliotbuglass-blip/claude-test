@@ -31,7 +31,10 @@ EDITABLE = {  # setting key -> (path in config.yaml, label)
     "mode": ("mode", "Mode"),
     "niche": ("niche", "About my account"),
     "posts_per_day": ("autopilot.posts_per_day", "Reels per day"),
-    "risky_share": ("autopilot.risky_share", "Share of riskier, trend-led reels (%)"),
+    "mix_instagram": ("research_mix.instagram", "Research mix: Instagram (%)"),
+    "mix_tiktok": ("research_mix.tiktok", "Research mix: TikTok (%)"),
+    "mix_trends": ("research_mix.trends", "Research mix: news & Google trends, riskier (%)"),
+    "mix_auto": ("research_mix.auto_balance", "Rebalance the mix from results"),
     "times_mode": ("autopilot.times_mode", "Posting times"),
     "post_times": ("autopilot.post_times", "Manual posting times"),
     "reels_per_clip": ("clips.variants_per_clip", "Reels per clip"),
@@ -65,7 +68,7 @@ def cfg():
         if value is not None:
             _set(c, path, value)
     c.setdefault("autopilot", {}).setdefault("times_mode", "best")
-    c["autopilot"].setdefault("risky_share", 0)
+    c.setdefault("research_mix", {"instagram": 50, "tiktok": 30, "trends": 20, "auto_balance": True})
     c.setdefault("clips", {}).setdefault("broll_silent", True)
     c["audio"]["folder"] = str(db.AUDIO_DIR)
     return c
@@ -192,6 +195,60 @@ def research_topic(hashtags, subject, per_tag=40):
     return result
 
 
+APIFY_TIKTOK = "https://api.apify.com/v2/acts/clockworks~tiktok-scraper/run-sync-get-dataset-items"
+
+
+def _tiktok_video(item):
+    if not item.get("id") or not item.get("playCount"):
+        return None
+    music = item.get("musicMeta") or {}
+    return {"code": str(item["id"]), "url": item.get("webVideoUrl"), "account": (item.get("authorMeta") or {}).get("name", ""),
+            "views": int(item.get("playCount") or 0), "likes": int(item.get("diggCount") or 0),
+            "shares": int(item.get("shareCount") or 0), "taken_at": int(item.get("createTime") or 0),
+            "post_caption": item.get("text") or "", "thumbnail": (item.get("videoMeta") or {}).get("coverUrl"),
+            "music": "original audio" if music.get("musicOriginal") else
+                     " — ".join(x for x in (music.get("musicName"), music.get("musicAuthor")) if x) or "?"}
+
+
+def research_tiktok(hashtags, subject, per_tag=30):
+    """Top TikToks for these hashtags in the last 30 days: views, shares, text and the sounds rising. Cached 3 days."""
+    tags = sorted({h.lstrip("#").lower() for h in hashtags})[:4]
+    if not tags:
+        return None
+    key = "tiktok:" + ",".join(tags)
+    cached = db.latest_research(key)
+    if cached and datetime.fromisoformat(cached["checked_at"]) > local_now() - timedelta(days=3):
+        return cached
+    resp = requests.post(APIFY_TIKTOK, headers=_apify_headers(), timeout=900, json={
+        "hashtags": tags, "resultsPerPage": per_tag, "shouldDownloadVideos": False, "shouldDownloadCovers": False,
+        "shouldDownloadSubtitles": False, "shouldDownloadSlideshowImages": False})
+    resp.raise_for_status()
+    cutoff, week = time.time() - 30 * 86400, time.time() - 7 * 86400
+    seen, videos = set(), []
+    for v in (_tiktok_video(i) for i in resp.json()):
+        if v and v["taken_at"] >= cutoff and v["code"] not in seen:
+            seen.add(v["code"])
+            videos.append(v)
+    videos.sort(key=lambda v: v["views"], reverse=True)
+    top = videos[:12]
+    for v in top:
+        v["frame_bytes"] = vision.gather_frames(None, v.get("thumbnail"))[:1]
+    reads = {}
+    if any(v["frame_bytes"] for v in top):
+        reads = {x["code"]: x for x in brain.read_reels([v for v in top if v["frame_bytes"]], subject)}
+    winners = [{k: v.get(k) for k in ("code", "url", "account", "views", "likes", "shares", "music", "post_caption")}
+               | {"on_screen_text": reads.get(v["code"], {}).get("on_screen_text", "")}
+               for v in top if reads.get(v["code"], {}).get("relevant", True)]
+    sounds = lambda vs: Counter(v["music"] for v in vs if v["music"] not in ("original audio", "?")).most_common(8)
+    result = {"checked_at": local_now().isoformat(), "hashtags": tags, "subject": subject, "found": len(videos),
+              "winners": winners, "sounds": sounds(videos), "sounds_7d": sounds([v for v in videos if v["taken_at"] >= week]),
+              "original_audio_share": round(sum(v["music"] == "original audio" for v in videos[:30]) / max(len(videos[:30]), 1), 2)}
+    db.save_research(key, result)
+    db.save_research("tiktok", result)
+    db.log(f"TikTok research #{' #'.join(tags)}: {len(winners)} winners, {len(result['sounds_7d'])} rising sounds")
+    return result
+
+
 TRENDS_RSS = "https://trends.google.com/trending/rss?geo={geo}"
 HT = "{https://trends.google.com/trending/rss}"
 
@@ -296,9 +353,85 @@ def posting_times():
     return sorted(times)
 
 
-def risky_count(n):
-    """How many of n reels should be the riskier, trend-led kind (rounded half up)."""
-    return math.floor(n * int(setting("risky_share") or 0) / 100 + 0.5)
+# --------------------------------------------------------------------------- research mix
+# Like an investment portfolio: each reel is mainly built on one source of research.
+#   instagram = proven on Instagram now (your winners, topic winners, competitor outliers): the safe bet
+#   tiktok    = rising on TikTok, not yet big on Instagram: the early-wave bet
+#   trends    = news and Google trends that fit the clip: the riskiest bet
+SOURCES = ("instagram", "tiktok", "trends")
+SOURCE_LABELS = {"instagram": "📸 Instagram", "tiktok": "🎵 TikTok", "trends": "🔥 News & trends"}
+MIX_FLOOR, MIX_STEP = 10, 10  # rebalancing never drops a source below 10%, and moves 10 points at most a week
+
+
+def research_mix():
+    mix = {s: int(cfg()["research_mix"].get(s) or 0) for s in SOURCES}
+    return mix if sum(mix.values()) > 0 else {"instagram": 100, "tiktok": 0, "trends": 0}
+
+
+def mix_counts(n, mix=None):
+    """Split n reels by the mix percentages (largest remainder, so 10 reels at 50/30/20 = 5/3/2)."""
+    mix = mix or research_mix()
+    total = sum(mix.values())
+    quotas = {s: n * mix[s] / total for s in SOURCES}
+    counts = {s: int(q) for s, q in quotas.items()}
+    for s in sorted(SOURCES, key=lambda s: (-(quotas[s] - counts[s]), SOURCES.index(s)))[: n - sum(counts.values())]:
+        counts[s] += 1
+    # Every source that's switched on gets at least one reel (when there are enough), so it keeps being tested.
+    on = [s for s in SOURCES if mix[s] > 0]
+    if n >= len(on):
+        for s in on:
+            if counts[s] == 0:
+                counts[max(SOURCES, key=lambda x: counts[x])] -= 1
+                counts[s] = 1
+    return counts
+
+
+def mix_plan(n):
+    """The sources for n reels, interleaved so each clip gets a spread (ig, tiktok, trends, ig, …)."""
+    left, order = mix_counts(n), []
+    while len(order) < n:
+        for s in SOURCES:
+            if left[s]:
+                order.append(s)
+                left[s] -= 1
+    return order
+
+
+def source_results(days=30):
+    """Median views (72h, or 48h) per research source for recent ReelBot reels."""
+    rows = db.q("""SELECT r.source, r.risky, s.views FROM reels r JOIN snapshots s ON s.reel_id = r.id
+                   WHERE s.hours = (SELECT MAX(hours) FROM snapshots WHERE reel_id = r.id) AND s.hours >= 48
+                   AND r.posted_at >= ?""", (local_now() - timedelta(days=days)).isoformat())
+    by = defaultdict(list)
+    for r in rows:
+        by[r["source"] or ("trends" if r["risky"] else "instagram")].append(r["views"] or 0)
+    return {s: {"reels": len(v), "median": int(statistics.median(v))} for s, v in by.items() if v}
+
+
+def rebalance_mix(min_reels=4):
+    """Weekly: move up to 10 points from the weakest source to the strongest, never below 10% each."""
+    if not setting("mix_auto"):
+        return
+    res = {s: r for s, r in source_results().items() if r["reels"] >= min_reels}
+    mix = research_mix()
+    if len(res) < 2:
+        db.log("Research mix: not enough results yet to rebalance (needs 4+ reels per source)")
+        return
+    best = max(res, key=lambda s: res[s]["median"])
+    worst = min(res, key=lambda s: res[s]["median"])
+    move = min(MIX_STEP, mix[worst] - MIX_FLOOR)
+    if best == worst or res[best]["median"] < res[worst]["median"] * 1.2 or move <= 0:
+        db.log("Research mix: no clear winner this week, keeping " + " / ".join(f"{mix[s]}%" for s in SOURCES))
+        return
+    mix[best] += move
+    mix[worst] -= move
+    for s in SOURCES:
+        db.set_setting(f"mix_{s}", mix[s])
+    reason = (f"{SOURCE_LABELS[best]} reels got a median {res[best]['median']:,} views vs "
+              f"{res[worst]['median']:,} for {SOURCE_LABELS[worst]}")
+    db.save_research("mix_change", {"checked_at": local_now().isoformat(), "mix": mix, "from": worst, "to": best,
+                                    "points": move, "reason": reason, "results": res})
+    db.log(f"Research mix rebalanced: +{move}% {SOURCE_LABELS[best]}, −{move}% {SOURCE_LABELS[worst]} ({reason})")
 
 
 def next_free_slots(count, start_day=None):
@@ -321,7 +454,7 @@ def next_free_slots(count, start_day=None):
 
 def learnings():
     """What's worked in my own trial reels, from their 72h (or latest) results."""
-    rows = db.q("""SELECT r.risky, r.angle, r.sound_suggestion, r.track, r.virality_score, r.on_screen_text,
+    rows = db.q("""SELECT r.risky, r.source, r.angle, r.sound_suggestion, r.track, r.virality_score, r.on_screen_text,
                           MAX(s.hours) AS hours, s.views FROM reels r JOIN snapshots s ON s.reel_id = r.id
                    GROUP BY r.id""")
     if not rows:
@@ -331,10 +464,11 @@ def learnings():
         by_angle[r["angle"]].append(r["views"] or 0)
     lines = [f"- angle '{a}': {len(v)} reels, median {int(statistics.median(v)):,} views"
              for a, v in sorted(by_angle.items(), key=lambda x: -statistics.median(x[1]))]
-    for flag, label in ((1, "riskier trend-led"), (0, "normal")):
-        v = [r["views"] or 0 for r in rows if (r["risky"] or 0) == flag]
-        if v:
-            lines.append(f"- {label} reels: {len(v)}, median {int(statistics.median(v)):,} views")
+    by_source = defaultdict(list)
+    for r in rows:
+        by_source[r["source"] or ("trends" if r["risky"] else "instagram")].append(r["views"] or 0)
+    for src, v in by_source.items():
+        lines.append(f"- {src}-led reels: {len(v)}, median {int(statistics.median(v)):,} views")
     best = sorted(rows, key=lambda r: -(r["views"] or 0))[:5]
     worst = sorted(rows, key=lambda r: r["views"] or 0)[:5]
     lines.append("Best: " + " | ".join(f'"{r["on_screen_text"]}" {r["views"]:,} (predicted {r["virality_score"]})' for r in best))
@@ -342,7 +476,7 @@ def learnings():
     return "\n".join(lines)
 
 
-def build_context(topic):
+def build_context(topic, tiktok=None):
     parts = []
     mine = db.latest_research("my_reels")
     if mine and mine["reels"]:
@@ -361,6 +495,13 @@ def build_context(topic):
         if topic.get("sounds_7d"):
             parts.append(f"Sounds on reels posted in the LAST 7 DAYS ({topic.get('recent_7d', 0)} reels): "
                          + ", ".join(f"{s} ({n} reels)" for s, n in topic["sounds_7d"]))
+    if tiktok and tiktok.get("winners"):
+        parts.append(f"TIKTOK RESEARCH (#{' #'.join(tiktok['hashtags'])}, last 30 days — TikTok is usually 1–2 weeks ahead of Instagram):\n"
+                     + "\n".join(f'- @{w["account"]}: on-screen "{w["on_screen_text"] or "(not read)"}", caption "{(w["post_caption"] or "")[:80]}" '
+                                  f'→ {w["views"]:,} views, {w["shares"]:,} shares, sound: {w["music"]}' for w in tiktok["winners"]))
+        if tiktok.get("sounds_7d"):
+            parts.append("Sounds RISING on TikTok (used on these hashtags in the last 7 days): "
+                         + ", ".join(f"{s} ({n} videos)" for s, n in tiktok["sounds_7d"]))
     trends = db.latest_research("trends")
     if trends and trends.get("items"):
         parts.append("TRENDING NOW on Google (search term · searches · headline):\n" + "\n".join(
@@ -376,7 +517,7 @@ def build_context(topic):
     return "\n\n".join(parts)
 
 
-def make_reels(clip_id, n=None, post_at=None, risky=None):
+def make_reels(clip_id, n=None, post_at=None, sources=None):
     """Plan + render n reels for one clip. Review mode → drafts; autopilot → scheduled."""
     c = cfg()
     clip = db.one("SELECT * FROM clips WHERE id = ?", clip_id)
@@ -392,20 +533,30 @@ def make_reels(clip_id, n=None, post_at=None, risky=None):
             topic = research_topic(json.loads(clip["hashtags"]), clip["subject"])
         except Exception as e:
             db.log(f"Topic research skipped: {e}")
+    sources = list(sources or mix_plan(n))
+    tiktok = None
+    if "tiktok" in sources:
+        try:
+            tiktok = research_tiktok(json.loads(clip["hashtags"] or "[]"), clip["subject"])
+        except Exception as e:
+            db.log(f"TikTok research skipped: {e}")
+        if not tiktok or not tiktok.get("winners"):  # no TikTok research: those reels lean on Instagram instead
+            sources = ["instagram" if s == "tiktok" else s for s in sources]
     library = sorted(p.name for p in db.AUDIO_DIR.glob("*") if p.suffix.lower() in editor.AUDIO_EXTS)
     info = {"filename": clip["filename"], "subject": clip["subject"], "notes": clip["notes"], "seconds": clip["duration"]}
-    risky = risky_count(n) if risky is None else risky
-    plans = brain.plan_reels(_frames(clip["path"], 3), info, n, build_context(topic), library, risky)
+    counts = Counter(sources)
+    plans = brain.plan_reels(_frames(clip["path"], 3), info, n, build_context(topic, tiktok), library,
+                             {s: counts.get(s, 0) for s in SOURCES})
     mode = setting("mode")
     slots = post_at or next_free_slots(len(plans))
-    research = research_snapshot(topic)
+    research = research_snapshot(topic, tiktok)
     for plan, slot in zip(plans, slots):
         reel_id = db.new_id()
         trend = plan.get("trend") or ""
         db.insert("reels", {
             "id": reel_id, "clip_id": clip_id,
-            **{k: plan[k] for k in plan if k not in ("track", "positives", "negatives", "trend", "risky")},
-            "risky": 1 if plan.get("risky") else 0,
+            **{k: plan[k] for k in plan if k not in ("track", "positives", "negatives", "trend", "source")},
+            "source": plan.get("source") or "instagram", "risky": 1 if plan.get("source") == "trends" else 0,
             "positives": json.dumps(plan.get("positives", [])), "negatives": json.dumps(plan.get("negatives", [])),
             "trend": trend, "research": json.dumps(research | {"trend": next(
                 (t for t in (db.latest_research("trends") or {}).get("items", []) if t["term"].lower() == trend.lower()), None)
@@ -418,9 +569,12 @@ def make_reels(clip_id, n=None, post_at=None, risky=None):
     db.update("clips", clip_id, status="used")
 
 
-def research_snapshot(topic):
+def research_snapshot(topic, tiktok=None):
     """The research a batch of reels was planned from, kept with each reel for its "Why this reel" panel."""
-    out = {"winners": [], "sounds": [], "sounds_7d": [], "original_share": None, "outliers": [], "hashtags": []}
+    out = {"winners": [], "sounds": [], "sounds_7d": [], "original_share": None, "outliers": [], "hashtags": [],
+           "tiktok": [], "tiktok_sounds_7d": []}
+    if tiktok:
+        out.update(tiktok=tiktok["winners"][:6], tiktok_sounds_7d=tiktok.get("sounds_7d", [])[:5])
     if topic:
         out.update(winners=topic["winners"][:8], sounds=topic["trending_sounds"][:5], hashtags=topic["hashtags"],
                    sounds_7d=topic.get("sounds_7d", [])[:5], original_share=topic["original_audio_share"])
@@ -522,16 +676,16 @@ def autopilot_daily():
     if not clips:
         db.log("Autopilot: no clips to use. Upload some main clips.")
         return
-    planned, risky_left = len(slots), risky_count(len(slots))
+    planned, sources = len(slots), mix_plan(len(slots))
+    split = mix_counts(planned)
     per_clip = math.ceil(len(slots) / len(clips))
     for clip in clips:
-        mine = slots[:per_clip]
-        slots = slots[per_clip:]
+        mine, slots = slots[:per_clip], slots[per_clip:]
+        theirs, sources = sources[:len(mine)], sources[len(mine):]
         if mine:
-            risky = min(risky_left, math.ceil(len(mine) * risky_left / (len(mine) + len(slots))))
-            risky_left -= risky
-            make_reels(clip["id"], len(mine), post_at=mine, risky=risky)
-    db.log(f"Planned {planned} trial reels for {tomorrow} ({risky_count(planned)} riskier)"
+            make_reels(clip["id"], len(mine), post_at=mine, sources=theirs)
+    db.log(f"Planned {planned} trial reels for {tomorrow}: "
+           + ", ".join(f"{split[s]} {SOURCE_LABELS[s]}" for s in SOURCES if split[s])
            + (" — waiting for your review" if setting("mode") == "review" else ""))
 
 
@@ -637,6 +791,8 @@ def _clock():
                 submit("autopilot daily plan", autopilot_daily)
             if _due_daily("history", 5, 0, weekday=0) or (tick == 0 and not db.latest_research("best_times")):
                 submit("refresh history", refresh_history)
+            if _due_daily("rebalance", 5, 45, weekday=0):
+                submit("rebalance research mix", rebalance_mix)
             if _due_daily("radar", 5, 30, weekday=0) and env("APIFY_TOKEN", required=False) is not None:
                 submit("competitor radar", run_radar)
         except Exception as e:

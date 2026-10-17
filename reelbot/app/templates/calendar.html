@@ -20,7 +20,7 @@
         {% if r.video_path %}<img src="/thumb/{{ r.id }}.jpg" alt="" loading="lazy">{% endif %}
         <div class="ev-hook">“{{ r.on_screen_text }}”</div>
         <div class="meta">{% if r.status == 'posted' %}{% if r.snap %}{{ r.snap.views|num }} views at {{ r.snap.hours }}h{% else %}results at 24h{% endif %}{% if r.permalink %} · <a href="{{ r.permalink }}" target="_blank">open</a>{% endif %}
-          {% else %}{{ r.virality_score }}/100 · {{ r.angle }}{% endif %}{% if r.trend %} · 🔥 {{ r.trend }}{% endif %}</div>
+          {% else %}{{ r.virality_score }}/100 · {{ r.angle }}{% endif %}{% set src = r.source or ('trends' if r.risky else 'instagram') %} · {{ SOURCE_LABELS[src].split(' ')[0] }}{% if r.trend %} {{ r.trend }}{% endif %}</div>
         {% if r.status == 'scheduled' %}
           <div class="row tight">
             <form method="post" action="/reels/{{ r.id }}/postnow" onsubmit="return confirm('Post this trial reel now?')"><button class="mini">Post now</button></form>

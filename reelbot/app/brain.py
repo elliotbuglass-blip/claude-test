@@ -104,11 +104,11 @@ PLAN_SCHEMA = {
             "score_reason": {"type": "string"},
             "positives": {"type": "array", "items": {"type": "string"}},
             "trend": {"type": "string"},
-            "risky": {"type": "boolean"},
+            "source": {"type": "string", "enum": ["instagram", "tiktok", "trends"]},
             "negatives": {"type": "array", "items": {"type": "string"}},
         },
         "required": ["on_screen_text", "post_caption", "angle", "inspired_by", "sound_suggestion", "sound_reason",
-                     "track", "virality_score", "score_reason", "positives", "negatives", "trend", "risky"],
+                     "track", "virality_score", "score_reason", "positives", "negatives", "trend", "source"],
         "additionalProperties": False}}},
     "required": ["reels"],
     "additionalProperties": False,
@@ -122,12 +122,18 @@ Hook rules:
 - Every reel in a batch must test a clearly different angle (e.g. spec flex, sound, humour, relatable POV, money/value question, identity).
 - Learn from results: lean into angles and sounds that won in the creator's own trial reels and away from those that lost, but keep about 1 in 5 reels as a fresh experiment.
 
-Riskier reels: the request says exactly how many of the reels must be riskier (risky = true; all others false).
-A riskier reel rides current news or a Google trend from TRENDING NOW that genuinely ties to what's in the clip
-(e.g. a new Batman film trending + a black car → "Bruce Wayne spec"); set trend to that trend's name. If not enough
-trends fit naturally, make the rest of the riskier reels bold experiments instead (an angle the creator has never
-tried, a polarising opinion, a cultural reference) with trend "". A forced trend tie-in looks cringe. Never use
-tragedies, politics or news about real people's misfortune. Normal reels have risky = false and trend "".
+Research mix: every reel has a source = the research it is mainly built on. The request gives exact counts per source.
+- instagram: a hook, format or sound proven on Instagram right now (the creator's own winners first, then topic
+  winners and competitor outliers). The safe bet.
+- tiktok: a hook, format or sound that is winning or rising in TIKTOK RESEARCH but isn't big on Instagram yet. The
+  early-wave bet. If you suggest a TikTok sound, write it as "Name — Artist (rising on TikTok; use it if it's in
+  Instagram's library, otherwise original audio)".
+- trends: riskier. Rides current news or a Google trend from TRENDING NOW that genuinely ties to what's in the clip
+  (e.g. a new Batman film trending + a black car → "Bruce Wayne spec"); set trend to that trend's name. If not enough
+  trends fit naturally, make it a bold experiment instead (an angle the creator has never tried, a polarising opinion,
+  a cultural reference) with trend "". A forced trend tie-in looks cringe. Never use tragedies, politics or news about
+  real people's misfortune.
+Only trends reels may have a trend; all others have trend "". inspired_by must name research from the reel's own source.
 
 post_caption: usually the hook or a close variant, one emoji allowed.
 sound_suggestion: the best-fitting trending Instagram sound from the research (name — artist), or "original audio (engine)" when the clip's own sound is the point (start-ups, revs). Most winning car reels use original audio.
@@ -140,14 +146,14 @@ negatives: 1–3 short honest risks that could hold it back (e.g. "no text hooks
 inspired_by: name the exact source — the winning reel(s) or pattern this hook adapts, with account and views, e.g. "@itisbainz 'POV: …' 412K (5.2x his median)" or "your own 'Sunday spec' reel, 61K"."""
 
 
-def plan_reels(frames, clip_info, n, context, library, risky=0):
+def plan_reels(frames, clip_info, n, context, library, sources=None):
     text = f"""CLIP: {json.dumps(clip_info, ensure_ascii=False)}
 
 {context}
 
 MY MUSIC LIBRARY (filenames for `track`): {", ".join(library) or "(empty — use \"\")"}
 
-Plan {n} different reels for this clip. Exactly {risky} of them must be riskier (risky = true)."""
+Plan {n} different reels for this clip. Research mix for this batch (source → number of reels): {json.dumps(sources or {"instagram": n})}"""
     return _ask([*_images(frames), {"type": "text", "text": text}], PLAN_SCHEMA,
                 system=PLAN_SYSTEM, effort="medium")["reels"][:n]
 

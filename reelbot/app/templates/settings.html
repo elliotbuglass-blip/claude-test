@@ -10,14 +10,7 @@
     <option value="autopilot" {{ 'selected' if s.mode == 'autopilot' }}>🤖 Autopilot: plan, edit, schedule and post by itself</option></select>
   <label>Trial reels per day</label><input name="posts_per_day" id="ppd" type="number" min="1" max="10" value="{{ s.posts_per_day }}">
   <p class="meta">Both modes. Every morning ReelBot plans tomorrow's reels: autopilot schedules them, review mode lines them up for your OK.</p>
-  <label>Riskier, trend-led reels: <b id="riskl"></b></label>
-  <input name="risky_share" id="risk" type="range" min="0" max="100" step="10" value="{{ s.risky_share or 0 }}" class="range">
-  <p class="meta">These ride current news and Google trends that fit the clip (e.g. Batman trending → “Bruce Wayne spec”). Results shows how they do against your normal reels.</p>
-  <script>
-    const ppd = document.getElementById('ppd'), risk = document.getElementById('risk'), lab = document.getElementById('riskl');
-    const show = () => { const n = +ppd.value || 0, k = Math.floor(n * risk.value / 100 + 0.5); lab.textContent = `${risk.value}% · ${k} of ${n} a day`; };
-    ppd.oninput = risk.oninput = show; show();
-  </script>
+
   <label>Posting times</label>
   <select name="times_mode"><option value="best" {{ 'selected' if s.times_mode != 'manual' }}>Automatic: my best times from my history</option>
     <option value="manual" {{ 'selected' if s.times_mode == 'manual' }}>Manual: use the times below</option></select>
@@ -34,6 +27,47 @@
   <label>Hashtags added to every post</label><input name="hashtags" value="{{ s.hashtags or '' }}">
 </div></div>
 </div>
+<div class="card" style="margin-top:16px"><div class="body">
+  <p class="hook">📊 Research mix</p>
+  <p class="meta">Like an investment portfolio: what each day's reels are mainly built on.</p>
+  {% set hints = {"instagram": "Proven on Instagram right now: your winners, top reels for your topic, competitor outliers. The safe bet.",
+                  "tiktok": "Hooks, formats and sounds rising on TikTok that haven't hit Instagram yet. The early-wave bet.",
+                  "trends": "Riding news and Google trends that fit the clip (Batman → “Bruce Wayne spec”). The riskiest bet."} %}
+  {% for src in sources %}
+  <div class="mixrow">
+    <label>{{ SOURCE_LABELS[src] }} <b class="mixv" data-src="{{ src }}"></b></label>
+    <input name="mix_{{ src }}" data-src="{{ src }}" class="range mix" type="range" min="0" max="100" step="5" value="{{ mix[src] }}">
+    <p class="meta">{{ hints[src] }}</p>
+  </div>
+  {% endfor %}
+  <div class="mixbar" id="mixbar">{% for src in sources %}<i class="mb-{{ src }}"></i>{% endfor %}</div>
+  <p class="meta" id="mixsum"></p>
+  <label class="opt"><input type="checkbox" name="mix_auto" value="1" {{ 'checked' if s.mix_auto }}> Rebalance automatically from results</label>
+  <p class="meta">Every Monday ReelBot moves up to 10% towards whichever source is getting you the most views. It never drops one below 10%, so it keeps testing.
+  {% if mix_change %}<br>Last change: {{ mix_change.reason }} (+{{ mix_change.points }}% {{ SOURCE_LABELS[mix_change.to] }}).{% endif %}</p>
+  <script>
+    const sliders = [...document.querySelectorAll('input.mix')], ppd = document.getElementById('ppd');
+    const SRC = sliders.map(s => s.dataset.src);
+    function split(n, mix) {  // same rounding as ReelBot: 10 reels at 50/30/20 = 5/3/2
+      const total = mix.reduce((a, b) => a + b, 0) || 1, q = mix.map(m => n * m / total), c = q.map(Math.floor);
+      q.map((x, i) => [x - c[i], -i, i]).sort((a, b) => b[0] - a[0] || b[1] - a[1]).slice(0, n - c.reduce((a, b) => a + b, 0)).forEach(([, , i]) => c[i]++);
+      const on = mix.map((m, i) => m > 0 ? i : -1).filter(i => i >= 0);  // every source that's on gets 1+
+      if (n >= on.length) on.forEach(i => { if (!c[i]) { c[c.indexOf(Math.max(...c))]--; c[i] = 1; } });
+      return c;
+    }
+    function show(changed) {
+      if (changed) {  // keep the total at 100%: take the difference from the other sliders
+        let over = sliders.reduce((a, s) => a + +s.value, 0) - 100;
+        for (const s of sliders) { if (s === changed || !over) continue; const v = Math.min(Math.max(+s.value - over, 0), 100); over -= +s.value - v; s.value = v; }
+      }
+      const mix = sliders.map(s => +s.value), n = +ppd.value || 0, k = split(n, mix);
+      document.querySelectorAll('.mixv').forEach((el, i) => el.textContent = `${mix[i]}%`);
+      document.querySelectorAll('#mixbar i').forEach((el, i) => el.style.flex = mix[i]);
+      document.getElementById('mixsum').textContent = `At ${n} reels a day: ` + SRC.map((s, i) => `${k[i]} ${['Instagram', 'TikTok', 'news & trends'][i]}`).join(' · ');
+    }
+    sliders.forEach(s => s.oninput = () => show(s)); ppd.addEventListener('input', () => show()); show();
+  </script>
+</div></div>
 <div class="card" style="margin-top:16px"><div class="body">
   <p class="hook">👤 About my account</p>
   <textarea name="niche" rows="2">{{ s.niche }}</textarea>

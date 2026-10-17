@@ -3,14 +3,25 @@
 <h1>Results</h1>
 <p class="sub">Every trial reel ReelBot posted, checked at 24, 48 and 72 hours. ReelBot learns from this table for every new batch.</p>
 {% if summary %}<div class="row" style="margin-bottom:16px"><span class="tag">{{ summary.reels }} reel{{ "s" if summary.reels != 1 }} with results</span><span class="tag">median {{ summary.median|num }} views</span><span class="tag ok">best {{ summary.best|num }} views</span>
-{% if summary.risky %}<span class="tag wild">🔥 riskier: {{ summary.risky.n }}, median {{ summary.risky.median|num }}</span>{% endif %}
-{% if summary.normal and summary.risky %}<span class="tag">normal: {{ summary.normal.n }}, median {{ summary.normal.median|num }}</span>{% endif %}</div>{% endif %}
+</div>{% endif %}
+<div class="card" style="margin-bottom:16px"><div class="body">
+  <p class="hook">📊 Research mix scoreboard</p>
+  <div class="scroll" style="border:0"><table>
+    <tr><th>Source</th><th>Share of reels now</th><th>Reels with results</th><th>Median views (48–72h)</th><th>Last 30 days</th></tr>
+    {% for src in ("instagram", "tiktok", "trends") %}
+    <tr><td>{{ SOURCE_LABELS[src] }}</td><td>{{ mix[src] }}%</td><td>{{ by_source[src].reels if src in by_source else 0 }}</td>
+      <td><b>{{ by_source[src].median|num if src in by_source else '–' }}</b></td><td class="meta">{{ recent[src].median|num if src in recent else '–' }}</td></tr>
+    {% endfor %}
+  </table></div>
+  <p class="meta">{% if auto %}Rebalancing is on: every Monday the mix moves up to 10% towards the winner.{% else %}Rebalancing is off (Settings).{% endif %}
+  {% if mix_change %} Last change: {{ mix_change.reason }}.{% endif %}</p>
+</div></div>
 {% if not reels %}<div class="empty">No posted reels yet.</div>{% else %}
 <div class="scroll"><table>
 <tr><th>Reel</th><th>Predicted</th><th>Posted</th><th>24h views</th><th>48h views</th><th>72h views</th><th>Shares</th><th>Saves</th><th>Avg watch</th></tr>
 {% for r in reels %}
 <tr>
-  <td><b>“{{ r.on_screen_text }}”</b>{% if r.risky %} <span class="tag wild">🔥 riskier</span>{% endif %}<div class="meta">{{ r.angle }} · 🎵 {{ r.sound_suggestion }}{% if r.permalink %} · <a href="{{ r.permalink }}" target="_blank">open ↗</a>{% endif %}</div></td>
+  <td><b>“{{ r.on_screen_text }}”</b> <span class="tag src-{{ r.source or ('trends' if r.risky else 'instagram') }}">{{ SOURCE_LABELS[r.source or ('trends' if r.risky else 'instagram')] }}</span><div class="meta">{{ r.angle }} · 🎵 {{ r.sound_suggestion }}{% if r.permalink %} · <a href="{{ r.permalink }}" target="_blank">open ↗</a>{% endif %}</div></td>
   <td>{{ score(r.virality_score) }}</td>
   <td class="meta">{{ r.posted_at|when }}</td>
   {% for h in (24, 48, 72) %}<td>{{ r.snaps[h].views|num if h in r.snaps else '⏳' }}</td>{% endfor %}

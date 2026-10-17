@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS reels (
     created_at TEXT
 );
 CREATE TABLE IF NOT EXISTS snapshots (
-    reel_id TEXT, hours INTEGER, views INTEGER, reach INTEGER, likes INTEGER, comments INTEGER,
+    reel_id TEXT, account TEXT, hours INTEGER, views INTEGER, reach INTEGER, likes INTEGER, comments INTEGER,
     saved INTEGER, shares INTEGER, avg_watch_ms INTEGER, taken_at TEXT,
     PRIMARY KEY (reel_id, hours)
 );
@@ -52,8 +52,9 @@ CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, account
 
 # Columns added after the first release: added to older databases on start-up.
 NEW_COLUMNS = {
+    "snapshots": {"account": "TEXT"},
     "reels": {"positives": "TEXT", "negatives": "TEXT", "sound_reason": "TEXT", "trend": "TEXT",
-              "cut_reason": "TEXT", "text_reason": "TEXT", "research": "TEXT", "text_spots": "TEXT", "risky": "INTEGER"},
+              "cut_reason": "TEXT", "text_reason": "TEXT", "research": "TEXT", "text_spots": "TEXT", "risky": "INTEGER", "source": "TEXT"},
 }
 
 _lock = threading.Lock()

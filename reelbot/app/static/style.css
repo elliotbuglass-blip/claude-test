@@ -131,3 +131,9 @@ button.mini { padding: 5px 8px; font-size: 12px; border-radius: 8px; }
 .spotpick { gap: 6px; } .spotpick button { min-width: 38px; }
 .chip.col { flex-direction: column; gap: 2px; }
 .range { padding: 0; accent-color: var(--accent); }
+.tag.src-instagram { color: #d58bd0; } .tag.src-tiktok { color: #6fd3d8; } .tag.src-trends { color: #ff8a5c; }
+.mixrow label { display: flex; justify-content: space-between; color: var(--text); font-size: 14px; }
+.mixrow .meta { margin-top: 0; }
+.mixbar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; margin: 14px 0 6px; background: var(--panel2); }
+.mixbar i { display: block; } .mb-instagram { background: #d58bd0; } .mb-tiktok { background: #6fd3d8; } .mb-trends { background: #ff8a5c; }
+.opt input[type=checkbox] { width: auto; accent-color: var(--accent); }
