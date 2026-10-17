@@ -13,7 +13,7 @@
     <div class="body">
       <p class="hook">“{{ r.on_screen_text }}”</p>
       <div class="row" style="margin-top:0">{{ score(r.virality_score) }} <span class="tag">{{ r.angle }}</span>
-        {% if r.trend %}<span class="tag wild">🔥 Wildcard: {{ r.trend }}</span>{% endif %}</div>
+        {% if r.trend %}<span class="tag wild">🔥 Riskier · {{ r.trend }}</span>{% elif r.risky %}<span class="tag wild">🔥 Riskier · bold experiment</span>{% endif %}</div>
       <p class="meta">{{ r.score_reason }}</p>
       {% if pos or neg %}<ul class="reasons">
         {% for p in pos %}<li class="plus">{{ p }}</li>{% endfor %}

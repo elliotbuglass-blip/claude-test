@@ -90,7 +90,8 @@ audio:
 mode: review
 
 autopilot:
-  posts_per_day: 5
+  posts_per_day: 5          # trial reels per day (both modes)
+  risky_share: 0            # % of them that are riskier, trend-led reels
   post_times: ["09:00", "12:00", "15:00", "18:00", "21:00"]   # UK time
   max_per_run: 2
   # Things it's allowed to experiment with, and learn from:

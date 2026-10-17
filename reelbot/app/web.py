@@ -268,6 +268,9 @@ async def results(request: Request):
     if scored:
         views = [(r["snaps"].get(72) or r["snaps"].get(48))["views"] or 0 for r in scored]
         summary = {"reels": len(scored), "median": int(statistics.median(views)), "best": max(views)}
+        for flag, key in ((1, "risky"), (0, "normal")):
+            v = [(r["snaps"].get(72) or r["snaps"].get(48))["views"] or 0 for r in scored if (r["risky"] or 0) == flag]
+            summary[key] = {"n": len(v), "median": int(statistics.median(v))} if v else None
     return page("results.html", request, reels=reels, summary=summary)
 
 
@@ -294,7 +297,7 @@ async def settings_page(request: Request):
         for key in ("mode", "niche", "times_mode", "text_style", "grade", "hashtags"):
             if key in form:
                 db.set_setting(key, form[key])
-        for key in ("posts_per_day", "reels_per_clip", "reel_seconds"):
+        for key in ("posts_per_day", "risky_share", "reels_per_clip", "reel_seconds"):
             if form.get(key):
                 db.set_setting(key, int(form[key]))
         db.set_setting("broll_silent", form.get("broll_silent") == "1")

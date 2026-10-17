@@ -130,3 +130,4 @@ button.mini { padding: 5px 8px; font-size: 12px; border-radius: 8px; }
 .spots { width: 100%; border-radius: 8px; margin-top: 8px; }
 .spotpick { gap: 6px; } .spotpick button { min-width: 38px; }
 .chip.col { flex-direction: column; gap: 2px; }
+.range { padding: 0; accent-color: var(--accent); }

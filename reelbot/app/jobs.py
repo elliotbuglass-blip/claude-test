@@ -30,7 +30,8 @@ from . import brain, db
 EDITABLE = {  # setting key -> (path in config.yaml, label)
     "mode": ("mode", "Mode"),
     "niche": ("niche", "About my account"),
-    "posts_per_day": ("autopilot.posts_per_day", "Posts per day"),
+    "posts_per_day": ("autopilot.posts_per_day", "Reels per day"),
+    "risky_share": ("autopilot.risky_share", "Share of riskier, trend-led reels (%)"),
     "times_mode": ("autopilot.times_mode", "Posting times"),
     "post_times": ("autopilot.post_times", "Manual posting times"),
     "reels_per_clip": ("clips.variants_per_clip", "Reels per clip"),
@@ -64,6 +65,7 @@ def cfg():
         if value is not None:
             _set(c, path, value)
     c.setdefault("autopilot", {}).setdefault("times_mode", "best")
+    c["autopilot"].setdefault("risky_share", 0)
     c.setdefault("clips", {}).setdefault("broll_silent", True)
     c["audio"]["folder"] = str(db.AUDIO_DIR)
     return c
@@ -280,11 +282,23 @@ def refresh_look(reels):
 
 # --------------------------------------------------------------------------- planning
 
+FALLBACK_TIMES = ["16:00", "11:00", "07:00", "15:00", "13:00", "19:00", "09:00", "21:00", "12:00", "18:00"]
+
+
 def posting_times():
+    """One time per reel per day: your best hours first, topped up with sensible times if you post a lot."""
     if setting("times_mode") == "manual":
         return sorted(setting("post_times") or ["09:00", "12:00", "15:00", "18:00", "21:00"])
+    n = int(setting("posts_per_day") or 5)
     best = db.latest_research("best_times")
-    return best["recommended"] if best and best["recommended"] else ["07:00", "11:00", "13:00", "15:00", "16:00"]
+    ranked = [f"{h['hour']:02d}:00" for h in best["hours"]] if best else []
+    times = list(dict.fromkeys(ranked + FALLBACK_TIMES))[:n]
+    return sorted(times)
+
+
+def risky_count(n):
+    """How many of n reels should be the riskier, trend-led kind (rounded half up)."""
+    return math.floor(n * int(setting("risky_share") or 0) / 100 + 0.5)
 
 
 def next_free_slots(count, start_day=None):
@@ -307,7 +321,7 @@ def next_free_slots(count, start_day=None):
 
 def learnings():
     """What's worked in my own trial reels, from their 72h (or latest) results."""
-    rows = db.q("""SELECT r.angle, r.sound_suggestion, r.track, r.virality_score, r.on_screen_text,
+    rows = db.q("""SELECT r.risky, r.angle, r.sound_suggestion, r.track, r.virality_score, r.on_screen_text,
                           MAX(s.hours) AS hours, s.views FROM reels r JOIN snapshots s ON s.reel_id = r.id
                    GROUP BY r.id""")
     if not rows:
@@ -317,6 +331,10 @@ def learnings():
         by_angle[r["angle"]].append(r["views"] or 0)
     lines = [f"- angle '{a}': {len(v)} reels, median {int(statistics.median(v)):,} views"
              for a, v in sorted(by_angle.items(), key=lambda x: -statistics.median(x[1]))]
+    for flag, label in ((1, "riskier trend-led"), (0, "normal")):
+        v = [r["views"] or 0 for r in rows if (r["risky"] or 0) == flag]
+        if v:
+            lines.append(f"- {label} reels: {len(v)}, median {int(statistics.median(v)):,} views")
     best = sorted(rows, key=lambda r: -(r["views"] or 0))[:5]
     worst = sorted(rows, key=lambda r: r["views"] or 0)[:5]
     lines.append("Best: " + " | ".join(f'"{r["on_screen_text"]}" {r["views"]:,} (predicted {r["virality_score"]})' for r in best))
@@ -358,7 +376,7 @@ def build_context(topic):
     return "\n\n".join(parts)
 
 
-def make_reels(clip_id, n=None, post_at=None):
+def make_reels(clip_id, n=None, post_at=None, risky=None):
     """Plan + render n reels for one clip. Review mode → drafts; autopilot → scheduled."""
     c = cfg()
     clip = db.one("SELECT * FROM clips WHERE id = ?", clip_id)
@@ -376,7 +394,8 @@ def make_reels(clip_id, n=None, post_at=None):
             db.log(f"Topic research skipped: {e}")
     library = sorted(p.name for p in db.AUDIO_DIR.glob("*") if p.suffix.lower() in editor.AUDIO_EXTS)
     info = {"filename": clip["filename"], "subject": clip["subject"], "notes": clip["notes"], "seconds": clip["duration"]}
-    plans = brain.plan_reels(_frames(clip["path"], 3), info, n, build_context(topic), library)
+    risky = risky_count(n) if risky is None else risky
+    plans = brain.plan_reels(_frames(clip["path"], 3), info, n, build_context(topic), library, risky)
     mode = setting("mode")
     slots = post_at or next_free_slots(len(plans))
     research = research_snapshot(topic)
@@ -385,7 +404,8 @@ def make_reels(clip_id, n=None, post_at=None):
         trend = plan.get("trend") or ""
         db.insert("reels", {
             "id": reel_id, "clip_id": clip_id,
-            **{k: plan[k] for k in plan if k not in ("track", "positives", "negatives", "trend")},
+            **{k: plan[k] for k in plan if k not in ("track", "positives", "negatives", "trend", "risky")},
+            "risky": 1 if plan.get("risky") else 0,
             "positives": json.dumps(plan.get("positives", [])), "negatives": json.dumps(plan.get("negatives", [])),
             "trend": trend, "research": json.dumps(research | {"trend": next(
                 (t for t in (db.latest_research("trends") or {}).get("items", []) if t["term"].lower() == trend.lower()), None)
@@ -489,9 +509,8 @@ def render_reel(reel_id):
 
 
 def autopilot_daily():
-    """Autopilot: tomorrow's posts from clips that haven't been used yet (oldest first)."""
-    if setting("mode") != "autopilot":
-        return
+    """Every morning, fill tomorrow's slots (your reels-per-day) from clips not used yet, oldest first.
+    Autopilot schedules them; review mode leaves them waiting for your OK at their suggested times."""
     n = int(setting("posts_per_day") or 5)
     tomorrow = local_now().date() + timedelta(days=1)
     slots = next_free_slots(n, tomorrow)
@@ -503,13 +522,17 @@ def autopilot_daily():
     if not clips:
         db.log("Autopilot: no clips to use. Upload some main clips.")
         return
+    planned, risky_left = len(slots), risky_count(len(slots))
     per_clip = math.ceil(len(slots) / len(clips))
     for clip in clips:
         mine = slots[:per_clip]
         slots = slots[per_clip:]
         if mine:
-            make_reels(clip["id"], len(mine), post_at=mine)
-    db.log(f"Autopilot planned {n} trial reels for {tomorrow}")
+            risky = min(risky_left, math.ceil(len(mine) * risky_left / (len(mine) + len(slots))))
+            risky_left -= risky
+            make_reels(clip["id"], len(mine), post_at=mine, risky=risky)
+    db.log(f"Planned {planned} trial reels for {tomorrow} ({risky_count(planned)} riskier)"
+           + (" — waiting for your review" if setting("mode") == "review" else ""))
 
 
 # --------------------------------------------------------------------------- posting + results
