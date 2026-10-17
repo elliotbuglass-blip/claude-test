@@ -1,0 +1,27 @@
+<div class="pipe">
+{% for key, label, items in stages %}
+  <div class="stage s-{{ key }}">
+    <div class="stage-h"><span class="dot"></span>{{ label }} <b>{{ items|length }}</b></div>
+    {% for it in items[:12] %}
+      {% if it.type == 'clip' %}
+        <div class="chip col"><div class="chip-t">🎬 {{ it.filename }}</div>
+          <div class="meta">{% if key == 'analysing' %}⏳ watching the clip…{% else %}🔎 researching hooks, sounds &amp; trends…{% endif %}</div>
+          {% if it.subject %}<div class="meta">{{ it.subject }}</div>{% endif %}</div>
+      {% else %}
+        <a class="chip" href="{{ '/review' if key == 'review' else '/calendar' if key == 'scheduled' else '/results' if key in ('posted','done') else '#' }}">
+          {% if it.status not in ('rendering',) and it.video_path %}<img src="/thumb/{{ it.id }}.jpg" alt="" loading="lazy">{% endif %}
+          <div><div class="chip-t">“{{ it.on_screen_text }}”</div>
+          <div class="meta">
+            {% if it.status == 'rendering' %}⏳ editing…{% elif it.status == 'failed' %}<span class="s-low">✗ failed</span>
+            {% elif key == 'scheduled' %}⏰ {{ it.post_at|when }}{% if it.status == 'posting' %} · posting…{% endif %}
+            {% elif key in ('posted','done') %}{{ it.posted_at|when }}{% if it.snap %} · {{ it.snap.views|num }} views ({{ it.snap.hours }}h){% endif %}
+            {% else %}{{ it.virality_score }}/100 · {{ it.angle }}{% endif %}
+            {% if it.trend %} · 🔥 {{ it.trend }}{% endif %}
+          </div></div></a>
+      {% endif %}
+    {% else %}<div class="meta empty-s">—</div>{% endfor %}
+    {% if items|length > 12 %}<div class="meta">+{{ items|length - 12 }} more</div>{% endif %}
+  </div>
+{% endfor %}
+</div>
+{% if brolls %}<p class="meta" style="margin-top:12px">🎞 B-roll library: {% for b in brolls %}{{ b.filename }}{{ ' (analysing…)' if b.status in ('new','analysing') }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}

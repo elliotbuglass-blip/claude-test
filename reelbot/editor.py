@@ -61,35 +61,100 @@ def loudest_start(path, duration, length, window=0.25):
 SAFE_TOP, SAFE_BOTTOM = 0.14, 0.62
 
 
-def auto_text_position(clip, start, length, n_lines=1, size=40):
-    """Pick where to put the text: the darkest, calmest band inside Instagram's safe zone.
-
-    Samples a few frames from the part of the clip we'll use and scores each horizontal band
-    (centre 70% of the width) by brightness + busyness, so white text stays readable.
-    """
-    w, h = 54, 96
+def _gray_frames(clip, start, length, w, h, n=5):
     frames = []
-    for i in range(5):
-        t = start + length * (i + 0.5) / 5
+    for i in range(n):
+        t = start + length * (i + 0.5) / n
         raw = subprocess.run(
             ["ffmpeg", "-v", "error", "-ss", f"{t:.2f}", "-i", str(clip), "-frames:v", "1",
              "-vf", f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},scale={w}:{h},format=gray",
              "-f", "rawvideo", "-"], capture_output=True).stdout
         if len(raw) == w * h:
             frames.append(raw)
+    return frames
+
+
+def text_spots(clip, start, length, n_lines=1, size=40, k=4, spread=False):
+    """Up to k candidate text positions inside Instagram's safe zone, best first
+    (or, with spread=True, spaced out from top to bottom of the safe zone).
+
+    A good spot is dark enough for white text and *calm*: few edges, so it's empty
+    background (wall, sky, floor, seat) rather than the car, the wheel, hands or a face.
+    """
+    w, h = 108, 192
+    frames = _gray_frames(clip, start, length, w, h)
     if not frames:
-        return 0.3
-    block = max(int(h * (n_lines * size * 1.18 / H)) + 1, 2)
-    x0, x1 = int(w * 0.15), int(w * 0.85)
-    best, best_score = SAFE_TOP, None
+        return [(0.3, 0.0)]
+    block = max(int(h * (n_lines * size * 1.18 / H)) + 2, 3)
+    x0, x1 = int(w * 0.12), int(w * 0.88)
+    scored = []
     for top in range(int(h * SAFE_TOP), int(h * SAFE_BOTTOM) - block + 1):
-        vals = [f[y * w + x] for f in frames for y in range(top, top + block) for x in range(x0, x1)]
-        mean = sum(vals) / len(vals)
-        busy = (sum((v - mean) ** 2 for v in vals) / len(vals)) ** 0.5
-        score = mean + 0.6 * busy
-        if best_score is None or score < best_score:
-            best, best_score = top / h, score
-    return round(best, 3)
+        bright = edges = count = 0
+        for f in frames:
+            for y in range(top, top + block):
+                row = y * w
+                for x in range(x0, x1):
+                    v = f[row + x]
+                    bright += v
+                    edges += abs(v - f[row + x + 1]) + abs(v - f[row + w + x])
+                    count += 1
+        scored.append((top / h, 0.5 * bright / count + 3.0 * edges / count))
+    if spread:  # evenly spaced bands top to bottom (for the AI check), each nudged to its calmest nearby spot
+        step = (scored[-1][0] - scored[0][0]) / max(k - 1, 1)
+        picks = []
+        for i in range(k):
+            target = scored[0][0] + i * step
+            near = [x for x in scored if abs(x[0] - target) <= step / 2 + 1e-9
+                    and all(abs(x[0] - p) > block / h for p, _ in picks)]
+            if near:
+                pos, score = min(near, key=lambda x: x[1])
+                picks.append((round(pos, 3), round(score, 1)))
+        return picks
+    scored.sort(key=lambda s: s[1])
+    picks = []
+    for pos, score in scored:  # keep spots that don't overlap each other
+        if all(abs(pos - p) > block / h for p, _ in picks):
+            picks.append((round(pos, 3), round(score, 1)))
+        if len(picks) == k:
+            break
+    return picks
+
+
+def band_brightness(clip, start, length, pos, n_lines=1, size=40):
+    """Average brightness (0–255) of the strip the text will sit on."""
+    w, h = 108, 192
+    frames = _gray_frames(clip, start, length, w, h, n=3)
+    top = int(pos * h)
+    block = max(int(h * (n_lines * size * 1.18 / H)) + 2, 3)
+    vals = [f[y * w + x] for f in frames for y in range(top, min(top + block, h)) for x in range(int(w * 0.2), int(w * 0.8))]
+    return sum(vals) / len(vals) if vals else 0
+
+
+def auto_text_position(clip, start, length, n_lines=1, size=40):
+    """The best text spot by the calm/dark measure alone (used when Claude isn't available)."""
+    return text_spots(clip, start, length, n_lines, size, k=1)[0][0]
+
+
+def spots_preview(clip, start, length, spots, n_lines, size, out_path):
+    """A picture of 3 moments from the reel with the candidate text spots drawn as numbered boxes."""
+    block = n_lines * size * 1.18
+    boxes = ",".join(
+        f"drawbox=x=iw*0.12:y={int(pos * H)}:w=iw*0.76:h={int(block)}:color=yellow@0.9:t=6,"
+        f"drawtext=fontfile='{FONT_DIR / 'LiberationSerif-Regular.ttf'}':text='{i + 1}':fontsize=90:fontcolor=yellow"
+        f":x=w*0.04:y={int(pos * H)}"
+        for i, (pos, _) in enumerate(spots))
+    parts = []
+    for i in range(3):
+        t = start + length * (i + 0.5) / 3
+        part = out_path.with_name(f"{out_path.stem}_{i}.jpg")
+        _run(["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.2f}", "-i", str(clip), "-frames:v", "1", "-vf",
+              f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},{boxes},scale=360:-2", str(part)])
+        parts.append(part)
+    _run(["ffmpeg", "-y", "-v", "error", *sum((["-i", str(p)] for p in parts), []),
+          "-filter_complex", "hstack=inputs=3", str(out_path)])
+    for part in parts:
+        part.unlink(missing_ok=True)
+    return out_path
 
 
 def extract_frame(path, at_seconds, out_path):
@@ -139,7 +204,71 @@ GRADES = {
     "natural": "eq=contrast=1.08:brightness=-0.045:saturation=1.1:gamma=0.95",
     "moody": "eq=contrast=1.08:brightness=-0.03:saturation=0.82,vignette=PI/5",
     "none": None,
+    "match": None,  # copy the colours of my own posted reels (needs a reference, see match_look)
 }
+
+
+PCTS = (0.02, 0.10, 0.25, 0.50, 0.75, 0.90, 0.98)
+
+
+def look_stats(frames_rgb):
+    """Brightness curve (luma percentiles) and colourfulness of some raw RGB24 frames."""
+    lumas, chroma = [], []
+    for raw in frames_rgb:
+        for i in range(0, len(raw) - 2, 3):
+            r, g, b = raw[i], raw[i + 1], raw[i + 2]
+            lumas.append(0.299 * r + 0.587 * g + 0.114 * b)
+            chroma.append(max(r, g, b) - min(r, g, b))
+    lumas.sort()
+    return {"luma": [round(lumas[int(p * (len(lumas) - 1))], 1) for p in PCTS],
+            "chroma": round(sum(chroma) / max(len(chroma), 1), 2)}
+
+
+def _clip_frames(clip, start, length, n=6):
+    out = []
+    for i in range(n):
+        t = start + length * (i + 0.5) / n
+        raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{t:.2f}", "-i", str(clip), "-frames:v", "1",
+                              "-vf", f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},scale=90:160",
+                              "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True).stdout
+        if len(raw) == 90 * 160 * 3:
+            out.append(raw)
+    return out
+
+
+def match_look(clip, start, length, reference, strength=0.8):
+    """A colour filter that moves this clip towards the look of my own posted reels.
+
+    reference = {"frames": [look_stats(frame), ...]} from my reels. Only the reference frames
+    closest in brightness to this clip are used, so an outdoor walk-up is matched against
+    my outdoor reels and an interior shot against my interior reels. Then the brightness
+    curve is matched point by point (shadows, mids, highlights) and colourfulness after it.
+    """
+    mine = look_stats(_clip_frames(clip, start, length))
+    frames = sorted(reference["frames"], key=lambda f: abs(f["luma"][3] - mine["luma"][3]) + abs(f["luma"][5] - mine["luma"][5]))
+    near = frames[: max(4, len(frames) // 4)]
+    ref_luma = [sum(f["luma"][i] for f in near) / len(near) for i in range(len(PCTS))]
+    ref_chroma = sum(f["chroma"] for f in near) / len(near)
+    points = ["0/0"]
+    last_x, last_y = 0.0, 0.0
+    for x, y in zip(mine["luma"], ref_luma):
+        x, y = x / 255, (x + strength * (y - x)) / 255
+        if x > last_x + 0.01 and y >= last_y:
+            points.append(f"{x:.3f}/{y:.3f}")
+            last_x, last_y = x, y
+    points.append("1/1")
+    sat = 1 + strength * (ref_chroma / max(mine["chroma"], 1) - 1)
+    return f"curves=master='{' '.join(points)}',eq=saturation={max(0.7, min(sat, 1.15)):.2f}"
+
+
+def build_reference(videos, per_video=3):
+    """A colour reference from my own posted reels, for match_look."""
+    frames = []
+    for v in videos:
+        duration, _ = probe(v)
+        for raw in _clip_frames(v, 0, max(duration - 0.5, 1), n=per_video):
+            frames.append(look_stats([raw]))
+    return {"frames": frames}
 
 
 def _text_filters(caption, look):
@@ -151,7 +280,8 @@ def _text_filters(caption, look):
     # Never let the text slip into the parts Instagram covers.
     pos = min(max(float(look["text_position"]), SAFE_TOP), SAFE_BOTTOM - len(lines) * line_h / H)
     top = int(H * pos)
-    shadow = f":shadowcolor=black@{style['shadow']}:shadowx=1:shadowy=2" if style["shadow"] else ""
+    strength = look.get("shadow") or style["shadow"]
+    shadow = f":shadowcolor=black@{strength}:shadowx=1:shadowy=2" if strength else ""
     return [
         f"drawtext=fontfile='{font}':text='{_escape(line)}':fontsize={size}:fontcolor=white{shadow}"
         f":x=(w-text_w)/2:y={top + i * line_h}"
@@ -168,7 +298,11 @@ def render(clip, out_path, caption, start, length, look, audio_cfg, broll=None):
     """Make one reel. broll = {"clip": path, "start": s, "at": s, "seconds": s} cuts a b-roll
     shot in over the main clip (the main clip's sound keeps playing underneath)."""
     frame = f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},fps=30"
-    grade = GRADES[look.get("grade") or ("moody" if look.get("moody_grade") else "natural")]
+    grade_name = look.get("grade") or ("moody" if look.get("moody_grade") else "natural")
+    if grade_name == "match" and look.get("reference"):
+        grade = match_look(clip, start, length, look["reference"])
+    else:
+        grade = GRADES.get(grade_name, GRADES["natural"])
 
     _, has_audio = probe(clip)
     mode = audio_cfg["mode"]

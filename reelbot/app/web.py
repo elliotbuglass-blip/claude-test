@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import statistics
+from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -38,6 +39,7 @@ def _fmt_time(value):
 
 templates.filters["when"] = _fmt_time
 templates.filters["num"] = lambda v: f"{v:,}" if isinstance(v, (int, float)) else "–"
+templates.filters["fromjson"] = lambda v: json.loads(v) if v else None
 
 
 def page(name, request, **ctx):
@@ -76,9 +78,21 @@ async def login(request: Request):
 
 # --------------------------------------------------------------------------- review
 
+def look_note(grade, look):
+    if grade == "match":
+        return (f"Matched to the colours of your last {look['reels']} reels" if look else
+                "Matched to the colours of your recent reels") + \
+               " (shadows, mid-tones and highlights copied from the closest-looking scenes, then colour strength)"
+    return {"natural": "Natural: real colour, slightly low exposure", "moody": "Moody: desaturated with a vignette",
+            "none": "No colour change"}.get(grade, grade)
+
+
 async def review(request: Request):
     reels = db.q("""SELECT r.*, c.filename FROM reels r JOIN clips c ON c.id = r.clip_id
                     WHERE r.status IN ('draft', 'rendering', 'failed') ORDER BY r.created_at DESC""")
+    look = db.latest_research("look")
+    for r in reels:
+        r["look_note"] = look_note(r["grade"], look)
     brolls = db.q("SELECT * FROM clips WHERE kind = 'broll' ORDER BY created_at DESC")
     return page("review.html", request, reels=reels, brolls=brolls,
                 times=jobs.next_free_slots(6))
@@ -89,7 +103,15 @@ async def reel_action(request: Request):
     form = await request.form()
     reel = db.one("SELECT * FROM reels WHERE id = ?", reel_id)
     if action == "approve":
-        jobs.approve(reel_id, form.get("post_at") or reel["recommended_time"])
+        when = form.get("post_at") or reel["recommended_time"]
+        if when == "now":
+            jobs.post_now(reel_id)
+        else:
+            jobs.approve(reel_id, form.get("custom_at") if when == "custom" and form.get("custom_at") else when)
+    elif action == "spot":
+        jobs.pick_text_spot(reel_id, int(form.get("spot") or 0))
+    elif action == "postnow":
+        jobs.post_now(reel_id)
     elif action == "reject":
         db.update("reels", reel_id, status="rejected")
     elif action == "unschedule":
@@ -109,7 +131,13 @@ async def reel_action(request: Request):
 
 
 async def thumb(request: Request):
-    path = db.RENDERS_DIR / f"{request.path_params['id']}.jpg"
+    name = request.path_params["id"]
+    path = db.RENDERS_DIR / f"{name}.jpg"
+    return FileResponse(path, media_type="image/jpeg") if path.exists() else HTMLResponse("", 404)
+
+
+def thumb_spots(request):
+    path = db.RENDERS_DIR / f"{request.path_params['id']}_spots.jpg"
     return FileResponse(path, media_type="image/jpeg") if path.exists() else HTMLResponse("", 404)
 
 
@@ -129,6 +157,40 @@ async def clips_page(request: Request):
     return page("clips.html", request, clips=clips)
 
 
+STAGES = [("analysing", "Uploaded · analysing"), ("making", "Researching · making reels"), ("review", "Waiting for you"),
+          ("scheduled", "Scheduled"), ("posted", "Posted · tracking 24/48/72h"), ("done", "Results in")]
+
+
+def pipeline():
+    """Every clip and reel, put in the column for the stage it's at."""
+    cols = {k: [] for k, _ in STAGES}
+    for c in db.q("SELECT * FROM clips WHERE kind = 'main' AND status IN ('new', 'analysing', 'analysed', 'making') ORDER BY created_at DESC"):
+        stage = "making" if c["status"] == "making" else "analysing"
+        if c["status"] == "analysed":  # analysed, not made yet: in review mode reels are on the way; autopilot uses it later
+            stage = "making" if jobs.setting("mode") == "review" else "analysing"
+        cols[stage].append({"type": "clip", **c})
+    done = {s["reel_id"] for s in db.q("SELECT reel_id FROM snapshots WHERE hours = 72")}
+    snaps = {s["reel_id"]: s for s in db.q("SELECT * FROM snapshots ORDER BY hours")}
+    for r in db.q("""SELECT r.*, c.filename FROM reels r JOIN clips c ON c.id = r.clip_id
+                     WHERE r.status != 'rejected' ORDER BY COALESCE(r.post_at, r.created_at) DESC LIMIT 200"""):
+        stage = {"rendering": "making", "draft": "review", "failed": "review", "scheduled": "scheduled",
+                 "posting": "scheduled", "posted": "done" if r["id"] in done else "posted"}[r["status"]]
+        cols[stage].append({"type": "reel", "snap": snaps.get(r["id"]), **r})
+    brolls = db.q("SELECT * FROM clips WHERE kind = 'broll' ORDER BY created_at DESC")
+    return [(k, label, cols[k]) for k, label in STAGES], brolls
+
+
+async def upload_page(request: Request):
+    stages, brolls = pipeline()
+    return page("upload.html", request, stages=stages, brolls=brolls)
+
+
+async def pipeline_part(request: Request):
+    stages, brolls = pipeline()
+    html = templates.get_template("_pipeline.html").render(stages=stages, brolls=brolls, busy=jobs.busy())
+    return HTMLResponse(html)
+
+
 async def upload(request: Request):
     form = await request.form()
     kind = form.get("kind") or None
@@ -146,7 +208,9 @@ async def upload(request: Request):
             with (db.AUDIO_DIR / Path(f.filename).name).open("wb") as out:
                 shutil.copyfileobj(f.file, out, 1 << 20)
     db.log(f"Uploaded {count} clip(s)")
-    return RedirectResponse("/clips", 303)
+    if request.headers.get("x-requested-with") == "fetch":
+        return JSONResponse({"ok": True, "clips": count})
+    return RedirectResponse(request.headers.get("referer", "/upload"), 303)
 
 
 async def clip_action(request: Request):
@@ -167,10 +231,27 @@ async def clip_action(request: Request):
 
 # --------------------------------------------------------------------------- schedule + results
 
-async def schedule(request: Request):
-    reels = db.q("""SELECT r.*, c.filename FROM reels r JOIN clips c ON c.id = r.clip_id
-                    WHERE r.status IN ('scheduled', 'posting') ORDER BY r.post_at""")
-    return page("schedule.html", request, reels=reels, times=jobs.posting_times())
+async def calendar(request: Request):
+    week = int(request.query_params.get("week", 0))
+    today = jobs.local_now().date()
+    monday = today - timedelta(days=today.weekday()) + timedelta(weeks=week)
+    end = monday + timedelta(days=7)
+    rows = db.q("""SELECT r.*, c.filename FROM reels r JOIN clips c ON c.id = r.clip_id
+                   WHERE r.status IN ('scheduled', 'posting', 'posted', 'failed', 'draft')""")
+    snaps = {s["reel_id"]: s for s in db.q("SELECT * FROM snapshots ORDER BY hours")}
+    days = {monday + timedelta(days=i): [] for i in range(7)}
+    for r in rows:
+        when = r["posted_at"] if r["status"] == "posted" else r["post_at"] or (r["recommended_time"] if r["status"] == "draft" else None)
+        if not when:
+            continue
+        d = datetime.fromisoformat(when).date()
+        if monday <= d < end:
+            days[d].append({**r, "when": when, "snap": snaps.get(r["id"])})
+    for items in days.values():
+        items.sort(key=lambda r: r["when"])
+    counts = Counter(r["status"] for items in days.values() for r in items)
+    return page("calendar.html", request, days=days, week=week, today=today, monday=monday, sunday=end - timedelta(days=1), counts=counts,
+                times=jobs.posting_times())
 
 
 async def results(request: Request):
@@ -199,9 +280,12 @@ async def research(request: Request):
             jobs.submit("competitor radar", jobs.run_radar)
         elif form.get("run") == "history":
             jobs.submit("refresh history", jobs.refresh_history)
+        elif form.get("run") == "trends":
+            jobs.submit("google trends", jobs.google_trends, 0)
         return RedirectResponse("/research", 303)
     return page("research.html", request, best=db.latest_research("best_times"), topic=db.latest_research("topic"),
-                radar=db.latest_research("radar"), times=jobs.posting_times())
+                radar=db.latest_research("radar"), times=jobs.posting_times(), trends=db.latest_research("trends"),
+                look=db.latest_research("look"))
 
 
 async def settings_page(request: Request):
@@ -228,7 +312,7 @@ async def settings_page(request: Request):
 
 
 async def home(request: Request):
-    return RedirectResponse("/review", 303)
+    return RedirectResponse("/upload", 303)
 
 
 async def health(request: Request):
@@ -240,10 +324,11 @@ routes = [
     Route("/login", login, methods=["GET", "POST"]),
     Route("/review", review),
     Route("/reels/{id}/{action}", reel_action, methods=["POST"]),
-    Route("/video/{id}.mp4", video), Route("/thumb/{id}.jpg", thumb),
-    Route("/clips", clips_page), Route("/upload", upload, methods=["POST"]),
+    Route("/video/{id}.mp4", video), Route("/thumb/{id}.jpg", thumb), Route("/spots/{id}.jpg", thumb_spots),
+    Route("/clips", clips_page), Route("/upload", upload_page), Route("/upload", upload, methods=["POST"]),
+    Route("/pipeline", pipeline_part), Route("/calendar", calendar),
     Route("/clips/{id}/{action}", clip_action, methods=["POST"]),
-    Route("/schedule", schedule), Route("/results", results),
+    Route("/schedule", lambda r: RedirectResponse("/calendar", 303)), Route("/results", results),
     Route("/research", research, methods=["GET", "POST"]),
     Route("/settings", settings_page, methods=["GET", "POST"]),
     Mount("/static", StaticFiles(directory=HERE / "static"), name="static"),

@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ReelBot</title>
   <link rel="stylesheet" href="/static/style.css">
-  {% if busy %}<meta http-equiv="refresh" content="20">{% endif %}
+  {% if busy and nav != '/upload' %}<meta http-equiv="refresh" content="20">{% endif %}
 </head>
 <body>
 <header><div class="bar">
   <a class="logo" href="/">ReelBot</a>
   <nav>
-    {% for path, label in [("/review","Review"),("/clips","Clips"),("/schedule","Schedule"),("/results","Results"),("/research","Research"),("/settings","Settings")] %}
+    {% for path, label in [("/upload","Upload"),("/review","Review"),("/calendar","Calendar"),("/results","Results"),("/research","Research"),("/clips","Library"),("/settings","Settings")] %}
       <a href="{{ path }}" class="{{ 'on' if nav.startswith(path) }}">{{ label }}</a>
     {% endfor %}
   </nav>

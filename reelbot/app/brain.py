@@ -99,11 +99,15 @@ PLAN_SCHEMA = {
             "inspired_by": {"type": "string"},
             "sound_suggestion": {"type": "string"},
             "track": {"type": "string"},
+            "sound_reason": {"type": "string"},
             "virality_score": {"type": "integer"},
             "score_reason": {"type": "string"},
+            "positives": {"type": "array", "items": {"type": "string"}},
+            "trend": {"type": "string"},
+            "negatives": {"type": "array", "items": {"type": "string"}},
         },
-        "required": ["on_screen_text", "post_caption", "angle", "inspired_by", "sound_suggestion",
-                     "track", "virality_score", "score_reason"],
+        "required": ["on_screen_text", "post_caption", "angle", "inspired_by", "sound_suggestion", "sound_reason",
+                     "track", "virality_score", "score_reason", "positives", "negatives", "trend"],
         "additionalProperties": False}}},
     "required": ["reels"],
     "additionalProperties": False,
@@ -117,11 +121,20 @@ Hook rules:
 - Every reel in a batch must test a clearly different angle (e.g. spec flex, sound, humour, relatable POV, money/value question, identity).
 - Learn from results: lean into angles and sounds that won in the creator's own trial reels and away from those that lost, but keep about 1 in 5 reels as a fresh experiment.
 
+Trend wildcards: if TRENDING NOW lists something that genuinely ties to what's in the clip (e.g. a new Batman film
+trending + a black car → "Bruce Wayne spec"), make 1 (at most 2) of the reels a riskier wildcard riding that trend.
+Set trend to the trend's name for those reels (and "" for all others). Skip it if nothing fits naturally; a forced
+trend tie-in looks cringe. Never use tragedies, politics or news about real people's misfortune.
+
 post_caption: usually the hook or a close variant, one emoji allowed.
 sound_suggestion: the best-fitting trending Instagram sound from the research (name — artist), or "original audio (engine)" when the clip's own sound is the point (start-ups, revs). Most winning car reels use original audio.
+sound_reason: one line on why this sound (cite the research, e.g. "9 of the top 12 DB12 reels use engine audio").
 track: a filename from the creator's own music library that fits the mood, or "" to keep the clip's own sound. Only use a library track when the clip's sound isn't the point.
 
-virality_score (0–100): your honest prediction of how this reel will do *for this creator*, relative to their normal trial reels (50 = typical, 80+ = likely a top-10% reel). Base it on: how well similar reels (topic and competitor) did, how the creator's past reels with this angle or sound did, the strength of the hook, and the clip's moment. score_reason: one line naming the main evidence."""
+virality_score (0–100): your honest prediction of how this reel will do *for this creator*, relative to their normal trial reels (50 = typical, 80+ = likely a top-10% reel). Base it on: how well similar reels (topic and competitor) did, how the creator's past reels with this angle or sound did, the strength of the hook, and the clip's moment. score_reason: one line naming the main evidence.
+positives: 2–4 short reasons it could do well, each citing real evidence from the research or the creator's results (numbers where you have them).
+negatives: 1–3 short honest risks that could hold it back (e.g. "no text hooks in the top DB12 reels", "similar line flopped for you at 3.1K").
+inspired_by: name the exact source — the winning reel(s) or pattern this hook adapts, with account and views, e.g. "@itisbainz 'POV: …' 412K (5.2x his median)" or "your own 'Sunday spec' reel, 61K"."""
 
 
 def plan_reels(frames, clip_info, n, context, library):
@@ -134,3 +147,28 @@ MY MUSIC LIBRARY (filenames for `track`): {", ".join(library) or "(empty — use
 Plan {n} different reels for this clip."""
     return _ask([*_images(frames), {"type": "text", "text": text}], PLAN_SCHEMA,
                 system=PLAN_SYSTEM, effort="medium")["reels"][:n]
+
+
+SPOT_SCHEMA = {
+    "type": "object",
+    "properties": {"spot": {"type": "integer"}, "reason": {"type": "string"}},
+    "required": ["spot", "reason"],
+    "additionalProperties": False,
+}
+
+
+def choose_text_spot(preview_jpg, n_spots, text, examples=""):
+    """Look at the numbered candidate boxes on 3 moments of the reel and pick where the text should go."""
+    prompt = f"""This picture shows 3 moments (left to right) from a vertical Instagram reel. The yellow boxes numbered 1–{n_spots}
+(top to bottom) are candidate places for one line of small, thin white on-screen text: "{text}".
+
+Pick the box where the text will be easiest to read AND blocks nothing important, in all 3 moments:
+1. Readability first: the background must be dark or mid-toned and even. Never pick bright or overexposed areas
+   (windscreen, sky, white walls, glare, bright windows) — thin white text disappears there.
+2. Don't cover the steering wheel, dashboard screens, badges or logos, faces, or the main action.
+   Covering calm, dark parts of the scene is fine: the centre console, an arm or legs, seats, floor, dark trim.
+3. If several are equally good, prefer the lower-middle of the frame.
+{examples}
+spot: the box number. reason: one short line saying what's behind the text and what it keeps clear, e.g.
+"over the dark centre console — easy to read and keeps the wheel and screen clear"."""
+    return _ask([*_images([preview_jpg]), {"type": "text", "text": prompt}], SPOT_SCHEMA, effort="low", max_tokens=2000)

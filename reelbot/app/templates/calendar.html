@@ -1,0 +1,36 @@
+{% extends "base.html" %}{% from "_score.html" import score %}
+{% block main %}
+<h1>Calendar</h1>
+<p class="sub">What's going out and when. Posting times: {{ times|join(', ') }} (UK).
+  {% if mode == 'autopilot' %}Autopilot plans tomorrow's reels at 06:00 every day.{% endif %}</p>
+<div class="row cal-nav">
+  <a class="btn ghostlink" href="?week={{ week - 1 }}">← Prev</a>
+  <b>{{ monday.strftime('%d %b') }} – {{ sunday.strftime('%d %b %Y') }}</b>
+  <a class="btn ghostlink" href="?week={{ week + 1 }}">Next →</a>
+  {% if week != 0 %}<a href="?week=0">This week</a>{% endif %}
+  <span class="meta">⏰ {{ counts.scheduled or 0 }} scheduled · ✅ {{ counts.posted or 0 }} posted · 👀 {{ counts.draft or 0 }} waiting for review</span>
+</div>
+<div class="cal">
+{% for day, items in days.items() %}
+  <div class="day {{ 'today' if day == today }} {{ 'past' if day < today }}">
+    <div class="day-h">{{ day.strftime('%a') }} <b>{{ day.day }}</b></div>
+    {% for r in items %}
+      <div class="ev ev-{{ r.status }}">
+        <div class="ev-time">{{ r.when[11:16] }} · {{ {'scheduled':'Scheduled','posting':'Posting…','posted':'Posted','failed':'Failed','draft':'Needs review'}[r.status] }}</div>
+        {% if r.video_path %}<img src="/thumb/{{ r.id }}.jpg" alt="" loading="lazy">{% endif %}
+        <div class="ev-hook">“{{ r.on_screen_text }}”</div>
+        <div class="meta">{% if r.status == 'posted' %}{% if r.snap %}{{ r.snap.views|num }} views at {{ r.snap.hours }}h{% else %}results at 24h{% endif %}{% if r.permalink %} · <a href="{{ r.permalink }}" target="_blank">open</a>{% endif %}
+          {% else %}{{ r.virality_score }}/100 · {{ r.angle }}{% endif %}{% if r.trend %} · 🔥 {{ r.trend }}{% endif %}</div>
+        {% if r.status == 'scheduled' %}
+          <div class="row tight">
+            <form method="post" action="/reels/{{ r.id }}/postnow" onsubmit="return confirm('Post this trial reel now?')"><button class="mini">Post now</button></form>
+            <form method="post" action="/reels/{{ r.id }}/unschedule"><button class="mini ghost">Unschedule</button></form>
+          </div>
+        {% elif r.status == 'draft' %}<a class="meta" href="/review">Review →</a>
+        {% elif r.status == 'failed' %}<div class="meta s-low">{{ r.error }}</div>{% endif %}
+      </div>
+    {% else %}<div class="meta empty-s">—</div>{% endfor %}
+  </div>
+{% endfor %}
+</div>
+{% endblock %}

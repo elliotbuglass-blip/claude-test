@@ -10,14 +10,22 @@
   {% for h in best.hours[:8] %}<tr><td>{{ '%02d'|format(h.hour) }}:00</td><td>{{ h.median_views|num }}</td><td>{{ h.reels }}</td></tr>{% endfor %}</table>
   {% else %}<p class="meta">Not worked out yet.</p>{% endif %}
   <form method="post" class="row"><button class="ghost" name="run" value="history">Refresh my history</button></form>
+  <p class="meta">🎨 Colour look: {% if look %}learnt from your last {{ look.reels }} reels{% else %}from your recent reels (built in){% endif %}. Refreshes with your history.</p>
 </div></div>
 <div class="card"><div class="body">
   <p class="hook">🎵 Trending sounds{% if topic %} for #{{ topic.hashtags|join(' #') }}{% endif %}</p>
   {% if topic %}<p class="meta">{{ (topic.original_audio_share * 100)|round|int }}% of top reels use their own sound.</p>
   <table>{% for s, n in topic.trending_sounds %}<tr><td>{{ s }}</td><td>{{ n }}</td></tr>{% else %}<tr><td class="meta">No trending tracks; original audio wins.</td></tr>{% endfor %}</table>
+  {% if topic.sounds_7d %}<p class="meta" style="margin-top:10px">Last 7 days ({{ topic.recent_7d }} new reels): {% for s, n in topic.sounds_7d %}{{ s }} ({{ n }}){{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
   {% else %}<p class="meta">Appears after ReelBot researches your first clips.</p>{% endif %}
 </div></div>
 </div>
+<h2 class="hook" style="margin-top:28px">🔥 Trending on Google right now</h2>
+<form method="post" class="row" style="margin-bottom:10px"><button class="ghost" name="run" value="trends">Check trends now</button>
+<span class="meta">Checked before every batch of reels. When a trend fits your clip (e.g. Batman → a black car), ReelBot makes 1–2 riskier "wildcard" reels with it.</span></form>
+{% if trends and trends["items"] %}<div class="scroll"><table><tr><th>Search</th><th>Searches</th><th>Why it's trending</th></tr>
+{% for t in trends["items"][:20] %}<tr><td>{{ t.term }} <span class="tag">{{ t.geo }}</span></td><td>{{ t.searches }}</td><td class="meta">{{ t.headline }}{% if t.url %} · <a href="{{ t.url }}" target="_blank">news ↗</a>{% endif %}</td></tr>{% endfor %}
+</table></div><p class="meta">Checked {{ trends.checked_at[:16].replace('T', ' ') }}</p>{% else %}<div class="empty">No trends checked yet.</div>{% endif %}
 <h2 class="hook" style="margin-top:28px">🏆 Topic winners{% if topic %} — {{ topic.subject }}{% endif %}</h2>
 {% if topic %}<div class="scroll"><table><tr><th>Views</th><th>Account</th><th>On-screen text</th><th>Sound</th></tr>
 {% for w in topic.winners %}<tr><td>{{ w.views|num }}</td><td>@{{ w.account }}</td><td>{{ w.on_screen_text or '(no text)' }}</td><td class="meta">{{ w.music }} · <a href="{{ w.url }}" target="_blank">open ↗</a></td></tr>{% endfor %}

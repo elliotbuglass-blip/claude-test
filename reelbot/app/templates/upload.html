@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block main %}
+<h1>Upload</h1>
+<p class="sub">Drop clips in. ReelBot works out what's in them, does the research, makes the reels, and you watch each one move along below.</p>
+<div class="drops">
+  <label class="dropzone" data-kind="main"><input type="file" accept="video/*" multiple hidden>
+    <b>🎬 Main clips</b><span>Walk-ups, start-ups, drives, POVs: clips that can be a reel on their own</span><em>Drop here or tap to choose</em></label>
+  <label class="dropzone" data-kind="broll"><input type="file" accept="video/*" multiple hidden>
+    <b>🎞 B-roll</b><span>Short detail shots (door, sill, badge) to cut into reels. Silent unless you say otherwise.</span><em>Drop here or tap to choose</em></label>
+  <label class="dropzone" data-kind="auto"><input type="file" accept="video/*" multiple hidden>
+    <b>🤔 Not sure</b><span>ReelBot watches each clip and decides: main or b-roll</span><em>Drop here or tap to choose</em></label>
+  <label class="dropzone small" data-kind="music"><input type="file" accept="audio/*" multiple hidden>
+    <b>🎵 Music</b><span>Tracks you have the rights to, for your library</span><em>Drop here</em></label>
+</div>
+<div id="uploads"></div>
+
+<h2 class="h2">Pipeline <span class="meta">· updates by itself</span></h2>
+<div id="pipeline">{% include "_pipeline.html" %}</div>
+
+<script>
+const list = document.getElementById('uploads');
+function send(file, kind) {
+  const row = document.createElement('div'); row.className = 'up';
+  row.innerHTML = `<span>${file.name}</span><div class="bar2"><i></i></div><small>0%</small>`;
+  list.prepend(row);
+  const fd = new FormData();
+  if (kind === 'music') fd.append('music', file); else { fd.append('files', file); fd.append('kind', kind); }
+  const x = new XMLHttpRequest();
+  x.open('POST', '/upload'); x.setRequestHeader('X-Requested-With', 'fetch');
+  x.upload.onprogress = e => { if (e.lengthComputable) { const p = Math.round(e.loaded / e.total * 100);
+    row.querySelector('i').style.width = p + '%'; row.querySelector('small').textContent = p + '%'; } };
+  x.onload = () => { row.querySelector('small').textContent = x.status === 200 ? '✓ uploaded' : '✗ failed';
+    row.classList.add(x.status === 200 ? 'ok' : 'bad'); refresh(); };
+  x.onerror = () => { row.querySelector('small').textContent = '✗ failed'; row.classList.add('bad'); };
+  x.send(fd);
+}
+document.querySelectorAll('.dropzone').forEach(z => {
+  const input = z.querySelector('input');
+  input.onchange = () => { [...input.files].forEach(f => send(f, z.dataset.kind)); input.value = ''; };
+  z.ondragover = e => { e.preventDefault(); z.classList.add('over'); };
+  z.ondragleave = () => z.classList.remove('over');
+  z.ondrop = e => { e.preventDefault(); z.classList.remove('over'); [...e.dataTransfer.files].forEach(f => send(f, z.dataset.kind)); };
+});
+async function refresh() {
+  const r = await fetch('/pipeline'); if (r.ok) document.getElementById('pipeline').innerHTML = await r.text();
+}
+setInterval(refresh, 6000);
+</script>
+{% endblock %}

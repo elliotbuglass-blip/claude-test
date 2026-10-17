@@ -1,27 +1,70 @@
 {% extends "base.html" %}{% from "_score.html" import score %}
 {% block main %}
 <h1>Review</h1>
-<p class="sub">New reels waiting for your OK. Approve to schedule at the suggested time, or edit the text and re-make it.</p>
-{% if not reels %}<div class="empty">Nothing to review. <a href="/clips">Upload some clips</a> and ReelBot will make reels from them.</div>{% endif %}
+<p class="sub">New reels waiting for your OK. Tap Approve, then pick when it goes out (or post it now).</p>
+{% if not reels %}<div class="empty">Nothing to review. <a href="/upload">Upload some clips</a> and ReelBot will make reels from them.</div>{% endif %}
 <div class="grid">
 {% for r in reels %}
+  {% set pos = r.positives|fromjson or [] %}{% set neg = r.negatives|fromjson or [] %}{% set res = r.research|fromjson or {} %}
   <div class="card">
     {% if r.status == 'rendering' %}<div class="placeholder">⏳ Making this reel…</div>
     {% elif r.status == 'failed' %}<div class="placeholder s-low">Failed: {{ r.error }}</div>
     {% else %}<video src="/video/{{ r.id }}.mp4" poster="/thumb/{{ r.id }}.jpg" controls playsinline preload="none"></video>{% endif %}
     <div class="body">
       <p class="hook">“{{ r.on_screen_text }}”</p>
-      <div class="row" style="margin-top:0">{{ score(r.virality_score) }} <span class="tag">{{ r.angle }}</span></div>
+      <div class="row" style="margin-top:0">{{ score(r.virality_score) }} <span class="tag">{{ r.angle }}</span>
+        {% if r.trend %}<span class="tag wild">🔥 Wildcard: {{ r.trend }}</span>{% endif %}</div>
       <p class="meta">{{ r.score_reason }}</p>
+      {% if pos or neg %}<ul class="reasons">
+        {% for p in pos %}<li class="plus">{{ p }}</li>{% endfor %}
+        {% for n in neg %}<li class="minus">{{ n }}</li>{% endfor %}
+      </ul>{% endif %}
       <p class="meta">📝 {{ r.post_caption }}</p>
       <p class="meta">🎵 Use: <b>{{ r.sound_suggestion or 'original audio' }}</b>{% if r.track %} · mixed in: {{ r.track }}{% endif %}</p>
-      <p class="meta">🎬 {{ r.filename }}</p>
-      <form method="post" action="/reels/{{ r.id }}/approve" class="row">
-        <select name="post_at" style="flex:1">
-          {% for t in ([r.recommended_time] + times)|unique %}<option value="{{ t }}">{{ t|when }}{{ ' ⭐ best' if loop.first }}</option>{% endfor %}
-        </select>
-        <button>Approve</button>
-      </form>
+
+      <details class="why">
+        <summary>🔍 Why this reel</summary>
+        <div class="why-b">
+          <h4>✍️ The words</h4><p>{{ r.inspired_by or '—' }}</p>
+          {% if res.trend %}<h4>🔥 The trend</h4><p>“{{ res.trend.term }}” is trending on Google ({{ res.trend.searches }} searches, {{ res.trend.geo }}){% if res.trend.headline %}: {{ res.trend.headline }}{% endif %}{% if res.trend.url %} · <a href="{{ res.trend.url }}" target="_blank">news ↗</a>{% endif %}. This is a riskier test.</p>{% endif %}
+          <h4>✂️ The cut</h4><p>{{ r.cut_reason or 'Picked when the reel was made.' }} · from {{ r.filename }}</p>
+          <h4>🔤 Text placement</h4><p>{{ r.text_reason or 'Placed inside Instagram’s safe zone.' }}</p>
+          <h4>🎨 Colour</h4><p>{{ r.look_note }}</p>
+          <h4>🎵 The sound</h4><p>{{ r.sound_reason or r.sound_suggestion }}
+            {% if res.original_share is not none %}<br>{{ (res.original_share * 100)|round|int }}% of the top reels for #{{ res.hashtags|join(' #') }} use their own sound.{% endif %}
+            {% if res.sounds_7d %}<br>Posted with in the last 7 days: {% for s, n in res.sounds_7d %}{{ s }} ({{ n }} reels){{ ', ' if not loop.last }}{% endfor %}.{% endif %}</p>
+          {% if res.winners %}<h4>🏆 Research it looked at</h4>
+            <ul class="src">{% for w in res.winners %}<li><b>{{ w.views|num }}</b> · @{{ w.account }} · “{{ w.on_screen_text or '(no text)' }}” · {{ w.music or '?' }} <a href="{{ w.url }}" target="_blank">↗</a></li>{% endfor %}</ul>{% endif %}
+          {% if res.outliers %}<h4>🛰️ Competitor outliers</h4>
+            <ul class="src">{% for o in res.outliers %}<li><b>{{ o.ratio }}×</b> their normal · @{{ o.account }} · “{{ o.on_screen_text or (o.post_caption or '')[:60] }}” <a href="{{ o.url }}" target="_blank">↗</a></li>{% endfor %}</ul>{% endif %}
+        </div>
+      </details>
+
+      {% if r.status == 'draft' %}
+      <details class="funnel">
+        <summary class="btn">Approve ▸</summary>
+        <form method="post" action="/reels/{{ r.id }}/approve" class="when">
+          <p class="meta">When should it go out?</p>
+          {% for t in ([r.recommended_time] + times)|unique %}
+            <label class="opt"><input type="radio" name="post_at" value="{{ t }}" {{ 'checked' if loop.first }}> {{ t|when }}{% if loop.first %} <span class="tag ok">⭐ best time</span>{% endif %}</label>
+          {% endfor %}
+          <label class="opt"><input type="radio" name="post_at" value="custom"> Pick a time <input type="datetime-local" name="custom_at" class="dt"></label>
+          <label class="opt now"><input type="radio" name="post_at" value="now"> 🚀 Post now as a trial reel</label>
+          <div class="row"><button>Confirm</button></div>
+        </form>
+      </details>
+      {% endif %}
+      {% set spots = r.text_spots|fromjson or [] %}
+      {% if spots and r.status == 'draft' %}
+      <details>
+        <summary>Move the text</summary>
+        <img class="spots" src="/spots/{{ r.id }}.jpg" alt="Numbered text spots" loading="lazy">
+        <form method="post" action="/reels/{{ r.id }}/spot" class="row spotpick">
+          {% for s in spots %}<button name="spot" value="{{ loop.index }}" class="mini {{ '' if (s[0] - r.text_position)|abs < 0.005 else 'ghost' }}">{{ loop.index }}</button>{% endfor %}
+        </form>
+        <p class="meta">Tap a number to move the text there. ReelBot remembers your picks and learns your taste.</p>
+      </details>
+      {% endif %}
       <details>
         <summary>Edit or add b-roll</summary>
         <form method="post" action="/reels/{{ r.id }}/edit">

@@ -50,6 +50,12 @@ CREATE TABLE IF NOT EXISTS research (id TEXT PRIMARY KEY, account TEXT, kind TEX
 CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, account TEXT, message TEXT, created_at TEXT);
 """
 
+# Columns added after the first release: added to older databases on start-up.
+NEW_COLUMNS = {
+    "reels": {"positives": "TEXT", "negatives": "TEXT", "sound_reason": "TEXT", "trend": "TEXT",
+              "cut_reason": "TEXT", "text_reason": "TEXT", "research": "TEXT", "text_spots": "TEXT"},
+}
+
 _lock = threading.Lock()
 
 
@@ -67,6 +73,12 @@ def connect():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    for table, cols in NEW_COLUMNS.items():
+        have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for col, kind in cols.items():
+            if col not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
+    conn.commit()
     return conn
 
 

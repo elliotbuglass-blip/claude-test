@@ -10,16 +10,19 @@ import math
 import queue
 import statistics
 import threading
+import tempfile
 import time
 import traceback
+import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import requests
 
 from .. import competitors, editor, vision
-from ..settings import env, load_config
+from ..settings import DATA, env, load_config
 from . import brain, db
 
 # --------------------------------------------------------------------------- settings
@@ -126,6 +129,7 @@ def add_clip(path, filename, kind=None):
 
 def analyse_clip(clip_id, decide_kind=True):
     clip = db.one("SELECT * FROM clips WHERE id = ?", clip_id)
+    db.update("clips", clip_id, status="analysing")
     duration, has_audio = editor.probe(clip["path"])
     loud = editor.loudest_start(clip["path"], duration, min(8, duration)) + 1.0 if has_audio else 0.0
     info = brain.analyse_clip(_frames(clip["path"], 4), duration, has_audio, loud, cfg()["niche"])
@@ -173,13 +177,46 @@ def research_topic(hashtags, subject, per_tag=40):
             winners.append({k: r.get(k) for k in ("code", "url", "account", "views", "likes", "music", "post_caption")}
                            | {"on_screen_text": read.get("on_screen_text", "")})
     sounds = Counter(r["music"] for r in reels[:30] if r.get("music") and r["music"] != "original audio")
+    week = time.time() - 7 * 86400
+    sounds_7d = Counter(r["music"] for r in reels if r["taken_at"] >= week and r.get("music") and r["music"] != "original audio")
     original = sum(1 for r in reels[:30] if r.get("music") == "original audio")
     result = {"checked_at": local_now().isoformat(), "hashtags": tags, "subject": subject,
               "found": len(reels), "winners": winners, "trending_sounds": sounds.most_common(10),
+              "sounds_7d": sounds_7d.most_common(10), "recent_7d": sum(1 for r in reels if r["taken_at"] >= week),
               "original_audio_share": round(original / max(len(reels[:30]), 1), 2)}
     db.save_research("topic:" + ",".join(tags), result)
     db.save_research("topic", result)
     db.log(f"Researched #{' #'.join(tags)}: {len(winners)} relevant winners")
+    return result
+
+
+TRENDS_RSS = "https://trends.google.com/trending/rss?geo={geo}"
+HT = "{https://trends.google.com/trending/rss}"
+
+
+def google_trends(max_age_hours=6):
+    """What people are searching on Google right now (UK + US), with the headline behind each. Free RSS feed."""
+    cached = db.latest_research("trends")
+    if cached and datetime.fromisoformat(cached["checked_at"]) > local_now() - timedelta(hours=max_age_hours):
+        return cached
+    items = []
+    for geo in ("GB", "US"):
+        try:
+            root = ET.fromstring(requests.get(TRENDS_RSS.format(geo=geo), timeout=30).content)
+        except Exception as e:
+            db.log(f"Google trends ({geo}) skipped: {e}")
+            continue
+        for it in root.iter("item"):
+            news = it.find(f"{HT}news_item")
+            items.append({"geo": geo, "term": it.findtext("title", ""),
+                          "searches": it.findtext(f"{HT}approx_traffic", ""),
+                          "headline": news.findtext(f"{HT}news_item_title", "") if news is not None else "",
+                          "url": news.findtext(f"{HT}news_item_url", "") if news is not None else ""})
+    if not items:
+        return cached
+    result = {"checked_at": local_now().isoformat(), "items": items}
+    db.save_research("trends", result)
+    db.log(f"Google trends: {len(items)} trending searches")
     return result
 
 
@@ -197,7 +234,7 @@ def refresh_history():
     graph = f"https://graph.facebook.com/{c['posting']['graph_api_version']}"
     auth = _ig_auth()
     url = f"{graph}/{env('IG_USER_ID')}/media"
-    params = {"fields": "id,caption,timestamp,media_product_type,permalink", "limit": 50, **auth}
+    params = {"fields": "id,caption,timestamp,media_product_type,permalink,media_url", "limit": 50, **auth}
     reels = []
     while url and len(reels) < 120:
         r = requests.get(url, params=params, timeout=60).json()
@@ -219,7 +256,26 @@ def refresh_history():
     db.save_research("my_reels", {"checked_at": local_now().isoformat(),
                                   "reels": [{k: m.get(k) for k in ("id", "caption", "timestamp", "views", "permalink")}
                                             for m in reels if "views" in m]})
+    try:
+        refresh_look([m for m in reels if m.get("media_url")][:12])
+    except Exception as e:
+        db.log(f"Colour reference skipped: {e}")
     db.log(f"History refreshed: {len(reels)} reels, best hours {', '.join(f'{h['hour']:02d}:00' for h in hours[:3])}")
+
+
+def refresh_look(reels):
+    """Learn my colour look from my latest reels, so new reels are graded to match."""
+    with tempfile.TemporaryDirectory() as tmp:
+        paths = []
+        for i, m in enumerate(reels):
+            r = requests.get(m["media_url"], timeout=120)
+            if r.ok:
+                p = Path(tmp) / f"{i}.mp4"
+                p.write_bytes(r.content)
+                paths.append(p)
+        if paths:
+            ref = editor.build_reference(paths)
+            db.save_research("look", {"checked_at": local_now().isoformat(), "reels": len(paths), **ref})
 
 
 # --------------------------------------------------------------------------- planning
@@ -234,6 +290,7 @@ def posting_times():
 def next_free_slots(count, start_day=None):
     """The next posting times that don't already have a reel booked."""
     taken = {r["post_at"] for r in db.q("SELECT post_at FROM reels WHERE status IN ('scheduled','posting','posted')")}
+    taken |= {r["recommended_time"] for r in db.q("SELECT recommended_time FROM reels WHERE status IN ('draft','rendering')")}
     times = posting_times()
     day = start_day or local_now().date()
     slots = []
@@ -283,6 +340,13 @@ def build_context(topic):
             for w in topic["winners"]))
         parts.append(f"Trending sounds on these reels: {', '.join(f'{s} ({n})' for s, n in topic['trending_sounds']) or 'none'}."
                      f" Share using original audio: {int(topic['original_audio_share'] * 100)}%.")
+        if topic.get("sounds_7d"):
+            parts.append(f"Sounds on reels posted in the LAST 7 DAYS ({topic.get('recent_7d', 0)} reels): "
+                         + ", ".join(f"{s} ({n} reels)" for s, n in topic["sounds_7d"]))
+    trends = db.latest_research("trends")
+    if trends and trends.get("items"):
+        parts.append("TRENDING NOW on Google (search term · searches · headline):\n" + "\n".join(
+            f'- {t["term"]} · {t["searches"]} · {t["headline"][:90]}' for t in trends["items"][:30]))
     radar = db.latest_research("radar")
     if radar and radar.get("outliers"):
         parts.append("COMPETITOR OUTLIERS (beat their own median):\n" + "\n".join(
@@ -299,6 +363,11 @@ def make_reels(clip_id, n=None, post_at=None):
     c = cfg()
     clip = db.one("SELECT * FROM clips WHERE id = ?", clip_id)
     n = n or int(setting("reels_per_clip") or 3)
+    db.update("clips", clip_id, status="making")
+    try:
+        google_trends()
+    except Exception as e:
+        db.log(f"Google trends skipped: {e}")
     topic = None
     if clip["hashtags"] and env("APIFY_TOKEN", required=False) is not None:
         try:
@@ -310,16 +379,65 @@ def make_reels(clip_id, n=None, post_at=None):
     plans = brain.plan_reels(_frames(clip["path"], 3), info, n, build_context(topic), library)
     mode = setting("mode")
     slots = post_at or next_free_slots(len(plans))
+    research = research_snapshot(topic)
     for plan, slot in zip(plans, slots):
         reel_id = db.new_id()
+        trend = plan.get("trend") or ""
         db.insert("reels", {
-            "id": reel_id, "clip_id": clip_id, **{k: plan[k] for k in plan if k != "track"},
+            "id": reel_id, "clip_id": clip_id,
+            **{k: plan[k] for k in plan if k not in ("track", "positives", "negatives", "trend")},
+            "positives": json.dumps(plan.get("positives", [])), "negatives": json.dumps(plan.get("negatives", [])),
+            "trend": trend, "research": json.dumps(research | {"trend": next(
+                (t for t in (db.latest_research("trends") or {}).get("items", []) if t["term"].lower() == trend.lower()), None)
+                if trend else None}, ensure_ascii=False),
             "track": plan["track"] if plan["track"] in library else "",
             "seconds": c["clips"]["reel_seconds"], "text_style": c["look"].get("text_style", "editorial"),
-            "grade": c["look"].get("grade", "natural"), "recommended_time": slot,
+            "grade": c["look"].get("grade", "match"), "recommended_time": slot,
             "post_at": slot if mode == "autopilot" else None, "mode": mode, "status": "rendering"})
         render_reel(reel_id)
     db.update("clips", clip_id, status="used")
+
+
+def research_snapshot(topic):
+    """The research a batch of reels was planned from, kept with each reel for its "Why this reel" panel."""
+    out = {"winners": [], "sounds": [], "sounds_7d": [], "original_share": None, "outliers": [], "hashtags": []}
+    if topic:
+        out.update(winners=topic["winners"][:8], sounds=topic["trending_sounds"][:5], hashtags=topic["hashtags"],
+                   sounds_7d=topic.get("sounds_7d", [])[:5], original_share=topic["original_audio_share"])
+    radar = db.latest_research("radar")
+    if radar and radar.get("outliers"):
+        out["outliers"] = [{k: o.get(k) for k in ("account", "url", "views", "ratio", "on_screen_text", "post_caption")}
+                           for o in radar["outliers"][:5]]
+    return out
+
+
+def look_reference():
+    ref = db.latest_research("look")
+    if ref and ref.get("frames"):
+        return ref
+    path = DATA / "look_reference.json"
+    return json.loads(path.read_text()) if path.exists() else None
+
+
+def place_text(reel_id, clip, start, length, text, n_lines, size):
+    """Find where the text is easy to read and blocks nothing: candidate bands are drawn on 3 moments
+    of the reel and Claude picks one (using the spots you picked yourself as examples).
+    Without Claude, the darkest, calmest band wins. Returns (position, reason, candidate spots)."""
+    preview = db.RENDERS_DIR / f"{reel_id}_spots.jpg"
+    spots = editor.text_spots(clip, start, length, n_lines, size, k=7, spread=True)
+    editor.spots_preview(clip, start, length, spots, n_lines, size, preview)
+    if env("ANTHROPIC_API_KEY", required=False):
+        try:
+            picks = db.get_setting("text_picks", [])[-6:]
+            examples = ("\nThe creator moved the text themselves on earlier reels; match their taste:\n"
+                        + "\n".join(f"- {p}" for p in picks)) if picks else ""
+            pick = brain.choose_text_spot(preview.read_bytes(), len(spots), text, examples)
+            i = min(max(pick["spot"], 1), len(spots)) - 1
+            return spots[i][0], f"Checked {len(spots)} spots on 3 moments of the video: {pick['reason']}", spots
+        except Exception as e:
+            db.log(f"Text check fell back to the quick measure: {e}")
+    best = min(spots, key=lambda s: s[1])
+    return best[0], "Darkest, calmest band inside Instagram's safe zone (quick measure only, no AI check)", spots
 
 
 def render_reel(reel_id):
@@ -330,16 +448,25 @@ def render_reel(reel_id):
     try:
         duration, has_audio = editor.probe(clip["path"])
         length = min(reel["seconds"] or c["clips"]["reel_seconds"], duration)
-        start = reel["start"]
+        start, cut_reason = reel["start"], reel["cut_reason"]
         if start is None:
             start = editor.loudest_start(clip["path"], duration, length) if has_audio else 0.0
+            cut_reason = (f"{start:.1f}s–{start + length:.1f}s of the {duration:.0f}s clip: the window with the biggest "
+                          "sound moment (engine/rev), so the payoff lands inside the reel" if has_audio
+                          else f"First {length:.0f}s of the clip (no sound to find the big moment)")
         look = {**c["look"], "text_style": reel["text_style"], "grade": reel["grade"]}
+        if look["grade"] == "match":
+            look["reference"] = look_reference()
         style = editor.TEXT_STYLES[look["text_style"]]
-        n_lines = len(editor.textwrap.wrap(editor.clean_text(reel["on_screen_text"]), style["wrap"]))
-        pos = reel["text_position"]
+        text = editor.clean_text(reel["on_screen_text"])
+        n_lines = len(editor.textwrap.wrap(text, style["wrap"]))
+        pos, text_reason, spots = reel["text_position"], reel["text_reason"], reel["text_spots"]
         if pos is None:
-            pos = editor.auto_text_position(clip["path"], start, length, n_lines, style["size"])
+            pos, text_reason, found = place_text(reel_id, clip["path"], start, length, text, n_lines, style["size"])
+            spots = json.dumps(found)
         look["text_position"] = pos
+        if editor.band_brightness(clip["path"], start, length, pos, n_lines, style["size"]) > 140:
+            look["shadow"] = 0.65  # light background behind the text: a stronger soft shadow keeps it readable
         audio = copy.deepcopy(c["audio"])
         if reel["track"]:
             audio.update(mode="mix", track=reel["track"])
@@ -354,7 +481,8 @@ def render_reel(reel_id):
         editor.render(clip["path"], out, editor.clean_text(reel["on_screen_text"]), start, length, look, audio, broll)
         editor.extract_frame(out, min(1.5, length / 2), out.with_suffix(".jpg"))  # preview picture
         status = "scheduled" if reel["post_at"] else "draft"
-        db.update("reels", reel_id, video_path=str(out), start=start, text_position=pos, status=status)
+        db.update("reels", reel_id, video_path=str(out), start=start, text_position=pos, status=status,
+                  cut_reason=cut_reason, text_reason=text_reason, text_spots=spots)
     except Exception as e:
         db.update("reels", reel_id, status="failed", error=str(e)[:400])
         raise
@@ -393,6 +521,25 @@ def _ig_auth():
 
 def approve(reel_id, post_at):
     db.update("reels", reel_id, post_at=post_at, status="scheduled")
+
+
+def pick_text_spot(reel_id, n):
+    """You picked the text spot yourself: re-render there and remember it as an example of your taste."""
+    reel = db.one("SELECT * FROM reels WHERE id = ?", reel_id)
+    spots = json.loads(reel["text_spots"] or "[]")
+    if not 1 <= n <= len(spots):
+        return
+    picks = db.get_setting("text_picks", [])
+    clip = db.one("SELECT subject FROM clips WHERE id = ?", reel["clip_id"])
+    picks.append(f"{clip['subject']}: chose box {n} of {len(spots)} (counted from the top)")
+    db.set_setting("text_picks", picks[-20:])
+    db.update("reels", reel_id, text_position=spots[n - 1][0], text_reason=f"You picked spot {n}", status="rendering")
+    submit("re-render", render_reel, reel_id)
+
+
+def post_now(reel_id):
+    db.update("reels", reel_id, post_at=local_now().isoformat(timespec="minutes"), status="scheduled")
+    submit("post now", post_due)
 
 
 def post_due():
@@ -465,7 +612,7 @@ def _clock():
                 snapshots_due()
             if _due_daily("autopilot", 6, 0):
                 submit("autopilot daily plan", autopilot_daily)
-            if _due_daily("history", 5, 0, weekday=0) or not db.latest_research("best_times"):
+            if _due_daily("history", 5, 0, weekday=0) or (tick == 0 and not db.latest_research("best_times")):
                 submit("refresh history", refresh_history)
             if _due_daily("radar", 5, 30, weekday=0) and env("APIFY_TOKEN", required=False) is not None:
                 submit("competitor radar", run_radar)
