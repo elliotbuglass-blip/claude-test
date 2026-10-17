@@ -1,0 +1,88 @@
+{
+ "checked_at": "2026-10-17T11:17+01:00",
+ "reels_used": 150,
+ "hours": [
+  {
+   "hour": 16,
+   "reels": 7,
+   "median_views": 38602
+  },
+  {
+   "hour": 11,
+   "reels": 17,
+   "median_views": 12594
+  },
+  {
+   "hour": 7,
+   "reels": 6,
+   "median_views": 11461
+  },
+  {
+   "hour": 15,
+   "reels": 19,
+   "median_views": 7625
+  },
+  {
+   "hour": 13,
+   "reels": 4,
+   "median_views": 7512
+  },
+  {
+   "hour": 18,
+   "reels": 7,
+   "median_views": 6332
+  },
+  {
+   "hour": 6,
+   "reels": 3,
+   "median_views": 5621
+  },
+  {
+   "hour": 17,
+   "reels": 6,
+   "median_views": 3446
+  },
+  {
+   "hour": 10,
+   "reels": 24,
+   "median_views": 3371
+  },
+  {
+   "hour": 23,
+   "reels": 5,
+   "median_views": 3288
+  },
+  {
+   "hour": 21,
+   "reels": 6,
+   "median_views": 2998
+  },
+  {
+   "hour": 9,
+   "reels": 14,
+   "median_views": 2984
+  },
+  {
+   "hour": 20,
+   "reels": 7,
+   "median_views": 2698
+  },
+  {
+   "hour": 19,
+   "reels": 12,
+   "median_views": 2668
+  },
+  {
+   "hour": 12,
+   "reels": 8,
+   "median_views": 2346
+  }
+ ],
+ "recommended": [
+  "16:00",
+  "11:00",
+  "07:00",
+  "15:00",
+  "13:00"
+ ]
+}

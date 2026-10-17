@@ -189,6 +189,11 @@ def cmd_results(cfg, args):
     autopilot.results(cfg)
 
 
+def cmd_best_times(cfg, args):
+    from . import autopilot
+    autopilot.best_times(cfg)
+
+
 def cmd_cloud(cfg, args):
     from . import cloud
     cloud.run(cfg, args.task)
@@ -243,6 +248,8 @@ def main():
     p.set_defaults(func=cmd_post_due)
 
     sub.add_parser("results", help="autopilot: fetch results for every reel ReelBot posted").set_defaults(func=cmd_results)
+
+    sub.add_parser("best-times", help="which posting hours get me the most views").set_defaults(func=cmd_best_times)
 
     p = sub.add_parser("cloud", help="run on GitHub using your Google Drive folder")
     p.add_argument("--task", default="daily", choices=["daily", "research", "make-only", "post-only"])

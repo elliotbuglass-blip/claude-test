@@ -154,3 +154,46 @@ def results(cfg):
         print(f"  {r.get('views', 0):>8,} views  {r.get('shares', 0):>4} shares  "
               f"[{i.get('angle', '')}] “{i['on_screen_text']}”  ♪ {i.get('track') or 'original'}")
     return log
+
+
+BEST_TIMES = DATA / "best_times.json"
+
+
+def best_times(cfg, max_reels=150):
+    """Work out which posting hours get the most views, from my own reel history (UK time).
+
+    Uses the median (not average) views per hour, so one viral reel doesn't skew it,
+    and needs at least 3 reels in an hour before trusting it.
+    """
+    import statistics
+    from collections import defaultdict
+
+    token = env("IG_ACCESS_TOKEN", required=False)
+    auth = {"access_token": token} if token else {}
+    graph = f"https://graph.facebook.com/{cfg['posting']['graph_api_version']}"
+    url, params, reels = f"{graph}/{env('IG_USER_ID')}/media", {"fields": "id,timestamp,media_product_type", "limit": 50, **auth}, []
+    while url and len(reels) < max_reels:
+        r = requests.get(url, params=params, timeout=60).json()
+        reels += [m for m in r.get("data", []) if m.get("media_product_type") == "REELS"]
+        url, params = r.get("paging", {}).get("next"), {}
+
+    tz = _tz(cfg)
+    by_hour = defaultdict(list)
+    for m in reels[:max_reels]:
+        r = requests.get(f"{graph}/{m['id']}/insights", params={"metric": "views", **auth}, timeout=30)
+        if not (r.ok and r.json().get("data")):
+            continue
+        views = r.json()["data"][0]["values"][0]["value"]
+        hour = datetime.fromisoformat(m["timestamp"].replace("+0000", "+00:00")).astimezone(tz).hour
+        by_hour[hour].append(views)
+
+    table = sorted(({"hour": h, "reels": len(v), "median_views": int(statistics.median(v))}
+                    for h, v in by_hour.items() if len(v) >= 3),
+                   key=lambda x: x["median_views"], reverse=True)
+    result = {"checked_at": datetime.now(tz).isoformat(timespec="minutes"), "reels_used": sum(len(v) for v in by_hour.values()),
+              "hours": table, "recommended": [f"{t['hour']:02d}:00" for t in table[: cfg["autopilot"]["posts_per_day"]]]}
+    _save(BEST_TIMES, result)
+    for t in table:
+        print(f"  {t['hour']:02d}:00  median {t['median_views']:>9,} views  ({t['reels']} reels)")
+    print("Recommended posting times:", ", ".join(sorted(result["recommended"])))
+    return result
