@@ -10,7 +10,8 @@ start a new session, then run `import_drive.run()` inside the app (see below).
 ## What was run
 - New `reelbot/app/import_drive.py`: imports the Drive "Main" (11) and "B-roll" (9 unique) clips into the app with
   their `.txt` notes as descriptions, and kind set from the folder. Safe to run again (skips file names it already has).
-  All 20 imported. Duplicate `IMG_8197.MOV` in B-roll skipped; `IMG_8215.txt` in Main has no video there (its video is in B-roll).
+  All 20 imported. Drive quirks handled: the duplicate `IMG_8197.MOV` in B-roll is imported once, and notes are matched by name across both folders
+  (`IMG_8215.txt` sits in Main, its video in B-roll). To re-run with Claude: start the app, then call `import_drive.run()`.
 - Web app in Review mode, 2 reels per clip, Instagram posting monkeypatched to raise (nothing posted).
 - Research APIs: Apify Instagram hashtag (10 reels, views + sounds + frames OK) and Apify TikTok (5 videos OK).
   TikTok covers and Google Trends are blocked by this box's network allowlist (known, fine on the server).

@@ -18,12 +18,13 @@ def run(cfg=None):
     cfg = cfg or jobs.cfg()
     have = {r["filename"] for r in db.q("SELECT filename FROM clips")}
     added = []
-    for folder in session.list_folder(session.folder_id(cfg)):
-        kind = KINDS.get(folder["name"].strip().lower())
-        if not kind or not folder["mimeType"].endswith("folder"):
-            continue
-        files = session.list_folder(folder["id"])
-        notes = {Path(f["name"]).stem: f for f in files if f["name"].lower().endswith(".txt")}
+    folders = [(KINDS.get(f["name"].strip().lower()), f) for f in session.list_folder(session.folder_id(cfg))
+               if f["mimeType"].endswith("folder")]
+    folders = [(kind, session.list_folder(f["id"])) for kind, f in folders if kind]
+    # A note can sit in the other folder than its clip (IMG_8215.txt in Main, the video in B-roll): match by name.
+    any_notes = {Path(f["name"]).stem: f for _, files in folders for f in files if f["name"].lower().endswith(".txt")}
+    for kind, files in folders:
+        notes = any_notes | {Path(f["name"]).stem: f for f in files if f["name"].lower().endswith(".txt")}
         for f in files:
             name = f["name"]
             if not name.lower().endswith(session.VIDEO_EXTS) or name in have:
