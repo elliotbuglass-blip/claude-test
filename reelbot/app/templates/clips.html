@@ -10,7 +10,7 @@
 {% for c in clips %}
 <tr>
   <td>{{ c.filename }}<div class="meta">{{ '%.0f'|format(c.duration or 0) }}s · {{ c.status }}</div></td>
-  <td>{{ c.subject or '⏳ analysing…' }}<div class="meta">{{ c.notes }}</div>
+  <td>{{ c.subject or ('✗ not analysed' if c.status == 'failed' else '⏳ analysing…') }}<div class="meta">{{ c.notes }}</div>
     <form method="post" action="/clips/{{ c.id }}/describe" class="desc">
       <textarea name="description" rows="2" placeholder="Your description: what it is, what it's for">{{ c.description or '' }}</textarea>
       <div class="row tight"><button class="mini ghost">Save</button><button class="mini ghost" name="reanalyse" value="1">Save &amp; re-analyse</button></div>

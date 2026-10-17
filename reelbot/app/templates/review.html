@@ -33,7 +33,7 @@
           <h4>🔤 Text placement</h4><p>{{ r.text_reason or 'Placed inside Instagram’s safe zone.' }}</p>
           <h4>🎨 Colour</h4><p>{{ r.look_note }}</p>
           <h4>🎵 The sound</h4><p>{{ r.sound_reason or r.sound_suggestion }}
-            {% if res.original_share is not none %}<br>{{ (res.original_share * 100)|round|int }}% of the top reels for #{{ res.hashtags|join(' #') }} use their own sound.{% endif %}
+            {% if res.original_share is number %}<br>{{ (res.original_share * 100)|round|int }}% of the top reels for #{{ res.hashtags|join(' #') }} use their own sound.{% endif %}
             {% if res.sounds_7d %}<br>Posted with in the last 7 days: {% for s, n in res.sounds_7d %}{{ s }} ({{ n }} reels){{ ', ' if not loop.last }}{% endfor %}.{% endif %}</p>
           {% if res.winners %}<h4>🏆 Research it looked at</h4>
             <ul class="src">{% for w in res.winners %}<li><b>{{ w.views|num }}</b> · @{{ w.account }} · “{{ w.on_screen_text or '(no text)' }}” · {{ w.music or '?' }} <a href="{{ w.url }}" target="_blank">↗</a></li>{% endfor %}</ul>{% endif %}

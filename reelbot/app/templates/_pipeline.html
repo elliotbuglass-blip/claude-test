@@ -5,7 +5,7 @@
     {% for it in items[:12] %}
       {% if it.type == 'clip' %}
         <div class="chip col"><div class="chip-t">🎬 {{ it.filename }}</div>
-          <div class="meta">{% if key == 'analysing' %}⏳ watching the clip…{% else %}🔎 researching hooks, sounds &amp; trends…{% endif %}</div>
+          <div class="meta">{% if it.status == 'failed' %}<span class="s-low">✗ {{ it.notes[:90] }}</span> · <a href="/clips">retry in Library</a>{% elif key == 'analysing' %}⏳ watching the clip…{% else %}🔎 researching hooks, sounds &amp; trends…{% endif %}</div>
           {% if it.subject %}<div class="meta">{{ it.subject }}</div>{% elif it.description %}<div class="meta">“{{ it.description[:80] }}”</div>{% endif %}</div>
       {% else %}
         <a class="chip" href="{{ '/review' if key == 'review' else '/calendar' if key == 'scheduled' else '/results' if key in ('posted','done') else '#' }}">

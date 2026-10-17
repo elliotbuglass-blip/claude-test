@@ -139,7 +139,11 @@ def analyse_clip(clip_id, decide_kind=True, make_after=True):
     db.update("clips", clip_id, status="analysing")
     duration, has_audio = editor.probe(clip["path"])
     loud = editor.loudest_start(clip["path"], duration, min(8, duration)) + 1.0 if has_audio else 0.0
-    info = brain.analyse_clip(_frames(clip["path"], 4), duration, has_audio, loud, cfg()["niche"], clip["description"] or "")
+    try:
+        info = brain.analyse_clip(_frames(clip["path"], 4), duration, has_audio, loud, cfg()["niche"], clip["description"] or "")
+    except Exception as e:  # don't leave it "analysing" forever
+        db.update("clips", clip_id, status="failed", notes=f"Analysis failed: {str(e)[:300]}")
+        raise
     fields = {"subject": info["subject"], "hashtags": json.dumps(info["hashtags"]), "status": "analysed",
               "notes": f"{info['mood']} · {info['highlight']}"}
     if decide_kind:
@@ -299,7 +303,9 @@ def refresh_history():
     reels = []
     while url and len(reels) < 120:
         r = requests.get(url, params=params, timeout=60).json()
-        reels += [m for m in r.get("data", []) if m.get("media_product_type") == "REELS"]
+        if "error" in r:  # e.g. an expired token: say so, instead of "0 reels"
+            raise RuntimeError(f"Instagram: {r['error'].get('message', r['error'])}")
+        reels +=[m for m in r.get("data", []) if m.get("media_product_type") == "REELS"]
         url, params = r.get("paging", {}).get("next"), {}
     zone = tz()
     by_hour = defaultdict(list)
@@ -611,8 +617,12 @@ def make_reels(clip_id, n=None, post_at=None, sources=None):
     info = {"filename": clip["filename"], "subject": clip["subject"], "notes": clip["notes"], "seconds": clip["duration"],
             "creator_description": clip["description"] or ""}
     counts = Counter(sources)
-    plans = brain.plan_reels(_frames(clip["path"], 3), info, n, build_context(topic, tiktok), library,
-                             {s: counts.get(s, 0) for s in SOURCES})
+    try:
+        plans = brain.plan_reels(_frames(clip["path"], 3), info, n, build_context(topic, tiktok), library,
+                                 {s: counts.get(s, 0) for s in SOURCES})
+    except Exception as e:
+        db.update("clips", clip_id, status="failed", notes=f"Planning reels failed: {str(e)[:300]}")
+        raise
     mode = setting("mode")
     slots = post_at or next_free_slots(len(plans))
     research = research_snapshot(topic, tiktok)
@@ -693,7 +703,7 @@ def render_reel(reel_id):
         if start is None:
             start = editor.loudest_start(clip["path"], duration, length) if has_audio else 0.0
             cut_reason = (f"{start:.1f}s–{start + length:.1f}s of the {duration:.0f}s clip: the window with the biggest "
-                          "sound moment (engine/rev), so the payoff lands inside the reel" if has_audio
+                          "sound moment, so the payoff lands inside the reel" if has_audio
                           else f"First {length:.0f}s of the clip (no sound to find the big moment)")
         look = {**c["look"], "text_style": reel["text_style"], "grade": reel["grade"]}
         if look["grade"] == "match":
@@ -868,6 +878,17 @@ def _clock():
         time.sleep(60)
 
 
+def _resume():
+    """The task queue lives in memory: after a restart, pick up the work it lost."""
+    for c in db.q("SELECT * FROM clips WHERE status IN ('new', 'analysing')"):
+        submit(f"analyse {c['filename']}", analyse_clip, c["id"], c["notes"] != "kind set by you")
+    for c in db.q("SELECT * FROM clips WHERE status = 'making'"):
+        db.update("clips", c["id"], status="failed", notes="Making reels was interrupted by a restart: make them again")
+    for r in db.q("SELECT id FROM reels WHERE status = 'rendering'"):
+        submit("re-render", render_reel, r["id"])
+
+
 def start():
+    _resume()
     threading.Thread(target=_worker, daemon=True).start()
     threading.Thread(target=_clock, daemon=True).start()

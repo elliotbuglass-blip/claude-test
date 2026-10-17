@@ -165,8 +165,8 @@ STAGES = [("analysing", "Uploaded · analysing"), ("making", "Researching · mak
 def pipeline():
     """Every clip and reel, put in the column for the stage it's at."""
     cols = {k: [] for k, _ in STAGES}
-    for c in db.q("SELECT * FROM clips WHERE kind = 'main' AND status IN ('new', 'analysing', 'analysed', 'making') ORDER BY created_at DESC"):
-        stage = "making" if c["status"] == "making" else "analysing"
+    for c in db.q("SELECT * FROM clips WHERE kind = 'main' AND status IN ('new', 'analysing', 'analysed', 'making', 'failed') ORDER BY created_at DESC"):
+        stage = "making" if c["status"] == "making" or (c["status"] == "failed" and c["subject"]) else "analysing"
         if c["status"] == "analysed":  # analysed, not made yet: in review mode reels are on the way; autopilot uses it later
             stage = "making" if jobs.setting("mode") == "review" else "analysing"
         cols[stage].append({"type": "clip", **c})
@@ -224,7 +224,8 @@ async def clip_action(request: Request):
     elif action == "describe":
         db.update("clips", clip_id, description=(form.get("description") or "").strip() or None)
         if form.get("reanalyse"):
-            jobs.submit("re-analyse", jobs.analyse_clip, clip_id, False, False)
+            failed = db.one("SELECT status FROM clips WHERE id = ?", clip_id)["status"] == "failed"
+            jobs.submit("re-analyse", jobs.analyse_clip, clip_id, False, failed)  # a retry carries on to making reels
     elif action == "make":
         jobs.submit("make reels", jobs.make_reels, clip_id, int(form.get("n") or 3))
     elif action == "delete":

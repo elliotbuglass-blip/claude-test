@@ -2,6 +2,7 @@
 
 import base64
 import json
+import os
 
 import anthropic
 
@@ -14,6 +15,8 @@ def _images(frames):
 
 
 def _ask(content, schema, system=None, effort="medium", max_tokens=16000):
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise RuntimeError("Claude isn't connected: add ANTHROPIC_API_KEY to the server's settings, then retry.")
     client = anthropic.Anthropic()
     kwargs = {"system": system} if system else {}
     response = client.beta.messages.create(
