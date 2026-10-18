@@ -768,7 +768,11 @@ def make_reels(clip_id, n=None, post_at=None, sources=None):
         if not tiktok or not tiktok.get("winners"):  # no TikTok research: those reels lean on Instagram instead
             sources = ["instagram" if s == "tiktok" else s for s in sources]
     library = sorted(p.name for p in db.AUDIO_DIR.glob("*") if p.suffix.lower() in editor.AUDIO_EXTS)
-    start, length, cut_reason = cut(clip["path"], c["clips"]["reel_seconds"])
+    if clip["keep_look"]:  # you edited and trimmed it yourself: use the whole clip (Instagram's limit is 3 minutes)
+        start, length = 0.0, min(clip["duration"], 180)
+        cut_reason = f"The whole clip ({length:.0f}s): you edited and trimmed it yourself"
+    else:
+        start, length, cut_reason = cut(clip["path"], c["clips"]["reel_seconds"])
     info = {"filename": clip["filename"], "subject": clip["subject"], "notes": clip["notes"], "seconds": clip["duration"],
             "reel_cut": f"{start:.1f}s–{start + length:.1f}s of the clip, so the reel is {length:.0f}s long",
             "creator_description": clip["description"] or ""}
@@ -996,6 +1000,10 @@ def chat_edit(reel_id, message):
         fields["text_position"] = None  # new words: find a spot again
     if change.get("start_seconds") is not None:
         fields["start"], fields["cut_reason"] = max(0.0, float(change["start_seconds"])), f"You asked: “{message}”"
+    if change.get("length_seconds"):
+        fields["seconds"], fields["cut_reason"] = max(1.0, float(change["length_seconds"])), f"You asked: “{message}”"
+        if change.get("start_seconds") is None and reel["start"] is not None:
+            fields["start"] = reel["start"]
     history.append({"you": message, "bot": change.get("reply") or "Done."})
     db.update("reels", reel_id, chat=json.dumps(history), status="rendering", **fields)
     render_reel(reel_id)
@@ -1005,6 +1013,20 @@ def rerender_all():
     """Re-make every reel that isn't posted yet (e.g. after a colour fix)."""
     for r in db.q("SELECT id FROM reels WHERE status IN ('draft', 'failed', 'scheduled', 'rendering')"):
         submit("re-make reel", render_reel, r["id"])  # one job each, so both workers share them
+
+
+def trim(reel_id, start, length, whole=False):
+    """You set which part of the clip the reel uses."""
+    reel = db.one("SELECT * FROM reels WHERE id = ?", reel_id)
+    clip = db.one("SELECT * FROM clips WHERE id = ?", reel["clip_id"])
+    duration = clip["duration"] or editor.probe(clip["path"])[0]
+    if whole:
+        start, length = 0.0, min(duration, 180)
+    start = max(0.0, min(float(start), duration - 1))
+    length = max(1.0, min(float(length), duration - start, 180))
+    db.update("reels", reel_id, start=start, seconds=length, status="rendering",
+              cut_reason=f"You chose {start:.1f}s–{start + length:.1f}s of the {duration:.0f}s clip")
+    render_reel(reel_id)
 
 
 def post_now(reel_id):

@@ -236,10 +236,11 @@ EDIT_SCHEMA = {
         "lines": {"type": "array", "items": {"type": "string"}},
         "text_size": {"type": "string", "enum": ["keep", "smaller", "bigger", "reset"]},
         "start_seconds": {"type": ["number", "null"]},
+        "length_seconds": {"type": ["number", "null"]},
         "reply": {"type": "string"},
     },
     "required": ["on_screen_text", "post_caption", "look", "adjust", "text_position", "text_layout", "lines",
-                 "text_size", "start_seconds", "reply"],
+                 "text_size", "start_seconds", "length_seconds", "reply"],
     "additionalProperties": False,
 }
 
@@ -269,5 +270,7 @@ Return the settings AFTER the change:
   The words in `lines` must be the on-screen text (new wording if they changed it), just broken into lines.
 - text_size: "smaller", "bigger", "reset" (normal size) or "keep".
 - start_seconds: a new start point in the clip if they asked to use a different moment, otherwise null.
+- length_seconds: the new reel length in seconds if they asked for it longer/shorter or "the whole clip"
+  (use the clip's full length for that), otherwise null. "A bit longer" ≈ +3s. Max 180.
 - reply: one short friendly line saying what you changed (or what you can't do)."""
     return _ask([{"type": "text", "text": text}], EDIT_SCHEMA, effort="low", max_tokens=3000)

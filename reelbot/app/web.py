@@ -90,7 +90,7 @@ def look_note(grade, look):
 
 
 async def review(request: Request):
-    reels = db.q("""SELECT r.*, c.filename FROM reels r JOIN clips c ON c.id = r.clip_id
+    reels = db.q("""SELECT r.*, c.filename, c.duration AS clip_seconds FROM reels r JOIN clips c ON c.id = r.clip_id
                     WHERE r.status IN ('draft', 'rendering', 'failed') ORDER BY r.created_at DESC""")
     look = db.latest_research("look")
     for r in reels:
@@ -123,6 +123,10 @@ async def reel_action(request: Request):
             db.log(f"Removed “{reel['on_screen_text']}” from the calendar")
     elif action == "unschedule":
         db.update("reels", reel_id, status="draft", post_at=None)
+    elif action == "trim":
+        db.update("reels", reel_id, status="rendering")
+        jobs.submit("re-cut reel", jobs.trim, reel_id, float(form.get("start") or 0), float(form.get("length") or 8),
+                    form.get("whole") == "1")
     elif action == "caption":
         db.update("reels", reel_id, post_caption=(form.get("post_caption") or "").strip())
         return RedirectResponse(request.headers.get("referer", "/review"), 303)
