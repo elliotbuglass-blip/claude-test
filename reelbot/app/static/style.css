@@ -159,3 +159,6 @@ button.mini { padding: 5px 8px; font-size: 12px; border-radius: 8px; }
 .msg.bot { background: #1f1c15; color: var(--accent); }
 .colour label { display: flex; justify-content: space-between; }
 .paused { background: #2a1d10; border: 1px solid var(--warn); color: var(--warn); border-radius: 12px; padding: 10px 14px; margin-bottom: 16px; font-size: 14px; }
+.capbox { background: var(--panel2); border-radius: 10px; padding: 8px 10px; margin: 8px 0; }
+.capbox label { margin-top: 0; color: var(--text); }
+.capbox textarea { font-size: 13px; margin-top: 4px; }

@@ -164,7 +164,9 @@ Research mix: every reel has a source = the research it is mainly built on. The 
 Only trends reels may have a trend; all others have trend "". Only original reels have a series; all others have series "".
 inspired_by must name research from the reel's own source.
 
-post_caption: usually the hook or a close variant, one emoji allowed.
+post_caption: the text under the reel. It complements the hook instead of repeating it: 1-2 short lines in the
+creator's voice that add context or a reason to engage (a question, "save this for later", a detail viewers can't
+see), under 150 characters, at most one emoji, then 3-5 specific hashtags for this clip's topic on a new line.
 sound_suggestion: the best-fitting trending Instagram sound from the research (name — artist), or "original audio (engine)" when the clip's own sound is the point (start-ups, revs). Most winning car reels use original audio.
 sound_reason: one line on why this sound (cite the research, e.g. "9 of the top 12 reels for this topic use their own sound").
 track: a filename from the creator's own music library that fits the mood, or "" to keep the clip's own sound. Only use a library track when the clip's sound isn't the point.

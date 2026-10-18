@@ -96,7 +96,7 @@ async def review(request: Request):
     for r in reels:
         r["look_note"] = look_note(r["grade"], look)
     brolls = db.q("SELECT * FROM clips WHERE kind = 'broll' ORDER BY created_at DESC")
-    return page("review.html", request, reels=reels, brolls=brolls,
+    return page("review.html", request, reels=reels, brolls=brolls, hashtags=jobs.cfg()["posting"].get("hashtags", ""),
                 times=jobs.next_free_slots(6))
 
 
@@ -121,6 +121,9 @@ async def reel_action(request: Request):
         db.update("reels", reel_id, status="rejected")
     elif action == "unschedule":
         db.update("reels", reel_id, status="draft", post_at=None)
+    elif action == "caption":
+        db.update("reels", reel_id, post_caption=(form.get("post_caption") or "").strip())
+        return RedirectResponse(request.headers.get("referer", "/review"), 303)
     elif action == "colour":
         adjust = {k: int(form.get(k) or 0) for k in ("brightness", "contrast", "saturation", "warmth")}
         db.update("reels", reel_id, grade=form.get("grade") or reel["grade"], adjust=json.dumps(adjust), status="rendering")

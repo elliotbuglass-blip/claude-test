@@ -23,7 +23,12 @@
         {% for p in pos %}<li class="plus">{{ p }}</li>{% endfor %}
         {% for n in neg %}<li class="minus">{{ n }}</li>{% endfor %}
       </ul>{% endif %}
-      <p class="meta">📝 {{ r.post_caption }}</p>
+      <form method="post" action="/reels/{{ r.id }}/caption" class="capbox">
+        <label>📝 Post caption <span class="meta">(the text under the reel on Instagram)</span></label>
+        <textarea name="post_caption" rows="3">{{ r.post_caption }}</textarea>
+        {% if hashtags %}<p class="meta">+ added to every post: {{ hashtags }}</p>{% endif %}
+        <div class="row tight"><button class="mini ghost">Save caption</button></div>
+      </form>
       <p class="meta">🎵 Use: <b>{{ r.sound_suggestion or 'original audio' }}</b>{% if r.track %} · mixed in: {{ r.track }}{% endif %}</p>
 
       <details class="why">
