@@ -35,6 +35,7 @@
         <td>{{ ('%.1fs'|format(s.avg_watch_ms / 1000)) if s.avg_watch_ms else '–' }}</td></tr>{% endfor %}</table>
     </div></div>
     {% endif %}
+    {% if snaps %}{% include "_lesson.html" %}{% endif %}
     {% if r.status != 'posting' %}
     <form method="post" action="/reels/{{ r.id }}/remove" class="row"
           onsubmit="return confirm('{{ 'Remove this from ReelBot? (It stays on Instagram: delete it in the app if you want it gone there too.)' if r.status == 'posted' else 'Remove this reel?' }}')">

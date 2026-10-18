@@ -44,8 +44,9 @@ CLIP_SCHEMA = {
         "hashtags": {"type": "array", "items": {"type": "string"}},
         "mood": {"type": "string"},
         "highlight": {"type": "string"},
+        "search_terms": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["kind", "kind_reason", "subject", "hashtags", "mood", "highlight"],
+    "required": ["kind", "kind_reason", "subject", "hashtags", "mood", "highlight", "search_terms"],
     "additionalProperties": False,
 }
 
@@ -68,7 +69,9 @@ car, a watch, a place, a lifestyle moment. Subject and hashtags must fit what's 
 - hashtags: 3–5 Instagram hashtags (no #) to research what similar reels are doing, specific to general,
   e.g. ["astonmartindb12", "db12", "astonmartin", "supercar"] or ["doublebreastedsuit", "menswear", "mensstyle"].
 - mood: 2–4 words for music matching, e.g. "dark, confident, calm".
-- highlight: the best moment in one line (e.g. "engine fires up at ~10s")."""
+- highlight: the best moment in one line (e.g. "engine fires up at ~10s").
+- search_terms: 2–3 short phrases people type into Google or YouTube about what's in this clip, general enough to
+  have lots of searches, e.g. ["aston martin db12", "db12 sound"] or ["double breasted suit", "wedding guest outfit men"]."""
     return _ask([*_images(frames), {"type": "text", "text": text}], CLIP_SCHEMA, effort="low", max_tokens=4000)
 
 
@@ -119,9 +122,16 @@ PLAN_SCHEMA = {
             "source": {"type": "string", "enum": ["instagram", "tiktok", "trends", "original"]},
             "series": {"type": "string"},
             "negatives": {"type": "array", "items": {"type": "string"}},
+            "inspirations": {"type": "array", "items": {
+                "type": "object", "properties": {"ref": {"type": "string"}, "took": {"type": "string"}},
+                "required": ["ref", "took"], "additionalProperties": False}},
+            "keywords": {"type": "array", "items": {
+                "type": "object", "properties": {"word": {"type": "string"}, "ref": {"type": "string"}, "why": {"type": "string"}},
+                "required": ["word", "ref", "why"], "additionalProperties": False}},
         },
         "required": ["on_screen_text", "post_caption", "angle", "inspired_by", "sound_suggestion", "sound_reason",
-                     "track", "virality_score", "score_reason", "positives", "negatives", "trend", "source", "series"],
+                     "track", "virality_score", "score_reason", "positives", "negatives", "trend", "source", "series",
+                     "inspirations", "keywords"],
         "additionalProperties": False}}},
     "required": ["reels"],
     "additionalProperties": False,
@@ -174,10 +184,22 @@ track: a filename from the creator's own music library that fits the mood, or ""
 virality_score (0–100): your honest prediction of how this reel will do *for this creator*, relative to their normal trial reels (50 = typical, 80+ = likely a top-10% reel). Base it on: how well similar reels (topic and competitor) did, how the creator's past reels with this angle or sound did, the strength of the hook, and the clip's moment. score_reason: one line naming the main evidence.
 positives: 2–4 short reasons it could do well, each citing real evidence from the research or the creator's results (numbers where you have them).
 negatives: 1–3 short honest risks that could hold it back (e.g. "no text hooks in the top reels for this topic", "similar line flopped for you at 3.1K").
-inspired_by: name the exact source — the winning reel(s) or pattern this hook adapts, with account and views, e.g. "@itisbainz 'POV: …' 412K (5.2x his median)" or "your own 'Sunday spec' reel, 61K"."""
+inspired_by: name the exact source — the winning reel(s) or pattern this hook adapts, with account and views, e.g. "@itisbainz 'POV: …' 412K (5.2x his median)" or "your own 'Sunday spec' reel, 61K".
+
+Every research item in the request has an id in square brackets, e.g. [I3] (Instagram reel), [T2] (TikTok), [C1]
+(competitor outlier), [S4] (a reel the creator saved), [M2] (the creator's own reel), [G5] (Google trending search),
+[K7] (what people search on Google/YouTube about this clip's topic).
+inspirations: 1–3 research items this reel really borrows from (hook wording, format, structure, sound, pacing).
+  ref = the id exactly as written, e.g. "I3". took = what you took from it in a few words ("the 'POV:' opener",
+  "the night walk-up format", "this sound"). Original reels may cite the items whose gap they fill. Only cite ids that
+  exist in the request; if nothing was borrowed, return [].
+keywords: words or phrases in on_screen_text or post_caption that you chose because of the research: a search people
+  make [K..], a trending search [G..], or a phrase that keeps winning on creators' reels [I../T../C..]. word = the word
+  or phrase as written in the reel, ref = the id, why = a few words ("people search 'db12 sound'", "trending on Google").
+  Only real, cited reasons: [] is fine."""
 
 
-def plan_reels(frames, clip_info, n, context, library, sources=None):
+def plan_reels(frames, clip_info, n, context, library, sources=None, remake=None):
     text = f"""CLIP: {json.dumps(clip_info, ensure_ascii=False)}
 
 {context}
@@ -185,6 +207,12 @@ def plan_reels(frames, clip_info, n, context, library, sources=None):
 MY MUSIC LIBRARY (filenames for `track`): {", ".join(library) or "(empty — use \"\")"}
 
 Plan {n} different reels for this clip. Research mix for this batch (source → number of reels): {json.dumps(sources or {"instagram": n})}"""
+    if remake:
+        text += f"""
+
+REMAKE: this is a new version of a reel that is already posted. Apply the lesson below. Keep what worked, change what
+didn't. The hook must be clearly new (a new line, not a reword), so Instagram doesn't treat it as a duplicate.
+{json.dumps(remake, ensure_ascii=False)}"""
     return _ask([*_images(frames), {"type": "text", "text": text}], PLAN_SCHEMA,
                 system=PLAN_SYSTEM, effort="medium")["reels"][:n]
 
@@ -274,3 +302,47 @@ Return the settings AFTER the change:
   (use the clip's full length for that), otherwise null. "A bit longer" ≈ +3s. Max 180.
 - reply: one short friendly line saying what you changed (or what you can't do)."""
     return _ask([{"type": "text", "text": text}], EDIT_SCHEMA, effort="low", max_tokens=3000)
+
+
+LESSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "verdict": {"type": "string", "enum": ["winner", "ok", "flop"]},
+        "headline": {"type": "string"},
+        "worked": {"type": "array", "items": {"type": "string"}},
+        "didnt": {"type": "array", "items": {"type": "string"}},
+        "tweak": {"type": "string"},
+        "change": {"type": "array", "items": {"type": "string", "enum": ["hook", "opening", "length", "part", "sound", "text_look", "colour", "caption"]}},
+        "new_start": {"type": "number"},
+        "new_length": {"type": "number"},
+        "lesson_for_next": {"type": "string"},
+    },
+    "required": ["verdict", "headline", "worked", "didnt", "tweak", "change", "new_start", "new_length", "lesson_for_next"],
+    "additionalProperties": False,
+}
+
+
+def review_result(reel, results, usual, clip_seconds, others=""):
+    """After a trial reel has results: what worked, what didn't, and one tweak worth testing in a remake."""
+    text = f"""You review how an Instagram TRIAL reel did (shown to non-followers only), so the creator learns and the next version does better.
+
+THE REEL: {json.dumps(reel, ensure_ascii=False)}
+The clip it came from is {clip_seconds:.1f}s long; the reel used {reel.get("start", 0):.1f}s–{reel.get("start", 0) + reel.get("seconds", 0):.1f}s.
+
+RESULTS (hours after posting → numbers): {json.dumps(results)}
+The creator's usual views per reel: {usual:,}.
+{others}
+
+How to read it: views vs usual is the headline. Shares and saves per 1,000 views show whether people valued it.
+Average watch time vs reel length shows whether the opening held people (a short watch on a long reel = the hook or
+first second lost them). Likes per view show whether the payoff landed. Be specific and honest; numbers beat adjectives.
+
+- verdict: winner (clearly above usual, or strong shares/saves), ok, or flop (clearly below usual).
+- headline: one plain sentence a 10-year-old would get, e.g. "Half your usual views: people scrolled past in the first second."
+- worked / didnt: 1–3 short points each, citing the numbers.
+- tweak: the ONE change most likely to do better in a remake of this same clip, in plain words.
+- change: which parts the remake should change.
+- new_start, new_length: the part of the clip the remake should use, in seconds of the clip (keep the current ones if the part isn't the problem).
+  For a winner, pick a different part of the clip so the remake isn't a duplicate.
+- lesson_for_next: one line ReelBot should remember for every future reel (e.g. "Night walk-ups beat daytime 3 to 1")."""
+    return _ask([{"type": "text", "text": text}], LESSON_SCHEMA, effort="medium", max_tokens=6000)

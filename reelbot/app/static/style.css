@@ -198,3 +198,17 @@ button.mini { padding: 5px 8px; font-size: 12px; border-radius: 8px; }
   .month { gap: 3px; } .mday { min-height: 70px; padding: 3px; } .mth { width: 22px; height: 40px; border-width: 1.5px; } .mth i { display: none; }
   .dow { font-size: 10px; } .reelpage { grid-template-columns: 1fr; }
 }
+
+.boldbox { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; margin: 12px 0; }
+.boldbox .mixrow label { gap: 8px; } .boldbox .mixrow label .meta { flex: 1; margin: 0; }
+.health { border-radius: 10px; padding: 8px 12px; margin: 6px 0 10px; background: var(--panel2); border: 1px solid var(--line); }
+.health li { list-style: none; margin: 2px 0; } .health ul { padding: 0; margin: 0; }
+.health .bad { color: #ff8a8a; } .health .good { color: #8fd694; }
+.insp { display: grid; gap: 8px; margin: 6px 0 10px; }
+.insp .i { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 14px; }
+.insp .i .who { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.insp .i .took { color: var(--text); margin-top: 3px; }
+.kw { display: inline-block; background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; margin: 2px 4px 2px 0; font-size: 13px; }
+.lesson { border-left: 4px solid var(--line); }
+.lesson.v-winner { border-left-color: #8fd694; } .lesson.v-flop { border-left-color: #ff8a8a; } .lesson.v-ok { border-left-color: #e8d27a; }
+.lessons { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin-bottom: 16px; }

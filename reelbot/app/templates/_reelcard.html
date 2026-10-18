@@ -27,6 +27,27 @@
       <details class="why">
         <summary>🔍 Why this reel</summary>
         <div class="why-b">
+          {% set insp = r.inspirations|fromjson or [] %}{% set kws = r.keywords|fromjson or [] %}
+          {% if res.remake_of %}<h4>🔁 Remake</h4><p>New version of “{{ res.remake_of.hook }}” <a href="/reel/{{ res.remake_of.id }}">see it ↗</a>. The tweak: {{ res.remake_of.tweak }}</p>{% endif %}
+          {% if res.status %}<h4>🔎 What ReelBot checked</h4>
+            <div class="health"><ul>{% for st in res.status %}<li class="{{ 'good' if st.ok else 'bad' }}">{{ '✓' if st.ok else '✗' }} <b>{{ st.source }}</b>: {{ st.text }}</li>{% endfor %}</ul>
+            {% if res.status|rejectattr('ok')|list %}<p class="meta">✗ = that research didn't run for this reel, so it couldn't borrow from it.</p>{% endif %}</div>
+          {% elif r.research %}<p class="meta">Made before ReelBot recorded what it checked.</p>{% endif %}
+          <h4>🎯 Inspired by</h4>
+          {% if insp %}<div class="insp">{% for x in insp %}
+            <div class="i"><div class="who">
+              <span class="tag">{{ {"instagram": "📸 Instagram", "tiktok": "🎵 TikTok", "google": "🔎 Google", "youtube": "▶️ YouTube", "you": "⭐ Your reel"}.get(x.platform, x.platform) }}</span>
+              {% if x.account and x.account != 'you' %}<b>@{{ x.account }}</b>{% endif %}
+              {% if x.views %}<span class="meta">{{ x.views|num }} views{% if x.ratio %} · {{ x.ratio }}× their normal{% endif %}</span>{% endif %}
+              {% if x.searches %}<span class="meta">{{ x.searches }} searches</span>{% endif %}
+              {% if x.url %}<a href="{{ x.url }}" target="_blank">open ↗</a>{% endif %}</div>
+              {% if x.text %}<div class="meta">“{{ x.text }}”</div>{% endif %}
+              <div class="took">→ Took: {{ x.took }}</div></div>{% endfor %}</div>
+          {% else %}<p class="meta">{{ 'Nothing borrowed: this one is built from scratch.' if src == 'original' else 'No specific creator recorded for this reel.' }}</p>{% endif %}
+          {% if kws %}<h4>🔤 Why these words</h4>
+            <p>{% for k in kws %}<span class="kw"><b>“{{ k.word }}”</b> · {{ k.why }}{% if k.platform in ('google', 'youtube') %} ({{ k.platform|capitalize }}){% endif %}</span>{% endfor %}</p>{% endif %}
+          {% if res.searches %}<details><summary class="meta">What people search about this ({{ res.searches|length }})</summary>
+            <p>{% for k in res.searches %}<span class="kw">{{ k.search }}</span>{% endfor %}</p></details>{% endif %}
           <h4>📊 Research source</h4><p>{{ SOURCE_LABELS[src] }}-led: {{ {"instagram": "built on what is proven on Instagram right now", "tiktok": "built on something rising on TikTok before it hits Instagram", "trends": "a riskier reel riding news or a Google trend", "original": "a trend-setter: something nobody in your niche is doing, made to become your own series" + (" (“" ~ r.series ~ "”)" if r.series else "")}[src] }}.</p>
           <h4>✍️ The words</h4><p>{{ r.inspired_by or '—' }}</p>
           {% if res.trend %}<h4>🔥 The trend</h4><p>“{{ res.trend.term }}” is trending on Google ({{ res.trend.searches }} searches, {{ res.trend.geo }}){% if res.trend.headline %}: {{ res.trend.headline }}{% endif %}{% if res.trend.url %} · <a href="{{ res.trend.url }}" target="_blank">news ↗</a>{% endif %}. This is a riskier test.</p>{% endif %}

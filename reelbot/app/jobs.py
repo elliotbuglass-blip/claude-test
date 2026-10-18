@@ -162,6 +162,7 @@ def analyse_clip(clip_id, decide_kind=True, make_after=True):
         db.update("clips", clip_id, status="failed", notes=f"Analysis failed: {str(e)[:300]}")
         raise
     fields = {"subject": info["subject"], "hashtags": json.dumps(info["hashtags"]), "status": "analysed",
+              "search_terms": json.dumps(info.get("search_terms", [])),
               "notes": f"{info['mood']} · {info['highlight']}"}
     if decide_kind:
         fields["kind"] = info["kind"]
@@ -419,6 +420,46 @@ def google_trends(max_age_hours=6):
     return result
 
 
+SUGGEST = "https://suggestqueries.google.com/complete/search"
+
+
+def _suggest(query, youtube=False):
+    params = {"client": "firefox", "hl": "en-GB", "gl": "gb", "q": query} | ({"ds": "yt"} if youtube else {})
+    resp = requests.get(SUGGEST, params=params, timeout=15)
+    resp.raise_for_status()
+    return [x for x in resp.json()[1] if x.lower() != query.lower()]
+
+
+def google_keywords(terms, days=7):
+    """What people actually type into Google and YouTube about this clip's topic (free autocomplete, UK).
+    Each phrase is checked as typed, plus as a question, and kept for a week."""
+    since = (datetime.now(ZoneInfo("UTC")) - timedelta(days=days)).isoformat(timespec="seconds")
+    items, errors = [], []
+    for term in [t.strip().lower() for t in terms if t and t.strip()][:3]:
+        row = db.one("SELECT data FROM research WHERE account = ? AND kind = ? AND created_at >= ? ORDER BY created_at DESC",
+                     db.ACCOUNT, "keywords:" + term, since)
+        if row:
+            items += json.loads(row["data"])["items"]
+            continue
+        found = []
+        try:
+            for q, where in ((term, "google"), (term, "youtube"), ("why " + term, "google"), (term + " vs", "google")):
+                found += [{"term": term, "search": x, "where": where} for x in _suggest(q, where == "youtube")[:6]]
+        except Exception as e:
+            errors.append(f"{term}: {e}")
+        if found:
+            db.save_research("keywords:" + term, {"checked_at": local_now().isoformat(), "items": found})
+        items += found
+    seen, out = set(), []
+    for it in items:
+        if it["search"].lower() not in seen:
+            seen.add(it["search"].lower())
+            out.append(it)
+    if errors and not out:
+        raise RuntimeError("; ".join(errors)[:200])
+    return {"terms": terms[:3], "items": out[:30]}
+
+
 def run_radar():
     """Weekly: competitor reels that beat their own normal views, with their on-screen text."""
     c = cfg()
@@ -537,11 +578,12 @@ def mix_counts(n, mix=None):
     return counts
 
 
-def mix_plan(n, recent=40):
+def mix_plan(n, recent=40, mix=None):
     """The sources for n reels, each different where possible. Each goes to the source furthest behind its share over
     your last reels, so the mix holds across batches: with 2 reels per clip, trends and original still get their turn."""
-    mix, made, order = research_mix(), Counter(), []
-    made.update(r["source"] for r in db.q("SELECT source FROM reels WHERE source IS NOT NULL ORDER BY created_at DESC LIMIT ?", recent))
+    mix, made, order = mix or research_mix(), Counter(), []
+    if recent:
+        made.update(r["source"] for r in db.q("SELECT source FROM reels WHERE source IS NOT NULL ORDER BY created_at DESC LIMIT ?", recent))
     total = sum(mix.values())
     for _ in range(n):
         count = sum(made.values()) + 1
@@ -678,20 +720,38 @@ def learnings():
     return "\n".join(lines)
 
 
-def build_context(topic, tiktok=None):
-    parts = []
+def build_context(topic, tiktok=None, keywords=None):
+    """Everything the planner reads, with an id on every research item ([I3], [T2], [K7]…) so each reel can say
+    exactly which creators, reels and searches it took from. Returns (text, refs: id → item)."""
+    parts, refs = [], {}
+
+    def ref(prefix, item):
+        rid = f"{prefix}{sum(1 for k in refs if k[0] == prefix) + 1}"
+        refs[rid] = item
+        return f"[{rid}]"
+
     mine = db.latest_research("my_reels")
     if mine and mine["reels"]:
         ranked = sorted(mine["reels"], key=lambda r: -(r["views"] or 0))
         med = int(statistics.median(r["views"] for r in ranked))
-        fmt = lambda r: f'- "{(r["caption"] or "").splitlines()[0][:80]}" → {r["views"]:,} views'
+        def fmt(r):
+            hook = (r["caption"] or "").splitlines()[0][:80] if r["caption"] else ""
+            tag = ref("M", {"platform": "you", "account": "you", "url": r.get("permalink") or r.get("url"),
+                            "views": r["views"], "text": hook})
+            return f'- {tag} "{hook}" → {r["views"]:,} views'
         parts.append(f"MY RECENT REELS (median {med:,} views). Captions usually match the on-screen hook.\n"
                      "Best:\n" + "\n".join(fmt(r) for r in ranked[:12]) + "\nWorst:\n" + "\n".join(fmt(r) for r in ranked[-8:]))
     parts.append("MY REELBOT TRIAL RESULTS:\n" + learnings())
+    lessons = db.q("SELECT on_screen_text, lesson FROM reels WHERE lesson IS NOT NULL ORDER BY posted_at DESC LIMIT 10")
+    if lessons:
+        parts.append("LESSONS FROM MY POSTED TRIAL REELS (newest first; apply them):\n" + "\n".join(
+            f'- "{r["on_screen_text"]}": {json.loads(r["lesson"])["verdict"]}. {json.loads(r["lesson"])["lesson_for_next"]}'
+            for r in lessons))
     if topic:
-        parts.append(f"TOPIC RESEARCH (#{' #'.join(topic['hashtags'])}, last 60 days, relevant winners):\n" + "\n".join(
-            f'- @{w["account"]}: on-screen "{w["on_screen_text"] or "(no text)"}" → {w["views"]:,} views, sound: {w["music"] or "?"}'
-            for w in topic["winners"]) or "(none on topic: don't cite topic winners or formats)")
+        parts.append(f"TOPIC RESEARCH (#{' #'.join(topic['hashtags'])}, last 60 days, relevant winners):\n" + ("\n".join(
+            f'- {ref("I", {"platform": "instagram", "account": w["account"], "url": w["url"], "views": w["views"], "text": w["on_screen_text"], "music": w.get("music")})}'
+            f' @{w["account"]}: on-screen "{w["on_screen_text"] or "(no text)"}" → {w["views"]:,} views, sound: {w["music"] or "?"}'
+            for w in topic["winners"]) or "(none on topic: don't cite topic winners or formats)"))
         parts.append(f"Trending sounds on these reels: {', '.join(f'{s} ({n})' for s, n in topic['trending_sounds']) or 'none'}."
                      f" Share using original audio: {int(topic['original_audio_share'] * 100)}%.")
         if topic.get("sounds_7d"):
@@ -699,24 +759,33 @@ def build_context(topic, tiktok=None):
                          + ", ".join(f"{s} ({n} reels)" for s, n in topic["sounds_7d"]))
     if tiktok and tiktok.get("winners"):
         parts.append(f"TIKTOK RESEARCH (#{' #'.join(tiktok['hashtags'])}, last 30 days — TikTok is usually 1–2 weeks ahead of Instagram):\n"
-                     + "\n".join(f'- @{w["account"]}: on-screen "{w["on_screen_text"] or "(not read)"}", caption "{(w["post_caption"] or "")[:80]}" '
+                     + "\n".join(f'- {ref("T", {"platform": "tiktok", "account": w["account"], "url": w["url"], "views": w["views"], "text": w["on_screen_text"] or (w["post_caption"] or "")[:80], "music": w.get("music")})}'
+                                  f' @{w["account"]}: on-screen "{w["on_screen_text"] or "(not read)"}", caption "{(w["post_caption"] or "")[:80]}" '
                                   f'→ {w["views"]:,} views, {w["shares"]:,} shares, sound: {w["music"]}' for w in tiktok["winners"]))
         if tiktok.get("sounds_7d"):
             parts.append("Sounds RISING on TikTok (used on these hashtags in the last 7 days): "
                          + ", ".join(f"{s} ({n} videos)" for s, n in tiktok["sounds_7d"]))
+    if keywords and keywords.get("items"):
+        parts.append(f"WHAT PEOPLE SEARCH about this clip's topic (Google/YouTube autocomplete, UK, from: {', '.join(keywords['terms'])}). "
+                     "Words people really type: use them in the hook or caption where they fit naturally:\n" + "\n".join(
+            f'- {ref("K", {"platform": k["where"], "text": k["search"], "term": k["term"]})} "{k["search"]}" ({k["where"]})'
+            for k in keywords["items"]))
     trends = db.latest_research("trends")
     if trends and trends.get("items"):
         parts.append("TRENDING NOW on Google (search term · searches · headline):\n" + "\n".join(
-            f'- {t["term"]} · {t["searches"]} · {t["headline"][:90]}' for t in trends["items"][:30]))
+            f'- {ref("G", {"platform": "google", "text": t["term"], "searches": t["searches"], "headline": t["headline"], "url": t["url"], "geo": t["geo"]})}'
+            f' {t["term"]} · {t["searches"]} · {t["headline"][:90]}' for t in trends["items"][:30]))
     radar = db.latest_research("radar")
     if radar and radar.get("outliers"):
         parts.append("COMPETITOR OUTLIERS (beat their own median):\n" + "\n".join(
-            f'- @{o["account"]}: "{o.get("on_screen_text") or o.get("post_caption", "")[:60]}" {o["ratio"]}x, {o["views"]:,} views'
+            f'- {ref("C", {"platform": "instagram", "account": o["account"], "url": o.get("url"), "views": o["views"], "ratio": o["ratio"], "text": o.get("on_screen_text") or o.get("post_caption", "")[:60]})}'
+            f' @{o["account"]}: "{o.get("on_screen_text") or o.get("post_caption", "")[:60]}" {o["ratio"]}x, {o["views"]:,} views'
             for o in radar["outliers"][:12]))
     saved = db.q("SELECT * FROM library WHERE source = 'saved' ORDER BY last_seen DESC LIMIT 15")
     if saved:
         parts.append("REELS THE CREATOR SAVED AS INSPIRATION (strong signal of their taste; adapt, never copy):\n" + "\n".join(
-            f'- {s["platform"]} @{s["creator"] or "?"}: on-screen "{s["on_screen_text"] or "(not read)"}", '
+            f'- {ref("S", {"platform": s["platform"], "account": s["creator"], "url": s["url"], "views": s["views"], "text": s["on_screen_text"], "music": s["music"], "note": s["note"]})}'
+            f' {s["platform"]} @{s["creator"] or "?"}: on-screen "{s["on_screen_text"] or "(not read)"}", '
             f'{(s["views"] or 0):,} views, sound: {s["music"] or "?"}' + (f' — their note: "{s["note"]}"' if s["note"] else "")
             for s in saved))
     series = series_to_continue()
@@ -728,7 +797,17 @@ def build_context(topic, tiktok=None):
     if used:
         parts.append("HOOKS ALREADY USED on other ReelBot reels (don't repeat them; most aren't posted yet, so they are NOT "
                      "the creator's past winners and are no evidence of anything):\n" + "\n".join(used[-60:]))
-    return "\n\n".join(parts)
+    return "\n\n".join(parts), refs
+
+
+def resolve_refs(plan, refs):
+    """Turn the planner's [I3]-style citations into the real creators, reels and searches (dropping any it made up)."""
+    clean = lambda r: (r or "").strip().strip("[]").upper()
+    insp = [{"ref": clean(x["ref"]), "took": x["took"], **refs[clean(x["ref"])]}
+            for x in plan.get("inspirations", []) if clean(x["ref"]) in refs]
+    words = [{"word": x["word"], "why": x["why"], "ref": clean(x["ref"]), **refs.get(clean(x["ref"]), {})}
+             for x in plan.get("keywords", []) if x.get("word")]
+    return insp, words
 
 
 def series_to_continue(limit=4):
@@ -751,18 +830,20 @@ MAX_PER_CLIP = 2  # trial reels per clip per 30 days
 def clip_allowance(clip_id, day=None):
     """How many more trial reels this clip may get: max 2 per 30 days, and none on a day it already has one."""
     since = (datetime.now(ZoneInfo("UTC")) - timedelta(days=30)).isoformat(timespec="seconds")
-    rows = db.q("SELECT COALESCE(post_at, recommended_time) AS t FROM reels WHERE clip_id = ? AND status != 'rejected' "
+    rows = db.q("SELECT COALESCE(post_at, recommended_time) AS t, parent FROM reels WHERE clip_id = ? AND status != 'rejected' "
                 "AND created_at >= ?", clip_id, since)
     if day and any(r["t"] and r["t"].startswith(str(day)) for r in rows):
         return 0
-    return MAX_PER_CLIP - len(rows)
+    return MAX_PER_CLIP - sum(1 for r in rows if not r["parent"])  # a remake of a posted reel doesn't count (1 per reel)
 
 
 # --------------------------------------------------------------------------- uploads in batches
 
-def start_batch(batch, combine, expected, library_ids=()):
-    """Upload page pressed Start: remember what's coming so a combined edit waits for every clip."""
-    db.set_setting(f"batch:{batch}", {"combine": bool(combine), "expected": int(expected)})
+def start_batch(batch, combine, expected, library_ids=(), mix=None):
+    """Upload page pressed Start: remember what's coming (and how bold to go) so a combined edit waits for every clip."""
+    mix = {s: max(0, int((mix or {}).get(s) or 0)) for s in SOURCES} if mix else None
+    db.set_setting(f"batch:{batch}", {"combine": bool(combine), "expected": int(expected),
+                                      "mix": mix if mix and sum(mix.values()) else None})
     for cid in library_ids:  # clips picked from the library: no re-upload needed
         db.update("clips", cid, batch=batch, combine=1 if combine else 0)
     if library_ids and not expected:
@@ -793,7 +874,7 @@ def _batch_ready(batch):
         submit("edit clips together", make_combo, batch)
     elif setting("mode") == "review":
         for c in mains:
-            submit(f"make reels for {c['filename']}", make_reels, c["id"])
+            submit(f"make reels for {c['filename']}", make_reels, c["id"], None, None, None, info.get("mix"))
 
 
 def make_combo(batch):
@@ -825,11 +906,12 @@ def make_combo(batch):
         "subject": " → ".join(m["subject"] or m["filename"] for m in mains),
         "description": " / ".join(m["description"] for m in mains if m["description"]) or None,
         "hashtags": json.dumps(tags), "notes": f"Edited together by ReelBot from {names}",
+        "search_terms": json.dumps(list(dict.fromkeys(t for m in mains for t in json.loads(m["search_terms"] or "[]")))[:3]),
         "broll_silent": 1})
     for m in mains + brolls:
         db.update("clips", m["id"], status="used")
     db.log(f"Edited {len(mains)} clip(s){' + b-roll' if brolls else ''} into one: {names}")
-    make_reels(combo_id)
+    make_reels(combo_id, mix=(db.get_setting(f"batch:{batch}") or {}).get("mix"))
 
 
 def cut(path, seconds):
@@ -843,8 +925,46 @@ def cut(path, seconds):
     return start, length, reason
 
 
-def make_reels(clip_id, n=None, post_at=None, sources=None):
-    """Plan + render n reels for one clip. Review mode → drafts; autopilot → scheduled."""
+def gather_research(clip, sources):
+    """All the research for one clip, plus a plain record of what ran and what didn't (shown on every reel)."""
+    status, tags = [], json.loads(clip["hashtags"] or "[]")
+    terms = json.loads(clip["search_terms"] or "[]") or [" ".join((clip["subject"] or "").split()[:4])]
+
+    def attempt(name, fn, *args):
+        try:
+            return fn(*args)
+        except Exception as e:
+            status.append({"source": name, "ok": False, "text": str(e)[:200]})
+            db.log(f"{name} research skipped: {e}")
+            return None
+
+    trends = attempt("Google trends", google_trends)
+    if trends:
+        status.append({"source": "Google trends", "ok": True, "text": f"{len(trends.get('items', []))} trending searches (UK + US)"})
+    has_apify = env("APIFY_TOKEN", required=False) is not None
+    topic = None
+    if not has_apify:
+        status.append({"source": "Instagram", "ok": False, "text": "No APIFY_TOKEN set, so no Instagram or TikTok research"})
+    elif tags:
+        topic = attempt("Instagram", research_topic, tags, clip["subject"])
+        if topic:
+            status.append({"source": "Instagram", "ok": True, "text": f"{topic['found']} reels for #{' #'.join(topic['hashtags'])}, "
+                                                                     f"{len(topic['winners'])} on-topic winners read"})
+    tiktok = None
+    if "tiktok" in sources and has_apify:
+        tiktok = attempt("TikTok", research_tiktok, tags, clip["subject"])
+        if tiktok:
+            status.append({"source": "TikTok", "ok": True, "text": f"{tiktok['found']} videos, {len(tiktok['winners'])} on-topic winners read"})
+    keywords = attempt("Google searches", google_keywords, terms)
+    if keywords:
+        status.append({"source": "Google searches", "ok": True,
+                       "text": f"{len(keywords['items'])} things people search about “{'”, “'.join(keywords['terms'])}”"})
+    return topic, tiktok, keywords, status
+
+
+def make_reels(clip_id, n=None, post_at=None, sources=None, mix=None):
+    """Plan + render n reels for one clip. Review mode → drafts; autopilot → scheduled.
+    mix = how bold to go for this batch (set on the Upload page); otherwise the mix from Settings."""
     c = cfg()
     clip = db.one("SELECT * FROM clips WHERE id = ?", clip_id)
     n = n or int(setting("reels_per_clip") or 3)
@@ -856,25 +976,10 @@ def make_reels(clip_id, n=None, post_at=None, sources=None):
         return
     n = min(n, allowed)
     db.update("clips", clip_id, status="making")
-    try:
-        google_trends()
-    except Exception as e:
-        db.log(f"Google trends skipped: {e}")
-    topic = None
-    if clip["hashtags"] and env("APIFY_TOKEN", required=False) is not None:
-        try:
-            topic = research_topic(json.loads(clip["hashtags"]), clip["subject"])
-        except Exception as e:
-            db.log(f"Topic research skipped: {e}")
-    sources = list(sources or mix_plan(n))
-    tiktok = None
-    if "tiktok" in sources:
-        try:
-            tiktok = research_tiktok(json.loads(clip["hashtags"] or "[]"), clip["subject"])
-        except Exception as e:
-            db.log(f"TikTok research skipped: {e}")
-        if not tiktok or not tiktok.get("winners"):  # no TikTok research: those reels lean on Instagram instead
-            sources = ["instagram" if s == "tiktok" else s for s in sources]
+    sources = list(sources or (mix_plan(n, recent=0, mix=mix) if mix else mix_plan(n)))
+    topic, tiktok, keywords, status = gather_research(clip, sources)
+    if "tiktok" in sources and not (tiktok and tiktok.get("winners")):  # no TikTok research: lean on Instagram instead
+        sources = ["instagram" if s == "tiktok" else s for s in sources]
     library = sorted(p.name for p in db.AUDIO_DIR.glob("*") if p.suffix.lower() in editor.AUDIO_EXTS)
     if clip["keep_look"]:  # you edited and trimmed it yourself: use the whole clip (Instagram's limit is 3 minutes)
         start, length = 0.0, min(clip["duration"], 180)
@@ -888,17 +993,17 @@ def make_reels(clip_id, n=None, post_at=None, sources=None):
             "reel_cut": f"{start:.1f}s–{start + length:.1f}s of the clip, so the reel is {length:.0f}s long",
             "creator_description": clip["description"] or ""}
     counts = Counter(sources)
+    context, refs = build_context(topic, tiktok, keywords)
     try:
-        plans = brain.plan_reels(_frames(clip["path"], 3, start, length), info, n, build_context(topic, tiktok), library,
+        plans = brain.plan_reels(_frames(clip["path"], 3, start, length), info, n, context, library,
                                  {s: counts.get(s, 0) for s in SOURCES})
     except Exception as e:
         db.update("clips", clip_id, status="failed", notes=f"Planning reels failed: {str(e)[:300]}")
         raise
     mode = setting("mode")
     slots = post_at or spread_slots(len(plans))
-    research = research_snapshot(topic, tiktok)
+    research = research_snapshot(topic, tiktok, keywords, status)
     for i, (plan, slot) in enumerate(zip(plans, slots)):
-        reel_id = db.new_id()
         if i < len(windows):
             w_start, motion = windows[i], None
             w_reason = cut_reason if i == 0 else (f"{w_start:.1f}s–{w_start + length:.1f}s: a different part of the clip "
@@ -906,34 +1011,47 @@ def make_reels(clip_id, n=None, post_at=None, sources=None):
         else:  # not enough clip for a different part: same moment, different framing
             w_start, motion = windows[0], "push"
             w_reason = cut_reason + " · with a slow push-in so it isn't a duplicate of the other reel"
-        trend = plan.get("trend") or ""
-        db.insert("reels", {
-            "id": reel_id, "clip_id": clip_id,
-            **{k: plan[k] for k in plan if k not in ("track", "positives", "negatives", "trend", "source", "series")},
-            "series": plan.get("series") or None,
-            "source": plan.get("source") or "instagram", "risky": 1 if plan.get("source") == "trends" else 0,
-            "positives": json.dumps(plan.get("positives", [])), "negatives": json.dumps(plan.get("negatives", [])),
-            "trend": trend, "research": json.dumps(research | {"trend": next(
-                (t for t in (db.latest_research("trends") or {}).get("items", []) if t["term"].lower() == trend.lower()), None)
-                if trend else None}, ensure_ascii=False),
-            "track": plan["track"] if plan["track"] in library else "",
-            "seconds": length, "start": w_start, "cut_reason": w_reason, "motion": motion,
-            "text_style": c["look"].get("text_style", "editorial"),
-            "grade": "none" if clip["keep_look"] else c["look"].get("grade", "match"), "recommended_time": slot,
-            "post_at": slot if mode == "autopilot" else None, "mode": mode, "status": "rendering"})
-        render_reel(reel_id)
+        save_plan(clip, plan, refs, research, slot=slot, start=w_start, length=length, cut_reason=w_reason, motion=motion,
+                  mode=mode, post_at=slot if mode == "autopilot" else None)
     db.update("clips", clip_id, status="used")
 
 
-def research_snapshot(topic, tiktok=None):
+def save_plan(clip, plan, refs, research, slot, start, length, cut_reason, motion, mode, post_at=None, parent=None, keep=None):
+    """Store one planned reel (with the research it cites) and render it. keep = look settings carried over (remakes)."""
+    c = cfg()
+    library = sorted(p.name for p in db.AUDIO_DIR.glob("*") if p.suffix.lower() in editor.AUDIO_EXTS)
+    trend = plan.get("trend") or ""
+    insp, words = resolve_refs(plan, refs)
+    reel_id = db.new_id()
+    db.insert("reels", {
+        "id": reel_id, "clip_id": clip["id"],
+        **{k: plan[k] for k in plan if k not in ("track", "positives", "negatives", "trend", "source", "series", "inspirations", "keywords")},
+        "series": plan.get("series") or None,
+        "source": plan.get("source") or "instagram", "risky": 1 if plan.get("source") == "trends" else 0,
+        "positives": json.dumps(plan.get("positives", [])), "negatives": json.dumps(plan.get("negatives", [])),
+        "inspirations": json.dumps(insp, ensure_ascii=False), "keywords": json.dumps(words, ensure_ascii=False),
+        "trend": trend, "research": json.dumps(research | {"trend": next(
+            (t for t in (db.latest_research("trends") or {}).get("items", []) if t["term"].lower() == trend.lower()), None)
+            if trend else None}, ensure_ascii=False),
+        "track": plan["track"] if plan["track"] in library else "",
+        "seconds": length, "start": start, "cut_reason": cut_reason, "motion": motion, "parent": parent,
+        "text_style": c["look"].get("text_style", "editorial"),
+        "grade": "none" if clip["keep_look"] else c["look"].get("grade", "match"), "recommended_time": slot,
+        "post_at": post_at, "mode": mode, "status": "rendering", **(keep or {})})
+    render_reel(reel_id)
+
+
+def research_snapshot(topic, tiktok=None, keywords=None, status=None):
     """The research a batch of reels was planned from, kept with each reel for its "Why this reel" panel."""
     out = {"winners": [], "sounds": [], "sounds_7d": [], "original_share": None, "outliers": [], "hashtags": [],
-           "tiktok": [], "tiktok_sounds_7d": []}
+           "tiktok": [], "tiktok_sounds_7d": [], "searches": [], "status": status or []}
     if tiktok:
         out.update(tiktok=tiktok["winners"][:6], tiktok_sounds_7d=tiktok.get("sounds_7d", [])[:5])
     if topic:
         out.update(winners=topic["winners"][:8], sounds=topic["trending_sounds"][:5], hashtags=topic["hashtags"],
                    sounds_7d=topic.get("sounds_7d", [])[:5], original_share=topic["original_audio_share"])
+    if keywords:
+        out["searches"] = keywords["items"][:12]
     radar = db.latest_research("radar")
     if radar and radar.get("outliers"):
         out["outliers"] = [{k: o.get(k) for k in ("account", "url", "views", "ratio", "on_screen_text", "post_caption")}
@@ -1211,7 +1329,90 @@ def snapshots_due():
                 stats = fetch_insights(reel["media_id"])
                 db.insert("snapshots", {"reel_id": reel["id"], "hours": h, "taken_at": db.now(), **stats})
                 db.log(f"{h}h results for “{reel['on_screen_text']}”: {stats.get('views', 0):,} views")
+                if h == 72:
+                    submit("learn from results", review_reel, reel["id"])
                 break  # one per reel per pass is plenty
+
+
+# --------------------------------------------------------------------------- learning from results
+# After 72h (or when you press "Review now") Claude reads a posted reel's numbers: what worked, what didn't, and one
+# tweak to test. The lesson feeds every future plan; "Remake with this tweak" makes a new draft of the same clip.
+
+def review_reel(reel_id):
+    reel = db.one("SELECT r.*, c.duration AS clip_seconds FROM reels r JOIN clips c ON c.id = r.clip_id WHERE r.id = ?", reel_id)
+    snaps = db.q("SELECT * FROM snapshots WHERE reel_id = ? ORDER BY hours", reel_id)
+    if not reel or not snaps:
+        return None
+    results = {s["hours"]: {k: s[k] for k in ("views", "reach", "likes", "comments", "saved", "shares", "avg_watch_ms")
+                            if s[k] is not None} for s in snaps}
+    info = {k: reel[k] for k in ("on_screen_text", "post_caption", "angle", "source", "trend", "series", "sound_suggestion",
+                                 "track", "grade", "text_layout", "motion", "virality_score", "start", "seconds")}
+    info["start"], info["seconds"] = info["start"] or 0.0, info["seconds"] or 0.0
+    info["predicted"] = f"{reel['virality_score']}/100 (50 = a typical reel)"
+    info["inspired_by"] = [f"{x.get('account') or x.get('text')} ({x['took']})" for x in json.loads(reel["inspirations"] or "[]")]
+    others = [r for r in _result_rows(90) if r["id"] != reel_id]
+    peers = ("Other ReelBot trial reels for comparison: " + "; ".join(
+        f'"{r["on_screen_text"]}" ({r["source"]}) {r["views"]:,} views' for r in others[:10])) if others else ""
+    lesson = brain.review_result(info, results, usual_views(), reel["clip_seconds"] or reel["seconds"] or 8, peers)
+    lesson["new_start"] = max(0.0, min(lesson["new_start"], (reel["clip_seconds"] or 0) - 1))
+    lesson["new_length"] = max(3.0, min(lesson["new_length"] or reel["seconds"] or 8, 180))
+    lesson["reviewed_at"] = local_now().isoformat(timespec="minutes")
+    lesson["hours"] = max(results)
+    db.update("reels", reel_id, lesson=json.dumps(lesson, ensure_ascii=False))
+    db.log(f"Learned from “{reel['on_screen_text']}”: {lesson['headline']}")
+    return lesson
+
+
+def remake_allowed(reel_id):
+    """One remake per posted reel (on top of the 2-per-clip limit). Returns (ok, reason)."""
+    reel = db.one("SELECT * FROM reels WHERE id = ?", reel_id)
+    if reel["parent"]:
+        return False, "This is already a remake: remake the original instead, or upload a new clip."
+    kid = db.one("SELECT id FROM reels WHERE parent = ? AND status != 'rejected'", reel_id)
+    if kid:
+        return False, "Already remade once. Reject that remake to try a different one."
+    return True, ""
+
+
+def remake(reel_id):
+    """A new draft of a posted reel's clip with the lesson applied: new hook, and a different part or a push-in."""
+    ok, why = remake_allowed(reel_id)
+    if not ok:
+        db.log(f"Remake skipped: {why}")
+        return
+    reel = db.one("SELECT * FROM reels WHERE id = ?", reel_id)
+    lesson = json.loads(reel["lesson"] or "null") or review_reel(reel_id)
+    if not lesson:
+        db.log("Remake skipped: no results to learn from yet")
+        return
+    clip = ensure_working_copy(db.one("SELECT * FROM clips WHERE id = ?", reel["clip_id"]))
+    start = lesson["new_start"]
+    length = min(lesson["new_length"], max(1.0, clip["duration"] - start))
+    old_start, old_len = reel["start"] or 0.0, reel["seconds"] or length
+    overlap = max(0.0, min(start + length, old_start + old_len) - max(start, old_start)) / max(length, 0.1)
+    motion = "push" if overlap > 0.5 and reel["motion"] != "push" else None  # mostly the same moment: reframe it
+    cut_reason = (f"{start:.1f}s–{start + length:.1f}s of the clip, from the lesson: {lesson['tweak']}"
+                  + (" · with a slow push-in so it isn't a duplicate of the first version" if motion else ""))
+    topic, tiktok, keywords, status = gather_research(clip, [reel["source"] or "instagram"])
+    context, refs = build_context(topic, tiktok, keywords)
+    info = {"filename": clip["filename"], "subject": clip["subject"], "notes": clip["notes"], "seconds": clip["duration"],
+            "reel_cut": f"{start:.1f}s–{start + length:.1f}s of the clip, so the reel is {length:.0f}s long",
+            "creator_description": clip["description"] or ""}
+    brief = {"first_version": {"hook": reel["on_screen_text"], "caption": reel["post_caption"], "angle": reel["angle"],
+                               "sound": reel["sound_suggestion"]}, "lesson": {k: lesson[k] for k in ("verdict", "headline", "worked", "didnt", "tweak", "change")}}
+    library = sorted(p.name for p in db.AUDIO_DIR.glob("*") if p.suffix.lower() in editor.AUDIO_EXTS)
+    plan = brain.plan_reels(_frames(clip["path"], 3, start, length), info, 1, context, library,
+                            {reel["source"] or "instagram": 1}, remake=brief)[0]
+    booked = {(r["t"] or "")[:10] for r in db.q(
+        "SELECT COALESCE(posted_at, post_at, recommended_time) t FROM reels WHERE clip_id = ? AND status != 'rejected'", clip["id"])}
+    slot = spread_slots(1)[0]
+    while slot[:10] in booked:  # never two reels of a clip on one day
+        slot = spread_slots(1, datetime.fromisoformat(slot).date() + timedelta(days=1))[0]
+    research = research_snapshot(topic, tiktok, keywords, status) | {"remake_of": {"id": reel_id, "hook": reel["on_screen_text"],
+                                                                                  "tweak": lesson["tweak"]}}
+    save_plan(clip, plan, refs, research, slot=slot, start=start, length=length, cut_reason=cut_reason, motion=motion,
+              mode="review", parent=reel_id, keep={k: reel[k] for k in ("grade", "adjust", "text_layout", "text_scale")})
+    db.log(f"Remade “{reel['on_screen_text']}” → “{plan['on_screen_text']}” (draft, in Review)")
 
 
 # --------------------------------------------------------------------------- clock

@@ -1,0 +1,18 @@
+{# What ReelBot learned from a posted reel, with Review now / Remake. Needs r (with r.remake). #}
+{% set lesson = r.lesson|fromjson %}
+<div class="card lesson {{ 'v-' ~ lesson.verdict if lesson }}"><div class="body">
+  <p class="hook">🧠 What ReelBot learned{% if lesson %} <span class="tag">{{ {"winner": "🏆 Winner", "ok": "👌 OK", "flop": "📉 Flop"}[lesson.verdict] }}</span>{% endif %}</p>
+  {% if lesson %}
+    <p><b>{{ lesson.headline }}</b></p>
+    <ul class="reasons">{% for w in lesson.worked %}<li class="plus">{{ w }}</li>{% endfor %}{% for w in lesson.didnt %}<li class="minus">{{ w }}</li>{% endfor %}</ul>
+    <p>🔧 <b>Next try:</b> {{ lesson.tweak }}</p>
+    <p class="meta">📌 Remembered for every future reel: {{ lesson.lesson_for_next }} · from {{ lesson.hours }}h results</p>
+    {% if r.remake %}<p>🔁 Remade as <a href="/reel/{{ r.remake.id }}">“{{ r.remake.on_screen_text }}”</a> ({{ r.remake.status }})</p>
+    {% elif r.parent %}<p class="meta">This is already a remake, so it can't be remade again.</p>
+    {% else %}<form method="post" action="/reels/{{ r.id }}/remake" class="row"><button>🔁 Remake with this tweak</button></form>
+      <p class="meta">Makes a new draft of the same clip in Review: a new hook and a different part of the clip (or a slow push-in), on a different day. One remake per reel.</p>{% endif %}
+  {% else %}
+    <p class="meta">ReelBot reviews each reel by itself once it has 72 hours of results.</p>
+  {% endif %}
+  <form method="post" action="/reels/{{ r.id }}/review" class="row"><button class="ghost mini">{{ '↻ Review again' if lesson else '🧠 Review now' }}</button></form>
+</div></div>

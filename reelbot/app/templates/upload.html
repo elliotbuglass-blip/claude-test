@@ -21,6 +21,20 @@
   <div id="items"></div>
   <label class="opt" id="combinebox"><input type="checkbox" id="combine"> ✂️ Edit these together into one reel
     <span class="meta">(main clips in this order, b-roll cut in where they join)</span></label>
+  <div class="boldbox">
+    <p class="hook" style="margin:6px 0 2px">🎲 How bold should these reels be?</p>
+    <p class="meta" style="margin-top:0">For this upload only. Starts at your Settings mix. More Trends and Original = more chance of a breakout, but more misses.</p>
+    {% set hints = {"instagram": "proven on Instagram now · safe", "tiktok": "rising on TikTok · early wave",
+                    "trends": "news & Google trends · risky", "original": "nobody's doing it · trend-setter"} %}
+    {% for src in SOURCE_LABELS %}
+    <div class="mixrow">
+      <label>{{ SOURCE_LABELS[src] }} <span class="meta">{{ hints[src] }}</span> <b class="mixv"></b></label>
+      <input data-src="{{ src }}" class="range mix" type="range" min="0" max="100" step="5" value="{{ mix[src] }}">
+    </div>
+    {% endfor %}
+    <div class="mixbar" id="mixbar">{% for src in SOURCE_LABELS %}<i class="mb-{{ src }}"></i>{% endfor %}</div>
+    <div class="g-row"><span>Safe</span><div class="g-bar risk"><b id="g-risk"></b></div><span>Bold</span></div>
+  </div>
   <div class="row"><button id="start">Start ▸</button> <button class="ghost" id="clear" type="button">Clear</button>
     <a class="meta" href="/clips?pick=1">＋ Add clips from your library</a></div>
 </div>
@@ -103,13 +117,22 @@ document.getElementById('start').onclick = async () => {
   const files = items.filter(it => it.file), library = items.filter(it => !it.file);
   const combine = items.length > 1 && document.getElementById('combine').checked;
   await fetch('/upload/start', {method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({batch, combine, expected: files.length,
+    body: JSON.stringify({batch, combine, expected: files.length, mix: readMix(),
                           library: library.map(it => ({id: it.id, note: it.note, kind: it.kind}))})});
   const rows = files.map(it => progressRow(it.name));
   const todo = items; items = []; draw(); history.replaceState(null, '', '/upload');
   for (let i = 0; i < files.length; i++) await sendFile(files[i], batch, rows[i]);
   refresh();
 };
+const sliders = [...document.querySelectorAll('input.mix')], RISK = {instagram: 0, tiktok: 1, original: 2, trends: 3};
+function readMix() { return Object.fromEntries(sliders.map(s => [s.dataset.src, +s.value])); }
+function drawMix() {
+  const total = sliders.reduce((a, s) => a + +s.value, 0) || 1;
+  sliders.forEach((s, i) => { s.closest('.mixrow').querySelector('.mixv').textContent = Math.round(s.value / total * 100) + '%';
+    document.querySelectorAll('#mixbar i')[i].style.flex = s.value; });
+  document.getElementById('g-risk').style.left = (sliders.reduce((a, s) => a + s.value * RISK[s.dataset.src], 0) / total / 3 * 100) + '%';
+}
+sliders.forEach(s => s.oninput = drawMix); drawMix();
 async function refresh() {
   const r = await fetch('/pipeline'); if (r.ok) document.getElementById('pipeline').innerHTML = await r.text();
 }

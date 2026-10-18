@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_score.html" import score %}
 {% block main %}
-<h1>Results</h1>
-<p class="sub">Every trial reel ReelBot posted, checked at 24, 48 and 72 hours. ReelBot learns from this table for every new batch.</p>
+<h1>Results & learning</h1>
+<p class="sub">Every trial reel ReelBot posted, checked at 24, 48 and 72 hours. After 72 hours ReelBot reviews each one: what worked, what didn't, and one tweak to try. Press <b>Remake</b> to test it.</p>
 {% if summary %}<div class="row" style="margin-bottom:16px"><span class="tag">{{ summary.reels }} reel{{ "s" if summary.reels != 1 }} with results</span><span class="tag">median {{ summary.median|num }} views</span><span class="tag ok">best {{ summary.best|num }} views</span>
 </div>{% endif %}
 <div class="card" style="margin-bottom:16px"><div class="body">
@@ -17,12 +17,17 @@
   <p class="meta">{% if auto %}Rebalancing is on: every Monday the mix moves up to 10% towards the winner (views, with extra credit for breakouts).{% else %}Rebalancing is off (Settings).{% endif %}
   {% if mix_change %} Last change: {{ mix_change.reason }}.{% endif %}</p>
 </div></div>
+{% set with_snaps = reels|selectattr('latest')|list %}
+{% if with_snaps %}<h2 class="h2">🧠 Learning</h2>
+<div class="lessons">{% for r in with_snaps %}<div>
+  <p class="meta"><a href="/reel/{{ r.id }}"><b>“{{ r.on_screen_text }}”</b></a> · {{ r.latest.views|num }} views at {{ r.latest.hours }}h</p>
+  {% include "_lesson.html" %}</div>{% endfor %}</div>{% endif %}
 {% if not reels %}<div class="empty">No posted reels yet.</div>{% else %}
 <div class="scroll"><table>
 <tr><th>Reel</th><th>Predicted</th><th>Posted</th><th>24h views</th><th>48h views</th><th>72h views</th><th>Shares</th><th>Saves</th><th>Avg watch</th></tr>
 {% for r in reels %}
 <tr>
-  <td><b>“{{ r.on_screen_text }}”</b> <span class="tag src-{{ r.source or ('trends' if r.risky else 'instagram') }}">{{ SOURCE_LABELS[r.source or ('trends' if r.risky else 'instagram')] }}</span><div class="meta">{{ r.angle }} · 🎵 {{ r.sound_suggestion }}{% if r.permalink %} · <a href="{{ r.permalink }}" target="_blank">open ↗</a>{% endif %}</div></td>
+  <td><a href="/reel/{{ r.id }}"><b>“{{ r.on_screen_text }}”</b></a> <span class="tag src-{{ r.source or ('trends' if r.risky else 'instagram') }}">{{ SOURCE_LABELS[r.source or ('trends' if r.risky else 'instagram')] }}</span><div class="meta">{{ r.angle }} · 🎵 {{ r.sound_suggestion }}{% if r.permalink %} · <a href="{{ r.permalink }}" target="_blank">open ↗</a>{% endif %}</div></td>
   <td>{{ score(r.virality_score) }}</td>
   <td class="meta">{{ r.posted_at|when }}</td>
   {% for h in (24, 48, 72) %}<td>{{ r.snaps[h].views|num if h in r.snaps else '⏳' }}</td>{% endfor %}

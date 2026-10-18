@@ -124,6 +124,14 @@ async def reel_action(request: Request):
     elif action == "reschedule":
         if form.get("post_at"):
             jobs.approve(reel_id, form["post_at"])
+    elif action == "review":
+        jobs.submit("learn from results", jobs.review_reel, reel_id)
+    elif action == "remake":
+        ok, why = jobs.remake_allowed(reel_id)
+        if ok:
+            jobs.submit("remake reel", jobs.remake, reel_id)
+        else:
+            db.log(f"Remake skipped: {why}")
     elif action == "unschedule":
         db.update("reels", reel_id, status="draft", post_at=None)
     elif action == "trim":
@@ -240,7 +248,7 @@ async def upload_page(request: Request):
     picked = request.query_params.get("clips", "")
     library = [c for c in (db.one("SELECT id, filename, kind, subject, description, duration FROM clips WHERE id = ?", i)
                            for i in picked.split(",") if i) if c]
-    return page("upload.html", request, stages=stages, brolls=brolls, picked=library)
+    return page("upload.html", request, stages=stages, brolls=brolls, picked=library, mix=jobs.research_mix())
 
 
 async def upload_start(request: Request):
@@ -252,7 +260,8 @@ async def upload_start(request: Request):
             db.update("clips", x["id"], description=x["note"])
         if x.get("kind") in ("main", "broll"):
             db.update("clips", x["id"], kind=x["kind"])
-    jobs.start_batch(data["batch"], data.get("combine"), int(data.get("expected") or 0), [x["id"] for x in library])
+    jobs.start_batch(data["batch"], data.get("combine"), int(data.get("expected") or 0), [x["id"] for x in library],
+                     data.get("mix"))
     return JSONResponse({"ok": True})
 
 
@@ -346,6 +355,7 @@ async def reel_page(request: Request):
     r["look_note"] = look_note(r["grade"], db.latest_research("look"))
     snaps = db.q("SELECT * FROM snapshots WHERE reel_id = ? ORDER BY hours", r["id"])
     brolls = db.q("SELECT * FROM clips WHERE kind = 'broll' ORDER BY created_at DESC")
+    r["remake"] = db.one("SELECT id, on_screen_text, status FROM reels WHERE parent = ? AND status != 'rejected'", r["id"])
     return page("reel.html", request, r=r, snaps=snaps, brolls=brolls, times=jobs.next_free_slots(6),
                 hashtags=jobs.cfg()["posting"].get("hashtags", ""))
 
@@ -359,6 +369,7 @@ async def results(request: Request):
         r["snaps"] = snaps.get(r["id"], {})
         latest = r["snaps"].get(72) or r["snaps"].get(48) or r["snaps"].get(24)
         r["latest"] = latest
+        r["remake"] = db.one("SELECT id, on_screen_text, status FROM reels WHERE parent = ? AND status != 'rejected'", r["id"])
     scored = [r for r in reels if r["snaps"].get(72) or r["snaps"].get(48)]
     summary = None
     if scored:

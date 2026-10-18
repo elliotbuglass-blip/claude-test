@@ -58,11 +58,12 @@ CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, account
 
 # Columns added after the first release: added to older databases on start-up.
 NEW_COLUMNS = {
-    "clips": {"description": "TEXT", "keep_look": "INTEGER", "batch": "TEXT", "combine": "INTEGER"},
+    "clips": {"description": "TEXT", "keep_look": "INTEGER", "batch": "TEXT", "combine": "INTEGER", "search_terms": "TEXT"},
     "snapshots": {"account": "TEXT"},
     "reels": {"positives": "TEXT", "negatives": "TEXT", "sound_reason": "TEXT", "trend": "TEXT",
               "cut_reason": "TEXT", "text_reason": "TEXT", "research": "TEXT", "text_spots": "TEXT", "risky": "INTEGER", "source": "TEXT", "series": "TEXT",
-              "adjust": "TEXT", "chat": "TEXT", "text_layout": "TEXT", "text_scale": "REAL", "motion": "TEXT"},
+              "adjust": "TEXT", "chat": "TEXT", "text_layout": "TEXT", "text_scale": "REAL", "motion": "TEXT",
+              "inspirations": "TEXT", "keywords": "TEXT", "lesson": "TEXT", "parent": "TEXT"},
 }
 
 _lock = threading.Lock()
