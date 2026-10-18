@@ -11,7 +11,7 @@
 <header><div class="bar">
   <a class="logo" href="/">ReelBot</a>
   <nav>
-    {% for path, label in [("/upload","Upload"),("/review","Review"),("/calendar","Calendar"),("/results","Results"),("/research","Research"),("/clips","Library"),("/settings","Settings")] %}
+    {% for path, label in [("/upload","Upload"),("/review","Review"),("/calendar","Calendar"),("/results","Results"),("/research","Research"),("/clips","Clips"),("/settings","Settings")] %}
       <a href="{{ path }}" class="{{ 'on' if nav.startswith(path) }}">{{ label }}</a>
     {% endfor %}
   </nav>

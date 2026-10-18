@@ -47,6 +47,12 @@ CREATE TABLE IF NOT EXISTS snapshots (
 );
 CREATE TABLE IF NOT EXISTS settings (account TEXT, key TEXT, value TEXT, PRIMARY KEY (account, key));
 CREATE TABLE IF NOT EXISTS research (id TEXT PRIMARY KEY, account TEXT, kind TEXT, data TEXT, created_at TEXT);
+CREATE TABLE IF NOT EXISTS library (
+    id TEXT PRIMARY KEY, account TEXT, platform TEXT, url TEXT, creator TEXT,
+    views INTEGER, likes INTEGER, shares INTEGER, music TEXT, on_screen_text TEXT, post_caption TEXT,
+    tags TEXT, source TEXT,              -- research | tiktok | radar | saved (a link you added)
+    note TEXT, status TEXT, posted_at TEXT, first_seen TEXT, last_seen TEXT, created_at TEXT
+);
 CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, account TEXT, message TEXT, created_at TEXT);
 """
 

@@ -39,6 +39,7 @@ EDITABLE = {  # setting key -> (path in config.yaml, label)
     "times_mode": ("autopilot.times_mode", "Posting times"),
     "post_times": ("autopilot.post_times", "Manual posting times"),
     "reels_per_clip": ("clips.variants_per_clip", "Reels per clip"),
+    "research_refresh_days": ("research_refresh_days", "Reuse research for (days)"),
     "reel_seconds": ("clips.reel_seconds", "Reel length (s)"),
     "text_style": ("look.text_style", "Text style"),
     "grade": ("look.grade", "Colour look"),
@@ -168,6 +169,7 @@ def _apify_headers():
 def _apify_run(url, payload):
     """Run an Apify actor and return its items. Says what went wrong (e.g. "Monthly usage hard limit exceeded")."""
     resp = requests.post(url, json=payload, headers=_apify_headers(), timeout=900)
+    _count("apify_runs")
     if not resp.ok:
         try:
             message = resp.json()["error"]["message"]
@@ -175,6 +177,96 @@ def _apify_run(url, payload):
             message = resp.reason
         raise RuntimeError(f"Apify {resp.status_code}: {message}")
     return resp.json()
+
+
+def _count(name):
+    """Monthly counters, e.g. how many paid scrapes ran vs how often the library was reused."""
+    key = f"{name}:{local_now():%Y-%m}"
+    db.set_setting(key, int(db.get_setting(key, 0)) + 1)
+
+
+# --------------------------------------------------------------------------- research library
+# Every reel ReelBot researches (and every link you save) is kept here, so research is paid for once
+# and reused by every clip on the same topic. Later this is what makes ReelBot cheaper per customer.
+
+def _tags(hashtags):
+    return sorted({h.lstrip("#").lower() for h in hashtags if h})
+
+
+def library_add(reels, platform, source, tags=(), note=None):
+    for r in reels:
+        rid = f"{platform}:{r['code']}"
+        old = db.one("SELECT * FROM library WHERE id = ?", rid)
+        merged = sorted(set(json.loads(old["tags"] or "[]") if old else []) | set(tags))
+        row = {"id": rid, "platform": platform, "url": r.get("url"), "creator": r.get("account"),
+               "views": r.get("views"), "likes": r.get("likes"), "shares": r.get("shares"), "music": r.get("music"),
+               "on_screen_text": r.get("on_screen_text") or (old or {}).get("on_screen_text"),
+               "post_caption": (r.get("post_caption") or "")[:300], "tags": json.dumps(merged),
+               "source": "saved" if (old and old["source"] == "saved") or source == "saved" else source,
+               "note": note if note is not None else (old or {}).get("note"), "status": "ok",
+               "posted_at": datetime.fromtimestamp(r["taken_at"]).isoformat(timespec="minutes") if r.get("taken_at") else None,
+               "first_seen": (old or {}).get("first_seen") or db.now(), "last_seen": db.now()}
+        db.insert("library", row)
+
+
+def _reuse(prefix, tags, days):
+    """A recent research run whose hashtags overlap these enough to reuse (saves a paid scrape)."""
+    since = (datetime.now(ZoneInfo("UTC")) - timedelta(days=days)).isoformat(timespec="seconds")
+    need = min(2, len(tags))
+    for row in db.q("SELECT data FROM research WHERE account = ? AND kind LIKE ? AND created_at >= ? ORDER BY created_at DESC",
+                    db.ACCOUNT, prefix + ":%", since):
+        data = json.loads(row["data"])
+        if len(set(data.get("hashtags", [])) & set(tags)) >= need:
+            _count("library_reuse")
+            return data
+    return None
+
+
+def save_links(text, note=""):
+    """Reels you liked: store the links now, then fetch their stats and on-screen text in the background."""
+    urls = [u.strip() for u in text.replace(",", " ").split() if u.strip().startswith("http")]
+    ids = []
+    for url in urls:
+        platform = "tiktok" if "tiktok.com" in url else "instagram"
+        code = url.rstrip("/").split("/")[-1].split("?")[0]
+        ids.append(f"{platform}:{code}")
+        old = db.one("SELECT id FROM library WHERE id = ?", ids[-1])
+        if old:
+            db.update("library", ids[-1], source="saved", note=note or None)
+        else:
+            db.insert("library", {"id": ids[-1], "platform": platform, "url": url, "source": "saved", "note": note or None,
+                                  "status": "fetching", "tags": "[]", "first_seen": db.now(), "last_seen": db.now()})
+    if ids:
+        submit("fetch saved reels", fetch_saved, ids)
+        db.log(f"Saved {len(ids)} reel link(s) to the research library")
+    return len(ids)
+
+
+def fetch_saved(ids):
+    rows = [db.one("SELECT * FROM library WHERE id = ?", i) for i in ids]
+    ig = [r for r in rows if r and r["platform"] == "instagram"]
+    tt = [r for r in rows if r and r["platform"] == "tiktok"]
+    found = []
+    try:
+        if ig:
+            items = _apify_run(APIFY_POSTS, {"directUrls": [r["url"] for r in ig], "resultsType": "posts", "resultsLimit": len(ig)})
+            found += [("instagram", x) for x in (competitors.apify_reel(i) for i in items) if x]
+        if tt:
+            items = _apify_run(APIFY_TIKTOK, {"postURLs": [r["url"] for r in tt], "shouldDownloadVideos": False,
+                                              "shouldDownloadCovers": False})
+            found += [("tiktok", x) for x in (_tiktok_video(i) for i in items) if x]
+    except Exception as e:
+        db.log(f"Couldn't fetch saved reels' stats (kept the links): {e}")
+    for _, r in found:
+        r["frame_bytes"] = vision.gather_frames(r.get("video"), r.get("thumbnail"))[:2]
+    reads = _read([r for _, r in found if r["frame_bytes"]], "reels the creator saved as inspiration")
+    for platform, r in found:
+        r["on_screen_text"] = reads.get(r["code"], {}).get("on_screen_text", "")
+        library_add([r], platform, "saved")
+    fetched = {f"{p}:{r['code']}" for p, r in found}
+    for r in rows:
+        if r and r["id"] not in fetched and r["status"] == "fetching":
+            db.update("library", r["id"], status="link only")
 
 
 def _read(reels, subject):
@@ -188,11 +280,12 @@ def _read(reels, subject):
         return {}
 
 
-def research_topic(hashtags, subject, per_tag=40):
-    """Top recent reels for these hashtags: views, on-screen text, sounds. Cached for 3 days."""
-    tags = sorted({h.lstrip("#").lower() for h in hashtags})[:5]
-    cached = db.latest_research("topic:" + ",".join(tags))
-    if cached and datetime.fromisoformat(cached["checked_at"]) > local_now() - timedelta(days=3):
+def research_topic(hashtags, subject, per_tag=25):
+    """Top recent reels for these hashtags: views, on-screen text, sounds.
+    Reuses a recent run on overlapping hashtags (see research_refresh_days) instead of paying for a new scrape."""
+    tags = _tags(hashtags)[:3]
+    cached = _reuse("topic", tags, int(setting("research_refresh_days") or 7))
+    if cached:
         return cached
     items = _apify_run(APIFY_HASHTAG, {"hashtags": tags, "resultsType": "reels", "resultsLimit": per_tag})
     cutoff = time.time() - 60 * 86400
@@ -208,6 +301,8 @@ def research_topic(hashtags, subject, per_tag=40):
         if read.get("relevant", True):
             winners.append({k: r.get(k) for k in ("code", "url", "account", "views", "likes", "music", "post_caption")}
                            | {"on_screen_text": read.get("on_screen_text", "")})
+    library_add([w | {"taken_at": next((r["taken_at"] for r in top if r["code"] == w["code"]), None)} for w in winners],
+                "instagram", "research", tags)
     sounds = Counter(r["music"] for r in reels[:30] if r.get("music") and r["music"] != "original audio")
     week = time.time() - 7 * 86400
     sounds_7d = Counter(r["music"] for r in reels if r["taken_at"] >= week and r.get("music") and r["music"] != "original audio")
@@ -222,6 +317,7 @@ def research_topic(hashtags, subject, per_tag=40):
     return result
 
 
+APIFY_POSTS = "https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items"
 APIFY_TIKTOK = "https://api.apify.com/v2/acts/clockworks~tiktok-scraper/run-sync-get-dataset-items"
 
 
@@ -237,14 +333,15 @@ def _tiktok_video(item):
                      " — ".join(x for x in (music.get("musicName"), music.get("musicAuthor")) if x) or "?"}
 
 
-def research_tiktok(hashtags, subject, per_tag=30):
-    """Top TikToks for these hashtags in the last 30 days: views, shares, text and the sounds rising. Cached 3 days."""
-    tags = sorted({h.lstrip("#").lower() for h in hashtags})[:4]
+def research_tiktok(hashtags, subject, per_tag=20):
+    """Top TikToks for these hashtags in the last 30 days: views, shares, text and the sounds rising.
+    Reuses a recent run on overlapping hashtags instead of paying for a new scrape."""
+    tags = _tags(hashtags)[:3]
     if not tags:
         return None
     key = "tiktok:" + ",".join(tags)
-    cached = db.latest_research(key)
-    if cached and datetime.fromisoformat(cached["checked_at"]) > local_now() - timedelta(days=3):
+    cached = _reuse("tiktok", tags, int(setting("research_refresh_days") or 7))
+    if cached:
         return cached
     items = _apify_run(APIFY_TIKTOK, {
         "hashtags": tags, "resultsPerPage": per_tag, "shouldDownloadVideos": False, "shouldDownloadCovers": False,
@@ -267,6 +364,7 @@ def research_tiktok(hashtags, subject, per_tag=30):
     result = {"checked_at": local_now().isoformat(), "hashtags": tags, "subject": subject, "found": len(videos),
               "winners": winners, "sounds": sounds(videos), "sounds_7d": sounds([v for v in videos if v["taken_at"] >= week]),
               "original_audio_share": round(sum(v["music"] == "original audio" for v in videos[:30]) / max(len(videos[:30]), 1), 2)}
+    library_add([w | {"taken_at": None} for w in winners], "tiktok", "research", tags)
     db.save_research(key, result)
     db.save_research("tiktok", result)
     db.log(f"TikTok research #{' #'.join(tags)}: {len(winners)} winners, {len(result['sounds_7d'])} rising sounds")
@@ -307,6 +405,8 @@ def run_radar():
     """Weekly: competitor reels that beat their own normal views, with their on-screen text."""
     c = cfg()
     outliers = competitors.run(c["competitors"], c["radar"])
+    library_add([o | {"code": o.get("code") or o.get("url", "").rstrip("/").split("/")[-1]} for o in outliers if o.get("url")],
+                "instagram", "radar")
     db.save_research("radar", {"checked_at": local_now().isoformat(), "outliers": outliers})
     db.log(f"Competitor radar: {len(outliers)} outliers")
 
@@ -584,6 +684,12 @@ def build_context(topic, tiktok=None):
         parts.append("COMPETITOR OUTLIERS (beat their own median):\n" + "\n".join(
             f'- @{o["account"]}: "{o.get("on_screen_text") or o.get("post_caption", "")[:60]}" {o["ratio"]}x, {o["views"]:,} views'
             for o in radar["outliers"][:12]))
+    saved = db.q("SELECT * FROM library WHERE source = 'saved' ORDER BY last_seen DESC LIMIT 15")
+    if saved:
+        parts.append("REELS THE CREATOR SAVED AS INSPIRATION (strong signal of their taste; adapt, never copy):\n" + "\n".join(
+            f'- {s["platform"]} @{s["creator"] or "?"}: on-screen "{s["on_screen_text"] or "(not read)"}", '
+            f'{(s["views"] or 0):,} views, sound: {s["music"] or "?"}' + (f' — their note: "{s["note"]}"' if s["note"] else "")
+            for s in saved))
     series = series_to_continue()
     if series:
         parts.append("SERIES TO CONTINUE (your Original reels that beat your usual views; make the next part in the same format):\n"
@@ -710,7 +816,7 @@ def place_text(reel_id, clip, start, length, text, n_lines, size, subject=""):
     of the reel and Claude picks one (using the spots you picked yourself as examples).
     Without Claude, the darkest, calmest band wins. Returns (position, reason, candidate spots)."""
     preview = db.RENDERS_DIR / f"{reel_id}_spots.jpg"
-    spots = editor.text_spots(clip, start, length, n_lines, size, k=7, spread=True)
+    spots = editor.text_spots(clip, start, length, n_lines, size, k=6, ends=True)
     editor.spots_preview(clip, start, length, spots, n_lines, size, preview)
     if claude_key():
         try:

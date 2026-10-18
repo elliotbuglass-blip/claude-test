@@ -199,7 +199,9 @@ def choose_text_spot(preview_jpg, n_spots, text, examples="", subject=""):
     """Look at the numbered candidate boxes on 3 moments of the reel and pick where the text should go."""
     shows = f"\nThe clip shows: {subject}\n" if subject else ""
     prompt = f"""This picture shows 3 moments (left to right) from a vertical Instagram reel. The yellow boxes numbered 1–{n_spots}
-(top to bottom) are candidate places for one line of small, thin white on-screen text: "{text}".
+(top to bottom) are candidate places for one line of small, thin white, centred on-screen text: "{text}".
+The low numbers sit near the top of the frame and the high numbers near the bottom: the text goes either near the top
+or near the bottom, whichever suits this clip, never across the middle.
 {shows}
 Pick the box where the text will be easiest to read AND blocks nothing important, in all 3 moments:
 1. Readability first: the background must be dark or mid-toned and even. Never pick bright or overexposed areas
@@ -210,7 +212,7 @@ Pick the box where the text will be easiest to read AND blocks nothing important
 3. People move between and during these moments: never pick a box that touches or nearly touches a head, face, hand or
    phone in ANY of the 3 moments. Leave a clear gap. If every box touches someone at some moment (e.g. they walk
    towards the camera), pick the one that stays clear longest, above all in the first moment: the hook is read first.
-4. If several are equally good, prefer the lower-middle of the frame.
+4. If several are equally good, prefer the bottom group.
 {examples}
 spot: the box number. reason: one short line saying what's behind the text and what it keeps clear, e.g.
 "over the dark centre console — easy to read and keeps the wheel and screen clear"."""

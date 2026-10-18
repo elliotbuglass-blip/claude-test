@@ -2,6 +2,39 @@
 {% block main %}
 <h1>Research</h1>
 <p class="sub">What ReelBot is learning from your history, your competitors and the topics of your clips.</p>
+
+<div class="card" id="library" style="margin-bottom:16px"><div class="body">
+  <p class="hook">📚 Research library</p>
+  <p class="meta">Every reel ReelBot has researched, kept so it's paid for once and reused for every similar clip.
+    This month: <b>{{ usage.scrapes }}</b> paid scrape{{ 's' if usage.scrapes != 1 }}, <b>{{ usage.reused }}</b> reused from the library · {{ usage.total }} reels stored.</p>
+  <form method="post" class="addlinks">
+    <label>Seen a reel or TikTok that did well? Paste the link(s), one per line</label>
+    <textarea name="links" rows="2" placeholder="https://www.instagram.com/reel/…&#10;https://www.tiktok.com/@…/video/…"></textarea>
+    <label>Why you liked it (optional, ReelBot uses this)</label>
+    <input name="note" placeholder="e.g. love the slow push-in and the one-word hook">
+    <div class="row"><button name="run" value="save">Save to library</button>
+      <span class="meta">ReelBot fetches the views, sound and on-screen text, and treats your saves as a strong signal of your taste.</span></div>
+  </form>
+  <form method="get" class="row" style="margin-top:14px">
+    <input name="q" value="{{ q }}" placeholder="Search hooks, accounts, sounds, hashtags…" style="flex:1;min-width:180px">
+    <select name="source" style="width:auto">
+      <option value="">All</option>
+      {% for v, l in [("saved", "⭐ Saved by you"), ("research", "🔎 Topic research"), ("radar", "🛰️ Competitors")] %}<option value="{{ v }}" {{ 'selected' if src == v }}>{{ l }}</option>{% endfor %}
+    </select>
+    <button class="ghost">Search</button>
+  </form>
+  {% if library %}<div class="scroll" style="margin-top:10px"><table>
+    <tr><th>Views</th><th>Where</th><th>On-screen text / caption</th><th>Sound</th><th></th></tr>
+    {% for r in library %}<tr>
+      <td>{{ r.views|num if r.views else '–' }}</td>
+      <td>{{ '⭐' if r.source == 'saved' }} {{ 'TikTok' if r.platform == 'tiktok' else 'IG' }} @{{ r.creator or '?' }}
+        <div class="meta">{% for t in (r.tags|fromjson or [])[:3] %}#{{ t }} {% endfor %}{% if r.status == 'fetching' %} · ⏳ fetching…{% elif r.status == 'link only' %} · link only{% endif %}</div></td>
+      <td>{{ r.on_screen_text or (r.post_caption or '')[:90] or '–' }}{% if r.note %}<div class="meta">“{{ r.note }}”</div>{% endif %}</td>
+      <td class="meta">{{ r.music or '–' }}{% if r.url %} · <a href="{{ r.url }}" target="_blank">open ↗</a>{% endif %}</td>
+      <td><form method="post"><input type="hidden" name="id" value="{{ r.id }}"><button class="mini danger" name="run" value="forget" title="Remove">✕</button></form></td>
+    </tr>{% endfor %}
+  </table></div>{% else %}<p class="meta">Nothing here yet{{ ' for that search' if q or src }}.</p>{% endif %}
+</div></div>
 <div class="cols">
 <div class="card"><div class="body">
   <p class="hook">⏰ Best times to post</p>

@@ -75,9 +75,10 @@ def _gray_frames(clip, start, length, w, h, n=5):
     return frames
 
 
-def text_spots(clip, start, length, n_lines=1, size=40, k=4, spread=False):
+def text_spots(clip, start, length, n_lines=1, size=40, k=4, spread=False, ends=False):
     """Up to k candidate text positions inside Instagram's safe zone, best first
-    (or, with spread=True, spaced out from top to bottom of the safe zone).
+    (or, with spread=True, spaced out from top to bottom of the safe zone;
+    or, with ends=True, k//2 near the top and k//2 near the bottom: centred text never sits mid-frame).
 
     A good spot is dark enough for white text and *calm*: few edges, so it's empty
     background (wall, sky, floor, seat) rather than the car, the wheel, hands or a face.
@@ -100,17 +101,24 @@ def text_spots(clip, start, length, n_lines=1, size=40, k=4, spread=False):
                     edges += abs(v - f[row + x + 1]) + abs(v - f[row + w + x])
                     count += 1
         scored.append((top / h, 0.5 * bright / count + 3.0 * edges / count))
-    if spread:  # evenly spaced bands top to bottom (for the AI check), each nudged to its calmest nearby spot
-        step = (scored[-1][0] - scored[0][0]) / max(k - 1, 1)
-        picks = []
-        for i in range(k):
-            target = scored[0][0] + i * step
-            near = [x for x in scored if abs(x[0] - target) <= step / 2 + 1e-9
+    def even(bands, n, picks):  # n evenly spaced bands, each nudged to its calmest nearby spot
+        step = (bands[-1][0] - bands[0][0]) / max(n - 1, 1)
+        for i in range(n):
+            target = bands[0][0] + i * step
+            near = [x for x in bands if abs(x[0] - target) <= step / 2 + 1e-9
                     and all(abs(x[0] - p) > block / h for p, _ in picks)]
             if near:
                 pos, score = min(near, key=lambda x: x[1])
                 picks.append((round(pos, 3), round(score, 1)))
         return picks
+
+    if ends:  # the top and bottom of the safe zone (about a sixth of the frame each)
+        span = 0.17
+        top_bands = [x for x in scored if x[0] <= scored[0][0] + span]
+        bottom_bands = [x for x in scored if x[0] >= scored[-1][0] - span]
+        return even(bottom_bands, k - k // 2, even(top_bands, k // 2, []))
+    if spread:  # evenly spaced bands top to bottom
+        return even(scored, k, [])
     scored.sort(key=lambda s: s[1])
     picks = []
     for pos, score in scored:  # keep spots that don't overlap each other

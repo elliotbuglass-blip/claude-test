@@ -291,10 +291,28 @@ async def research(request: Request):
             jobs.submit("refresh history", jobs.refresh_history)
         elif form.get("run") == "trends":
             jobs.submit("google trends", jobs.google_trends, 0)
+        elif form.get("run") == "save":
+            jobs.save_links(form.get("links") or "", (form.get("note") or "").strip())
+            return RedirectResponse("/research#library", 303)
+        elif form.get("run") == "forget":
+            db.run("DELETE FROM library WHERE id = ?", form.get("id"))
+            return RedirectResponse("/research#library", 303)
         return RedirectResponse("/research", 303)
+    q, src = request.query_params.get("q", "").strip(), request.query_params.get("source", "")
+    sql, args = "SELECT * FROM library WHERE account = ?", [db.ACCOUNT]
+    if q:
+        sql += " AND (on_screen_text LIKE ? OR post_caption LIKE ? OR creator LIKE ? OR tags LIKE ? OR note LIKE ? OR music LIKE ?)"
+        args += [f"%{q}%"] * 6
+    if src:
+        sql += " AND source = ?"
+        args.append(src)
+    library = db.q(sql + " ORDER BY (source = 'saved') DESC, views DESC LIMIT 150", *args)
+    month = f"{jobs.local_now():%Y-%m}"
+    usage = {"scrapes": db.get_setting(f"apify_runs:{month}", 0), "reused": db.get_setting(f"library_reuse:{month}", 0),
+             "total": db.one("SELECT COUNT(*) n FROM library WHERE account = ?", db.ACCOUNT)["n"]}
     return page("research.html", request, best=db.latest_research("best_times"), topic=db.latest_research("topic"),
                 radar=db.latest_research("radar"), times=jobs.posting_times(), trends=db.latest_research("trends"),
-                tiktok=db.latest_research("tiktok"),
+                tiktok=db.latest_research("tiktok"), library=library, usage=usage, q=q, src=src,
                 look=db.latest_research("look"))
 
 
@@ -304,7 +322,7 @@ async def settings_page(request: Request):
         for key in ("mode", "niche", "times_mode", "text_style", "grade", "hashtags"):
             if key in form:
                 db.set_setting(key, form[key])
-        for key in ("posts_per_day", "reels_per_clip", "reel_seconds"):
+        for key in ("posts_per_day", "reels_per_clip", "reel_seconds", "research_refresh_days"):
             if form.get(key):
                 db.set_setting(key, int(form[key]))
         if all(form.get(f"mix_{s}") not in (None, "") for s in jobs.SOURCES):

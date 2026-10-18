@@ -152,3 +152,4 @@ button.mini { padding: 5px 8px; font-size: 12px; border-radius: 8px; }
 @media (max-width: 500px) { .g-row { grid-template-columns: 80px 1fr 80px; } .g-stats b { font-size: 18px; } }
 .desc textarea { margin-top: 8px; font-size: 13px; }
 #desc { margin-bottom: 0; }
+.addlinks textarea { font-size: 13px; }
