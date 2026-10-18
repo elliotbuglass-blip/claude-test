@@ -70,7 +70,7 @@ clips:
 
 look:
   text_style: editorial       # editorial = small thin serif (my style) | stacked = big serif, word per line | classic
-  grade: match                # match = copy the colours of my own reels | natural = real colour, slightly dark | moody | none
+  grade: natural              # natural = real colour, a touch of contrast | match = like my reels | moody | none = as filmed
   text_position: auto         # auto = darkest calm spot inside Instagram's safe zone, or 0.14–0.6
   font: ""                    # leave empty to use the style's font
   font_size: 0                # 0 = the style's size

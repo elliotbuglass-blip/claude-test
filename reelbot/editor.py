@@ -253,7 +253,7 @@ TEXT_STYLES = {
 
 # Colour looks. "natural" keeps real colour (blue calipers, deep blacks), slightly low exposure.
 GRADES = {
-    "natural": "eq=contrast=1.08:brightness=-0.045:saturation=1.1:gamma=0.95",
+    "natural": "eq=contrast=1.06:brightness=-0.02:saturation=1.12:gamma=0.97",
     "moody": "eq=contrast=1.08:brightness=-0.03:saturation=0.82,vignette=PI/5",
     "none": None,      # as filmed (just converted from iPhone HDR)
     # Filters
@@ -294,7 +294,7 @@ def _clip_frames(clip, start, length, n=6):
     return out
 
 
-def match_look(clip, start, length, reference, strength=0.8):
+def match_look(clip, start, length, reference, strength=0.5):
     """A colour filter that moves this clip towards the look of my own posted reels.
 
     reference = {"frames": [look_stats(frame), ...]} from my reels. Only the reference frames
@@ -316,7 +316,8 @@ def match_look(clip, start, length, reference, strength=0.8):
             last_x, last_y = x, y
     points.append("1/1")
     sat = 1 + strength * (ref_chroma / max(mine["chroma"], 1) - 1)
-    return f"curves=master='{' '.join(points)}',eq=saturation={max(0.7, min(sat, 1.15)):.2f}"
+    # Never take colour away: matching only ever adds a little (key colours like blue stitching and skin must survive).
+    return f"curves=master='{' '.join(points)}',eq=saturation={max(1.05, min(sat, 1.15)):.2f}"
 
 
 def adjust_filter(adjust):
