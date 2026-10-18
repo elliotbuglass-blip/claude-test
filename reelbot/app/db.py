@@ -61,7 +61,8 @@ NEW_COLUMNS = {
     "clips": {"description": "TEXT"},
     "snapshots": {"account": "TEXT"},
     "reels": {"positives": "TEXT", "negatives": "TEXT", "sound_reason": "TEXT", "trend": "TEXT",
-              "cut_reason": "TEXT", "text_reason": "TEXT", "research": "TEXT", "text_spots": "TEXT", "risky": "INTEGER", "source": "TEXT", "series": "TEXT"},
+              "cut_reason": "TEXT", "text_reason": "TEXT", "research": "TEXT", "text_spots": "TEXT", "risky": "INTEGER", "source": "TEXT", "series": "TEXT",
+              "adjust": "TEXT", "chat": "TEXT", "text_layout": "TEXT", "text_scale": "REAL"},
 }
 
 _lock = threading.Lock()

@@ -29,17 +29,34 @@ def _run(cmd):
     return result.stdout
 
 
+HDR_TRANSFERS = {"arib-std-b67": "arib-std-b67", "smpte2084": "smpte2084"}  # iPhone HLG / Dolby Vision, HDR10
+SDR_TAGS = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]
+
+
+def _video_info(path):
+    return json.loads(_run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                            "stream=width,height,color_transfer", "-of", "json", str(path)]))["streams"][0]
+
+
+def to_sdr(transfer):
+    """Filter that turns iPhone HDR into normal (SDR) video. Without it the colours come out flat and washed out."""
+    return (f"zscale=tin={transfer}:min=bt2020nc:pin=bt2020:rin=tv:t=linear:npl=203,format=gbrpf32le,"
+            "zscale=p=bt709,tonemap=mobius:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p")
+
+
 def working_copy(path):
-    """Shrink a 4K phone clip to a 1080p working copy (the reel is 1080x1920 anyway).
-    Uses far less memory, disk and time for every later step. Returns the new path, or the old one if it's small already."""
+    """Shrink a 4K phone clip to a 1080p SDR working copy (the reel is 1080x1920 anyway).
+    Uses far less memory, disk and time for every later step, and converts iPhone HDR to normal colour.
+    Returns the new path, or the old one if it's small and SDR already."""
     path = Path(path)
-    info = json.loads(_run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-                            "stream=width,height", "-of", "json", str(path)]))["streams"][0]
-    if min(info["width"], info["height"]) <= 1080:
+    info = _video_info(path)
+    hdr = HDR_TRANSFERS.get(info.get("color_transfer", ""))
+    if min(info["width"], info["height"]) <= 1080 and not hdr:
         return path
-    out = path.with_name(f"{path.stem}_1080.mp4")
+    out = path.with_name(f"{path.stem.removesuffix('_1080')}_1080{'_sdr' if hdr else ''}.mp4")
+    vf = "scale='if(gt(iw,ih),-2,1080)':'if(gt(iw,ih),1080,-2)'" + (f",{to_sdr(hdr)}" if hdr else "")
     _run(["ffmpeg", "-y", "-v", "error", "-threads", "1", "-i", str(path),  # one thread: 4K decoding is the memory hog
-          "-vf", "scale='if(gt(iw,ih),-2,1080)':'if(gt(iw,ih),1080,-2)'",
+          "-vf", vf, *SDR_TAGS,
           "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", "-x264-params", "rc-lookahead=10", "-threads", "1",
           "-pix_fmt", "yuv420p",
           "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(out)])
@@ -238,7 +255,13 @@ TEXT_STYLES = {
 GRADES = {
     "natural": "eq=contrast=1.08:brightness=-0.045:saturation=1.1:gamma=0.95",
     "moody": "eq=contrast=1.08:brightness=-0.03:saturation=0.82,vignette=PI/5",
-    "none": None,
+    "none": None,      # as filmed (just converted from iPhone HDR)
+    # Filters
+    "warm": "colorbalance=rm=0.06:gm=0.01:bm=-0.06:rh=0.03:bh=-0.04,eq=saturation=1.08:contrast=1.04",
+    "cool": "colorbalance=rm=-0.04:bm=0.06:bh=0.03,eq=saturation=0.95:contrast=1.06",
+    "punchy": "eq=contrast=1.16:saturation=1.22:brightness=-0.02",
+    "film": "curves=all='0/0.05 0.5/0.48 1/0.95',colorbalance=rs=0.03:bh=-0.03,eq=saturation=0.88",
+    "mono": "hue=s=0,eq=contrast=1.12:brightness=-0.02",
     "match": None,  # copy the colours of my own posted reels (needs a reference, see match_look)
 }
 
@@ -296,6 +319,20 @@ def match_look(clip, start, length, reference, strength=0.8):
     return f"curves=master='{' '.join(points)}',eq=saturation={max(0.7, min(sat, 1.15)):.2f}"
 
 
+def adjust_filter(adjust):
+    """Your own tweaks on top of the look: each value runs from -100 to 100 (0 = unchanged)."""
+    if not adjust:
+        return None
+    b, c, s, w = (float(adjust.get(k) or 0) / 100 for k in ("brightness", "contrast", "saturation", "warmth"))
+    parts = []
+    if b or c or s:
+        parts.append(f"eq=brightness={b * 0.15:.3f}:contrast={1 + c * 0.35:.3f}:saturation={max(0, 1 + s * 0.6):.3f}")
+    if w:
+        parts.append(f"colorbalance=rm={w * 0.12:.3f}:gm={w * 0.02:.3f}:bm={-w * 0.12:.3f}"
+                     f":rh={w * 0.06:.3f}:bh={-w * 0.06:.3f}")
+    return ",".join(parts) or None
+
+
 def build_reference(videos, per_video=3):
     """A colour reference from my own posted reels, for match_look."""
     frames = []
@@ -306,11 +343,28 @@ def build_reference(videos, per_video=3):
     return {"frames": frames}
 
 
+def text_lines(caption, look):
+    """The text's lines and font size. layout: "auto" (wrap long lines), "one" (one line, shrunk to fit if needed),
+    or your own breaks written as " | " in the text. text_scale makes it bigger or smaller."""
+    style = TEXT_STYLES[look.get("text_style", "editorial")]
+    size = int((look.get("font_size") or style["size"]) * float(look.get("text_scale") or 1))
+    text = clean_text(caption)
+    if "|" in text:
+        lines = [part.strip() for part in text.split("|") if part.strip()]
+    elif look.get("layout") == "one":
+        lines = [text]
+    else:
+        lines = textwrap.wrap(text, width=int(style["wrap"] * style["size"] / size)) or [""]
+    widest = max(len(line) for line in lines) if lines else 0
+    if widest * size * 0.5 > W * 0.88:  # rough width of a serif line: keep it inside the frame
+        size = int(W * 0.88 / (widest * 0.5))
+    return lines, size
+
+
 def _text_filters(caption, look):
     style = TEXT_STYLES[look.get("text_style", "editorial")]
-    size = look.get("font_size") or style["size"]
     font = _font(look.get("font") or style["font"])
-    lines = textwrap.wrap(clean_text(caption), width=style["wrap"]) or [""]
+    lines, size = text_lines(caption, look)
     line_h = int(size * 1.18)
     # Never let the text slip into the parts Instagram covers.
     pos = min(max(float(look["text_position"]), SAFE_TOP), SAFE_BOTTOM - len(lines) * line_h / H)
@@ -359,7 +413,7 @@ def render(clip, out_path, caption, start, length, look, audio_cfg, broll=None):
         video += (f";[{n}:v]{frame},setpts=PTS-STARTPTS+{at}/TB[br]"
                   f";[base][br]overlay=enable='between(t,{at},{at + dur})':eof_action=pass[ov]")
         last, n = "ov", n + 1
-    post = [f for f in [grade, *_text_filters(caption, look)] if f]
+    post = [f for f in [grade, adjust_filter(look.get("adjust")), *_text_filters(caption, look)] if f]
     video += f";[{last}]{','.join(post)}[v]"
 
     fade = f"afade=t=out:st={max(length - 0.6, 0):.2f}:d=0.6"
@@ -386,7 +440,7 @@ def render(clip, out_path, caption, start, length, look, audio_cfg, broll=None):
     cmd += ["-map", "[a]"] if audio else ["-an"]
 
     tmp = out_path.with_suffix(".tmp.mp4")
-    cmd += ["-t", f"{length:.2f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-threads", THREADS, "-x264-params", "rc-lookahead=20",
+    cmd += ["-t", f"{length:.2f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-threads", THREADS, "-x264-params", "rc-lookahead=20", *SDR_TAGS,
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", "44100",
             "-movflags", "+faststart", str(tmp)]
     _run(cmd)

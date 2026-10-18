@@ -153,3 +153,8 @@ button.mini { padding: 5px 8px; font-size: 12px; border-radius: 8px; }
 .desc textarea { margin-top: 8px; font-size: 13px; }
 #desc { margin-bottom: 0; }
 .addlinks textarea { font-size: 13px; }
+.askbox summary { color: var(--accent); }
+.msg { font-size: 13px; padding: 6px 10px; border-radius: 10px; margin-top: 6px; max-width: 90%; }
+.msg.you { background: var(--panel2); margin-left: auto; text-align: right; }
+.msg.bot { background: #1f1c15; color: var(--accent); }
+.colour label { display: flex; justify-content: space-between; }

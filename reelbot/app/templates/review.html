@@ -2,6 +2,8 @@
 {% block main %}
 <h1>Review</h1>
 <p class="sub">New reels waiting for your OK. Tap Approve, then pick when it goes out (or post it now).</p>
+{% if reels %}<form method="post" action="/reels/remake-all" class="row" style="margin:-8px 0 16px" onsubmit="return confirm('Re-make all reels waiting here? Takes a minute or two each.')">
+  <button class="ghost mini">↻ Re-make all with the latest editing</button></form>{% endif %}
 {% if not reels %}<div class="empty">Nothing to review. <a href="/upload">Upload some clips</a> and ReelBot will make reels from them.</div>{% endif %}
 <div class="grid">
 {% for r in reels %}
@@ -60,6 +62,33 @@
         </form>
       </details>
       {% endif %}
+      {% set chat = r.chat|fromjson or [] %}
+      <details class="askbox" {{ 'open' if chat }}>
+        <summary>💬 Ask for changes</summary>
+        {% for m in chat[-4:] %}<div class="msg you">{{ m.you }}</div><div class="msg bot">{{ m.bot }}</div>{% endfor %}
+        <form method="post" action="/reels/{{ r.id }}/chat" class="row">
+          <input name="message" placeholder="e.g. darker and warmer, text at the top" style="flex:1;min-width:160px">
+          <button>Send</button>
+        </form>
+      </details>
+      {% set adj = r.adjust|fromjson or {} %}
+      <details>
+        <summary>🎨 Colour</summary>
+        <form method="post" action="/reels/{{ r.id }}/colour" class="colour">
+          <label>Look</label>
+          <select name="grade">
+            {% for g, l in [("match", "Match my reels"), ("natural", "Natural (slightly dark)"), ("moody", "Moody"), ("none", "As filmed"),
+                            ("warm", "Filter: Warm"), ("cool", "Filter: Cool"), ("punchy", "Filter: Punchy"), ("film", "Filter: Film"), ("mono", "Filter: Black & white")] %}
+            <option value="{{ g }}" {{ 'selected' if r.grade == g }}>{{ l }}</option>{% endfor %}
+          </select>
+          {% for k, l in [("brightness", "Brightness"), ("contrast", "Contrast"), ("saturation", "Colour strength"), ("warmth", "Warmth")] %}
+          <label>{{ l }} <b class="val">{{ adj[k] or 0 }}</b></label>
+          <input type="range" name="{{ k }}" min="-100" max="100" step="5" value="{{ adj[k] or 0 }}" class="range" oninput="this.previousElementSibling.querySelector('.val').textContent=this.value">
+          {% endfor %}
+          <div class="row"><button class="ghost">Apply colour</button>
+            <button class="ghost" type="button" onclick="this.form.querySelectorAll('input[type=range]').forEach(i=>{i.value=0;i.oninput()})">Reset</button></div>
+        </form>
+      </details>
       {% set spots = r.text_spots|fromjson or [] %}
       {% if spots and r.status == 'draft' %}
       <details>

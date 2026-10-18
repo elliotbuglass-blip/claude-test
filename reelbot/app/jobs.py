@@ -858,12 +858,15 @@ def render_reel(reel_id):
         start, cut_reason = reel["start"], reel["cut_reason"]
         if start is None:
             start, length, cut_reason = cut(clip["path"], length)
-        look = {**c["look"], "text_style": reel["text_style"], "grade": reel["grade"]}
+        look = {**c["look"], "text_style": reel["text_style"], "grade": reel["grade"],
+                "adjust": json.loads(reel["adjust"]) if reel["adjust"] else None,
+                "layout": reel["text_layout"] or "auto", "text_scale": reel["text_scale"] or 1}
         if look["grade"] == "match":
             look["reference"] = look_reference()
         style = editor.TEXT_STYLES[look["text_style"]]
         text = editor.clean_text(reel["on_screen_text"])
-        n_lines = len(editor.textwrap.wrap(text, style["wrap"]))
+        lines, size = editor.text_lines(text, look)
+        n_lines = len(lines)
         pos, text_reason, spots = reel["text_position"], reel["text_reason"], reel["text_spots"]
         if pos is None:
             pos, text_reason, found = place_text(reel_id, clip["path"], start, length, text, n_lines, style["size"],
@@ -943,6 +946,64 @@ def pick_text_spot(reel_id, n):
     db.set_setting("text_picks", picks[-20:])
     db.update("reels", reel_id, text_position=spots[n - 1][0], text_reason=f"You picked spot {n}", status="rendering")
     submit("re-render", render_reel, reel_id)
+
+
+TOP_BOTTOM = {"top": 0.16, "bottom": 0.6}
+
+
+def chat_edit(reel_id, message):
+    """You asked for a change in your own words: Claude turns it into edits, then the reel is re-made."""
+    reel = db.one("SELECT * FROM reels WHERE id = ?", reel_id)
+    history = json.loads(reel["chat"] or "[]")
+    current = {"on_screen_text": reel["on_screen_text"], "post_caption": reel["post_caption"],
+               "look": reel["grade"], "adjust": json.loads(reel["adjust"] or "{}"),
+               "text_position": "top" if (reel["text_position"] or 0.5) < 0.4 else "bottom",
+               "text_layout": reel["text_layout"] or "auto", "text_size": reel["text_scale"] or 1,
+               "start_seconds": reel["start"], "length_seconds": reel["seconds"]}
+    try:
+        change = brain.edit_reel(current, message, history[-6:])
+    except Exception as e:
+        history.append({"you": message, "bot": f"Sorry, I couldn't do that: {e}"})
+        db.update("reels", reel_id, chat=json.dumps(history))
+        return
+    fields = {}
+    for key in ("on_screen_text", "post_caption"):
+        if change.get(key):
+            fields[key] = change[key]
+    if change.get("look") in editor.GRADES:
+        fields["grade"] = change["look"]
+    adjust = {**current["adjust"], **{k: max(-100, min(100, v)) for k, v in (change.get("adjust") or {}).items()
+                                      if k in ("brightness", "contrast", "saturation", "warmth")}}
+    fields["adjust"] = json.dumps(adjust)
+    if change.get("text_layout") == "one_line":
+        fields["text_layout"] = "one"
+        fields["on_screen_text"] = (fields.get("on_screen_text") or reel["on_screen_text"]).replace(" | ", " ").replace("|", " ")
+    elif change.get("text_layout") == "auto":
+        fields["text_layout"] = "auto"
+        fields["on_screen_text"] = (fields.get("on_screen_text") or reel["on_screen_text"]).replace(" | ", " ").replace("|", " ")
+    elif change.get("text_layout") == "split" and change.get("lines"):
+        fields["text_layout"] = "custom"
+        fields["on_screen_text"] = " | ".join(line.strip() for line in change["lines"] if line.strip())
+    scale = {"smaller": 0.85, "bigger": 1.18}.get(change.get("text_size"))
+    if scale:
+        fields["text_scale"] = round(max(0.6, min(1.8, (reel["text_scale"] or 1) * scale)), 2)
+    elif change.get("text_size") == "reset":
+        fields["text_scale"] = 1
+    if change.get("text_position") in TOP_BOTTOM:
+        fields["text_position"], fields["text_reason"] = TOP_BOTTOM[change["text_position"]], f"You asked: “{message}”"
+    elif fields.get("on_screen_text"):
+        fields["text_position"] = None  # new words: find a spot again
+    if change.get("start_seconds") is not None:
+        fields["start"], fields["cut_reason"] = max(0.0, float(change["start_seconds"])), f"You asked: “{message}”"
+    history.append({"you": message, "bot": change.get("reply") or "Done."})
+    db.update("reels", reel_id, chat=json.dumps(history), status="rendering", **fields)
+    render_reel(reel_id)
+
+
+def rerender_all():
+    """Re-make every reel that isn't posted yet (e.g. after a colour fix)."""
+    for r in db.q("SELECT id FROM reels WHERE status IN ('draft', 'failed', 'scheduled')"):
+        render_reel(r["id"])
 
 
 def post_now(reel_id):

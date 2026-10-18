@@ -73,7 +73,8 @@ def _graph(video_path, caption, posting):
     }
     if posting.get("trial_reel"):
         params["trial_params"] = json.dumps({"graduation_strategy": posting.get("graduation", "MANUAL")})
-    container = _ok(requests.post(f"{graph}/{user_id}/media", data=params, timeout=60))["id"]
+    # Meta documents trial_params as a query parameter: sent in the body it was silently ignored.
+    container = _ok(requests.post(f"{graph}/{user_id}/media", params=params, timeout=60))["id"]
 
     video = Path(video_path).read_bytes()
     _ok(requests.post(

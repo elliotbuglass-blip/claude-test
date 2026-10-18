@@ -120,6 +120,14 @@ async def reel_action(request: Request):
         db.update("reels", reel_id, status="rejected")
     elif action == "unschedule":
         db.update("reels", reel_id, status="draft", post_at=None)
+    elif action == "colour":
+        adjust = {k: int(form.get(k) or 0) for k in ("brightness", "contrast", "saturation", "warmth")}
+        db.update("reels", reel_id, grade=form.get("grade") or reel["grade"], adjust=json.dumps(adjust), status="rendering")
+        jobs.submit("re-colour", jobs.render_reel, reel_id)
+    elif action == "chat":
+        if (form.get("message") or "").strip():
+            db.update("reels", reel_id, status="rendering")
+            jobs.submit("change reel", jobs.chat_edit, reel_id, form["message"].strip())
     elif action == "edit":
         fields = {k: form.get(k) for k in ("on_screen_text", "post_caption", "sound_suggestion") if form.get(k) is not None}
         fields["text_position"] = None  # re-place text for the new wording
@@ -132,6 +140,12 @@ async def reel_action(request: Request):
         db.update("reels", reel_id, status="rendering", **fields)
         jobs.submit("re-render", jobs.render_reel, reel_id)
     return RedirectResponse(request.headers.get("referer", "/"), 303)
+
+
+async def rerender_all(request: Request):
+    db.run("UPDATE reels SET status = 'rendering' WHERE status IN ('draft', 'failed')")
+    jobs.submit("re-make all reels", jobs.rerender_all)
+    return RedirectResponse("/review", 303)
 
 
 async def thumb(request: Request):
@@ -363,6 +377,7 @@ routes = [
     Route("/", home), Route("/health", health),
     Route("/login", login, methods=["GET", "POST"]),
     Route("/review", review),
+    Route("/reels/remake-all", rerender_all, methods=["POST"]),
     Route("/reels/{id}/{action}", reel_action, methods=["POST"]),
     Route("/video/{id}.mp4", video), Route("/thumb/{id}.jpg", thumb), Route("/spots/{id}.jpg", thumb_spots),
     Route("/clips", clips_page), Route("/upload", upload_page), Route("/upload", upload, methods=["POST"]),

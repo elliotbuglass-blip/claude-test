@@ -217,3 +217,55 @@ Pick the box where the text will be easiest to read AND blocks nothing important
 spot: the box number. reason: one short line saying what's behind the text and what it keeps clear, e.g.
 "over the dark centre console — easy to read and keeps the wheel and screen clear"."""
     return _ask([*_images([preview_jpg]), {"type": "text", "text": prompt}], SPOT_SCHEMA, effort="low", max_tokens=2000)
+
+
+EDIT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "on_screen_text": {"type": "string"},
+        "post_caption": {"type": "string"},
+        "look": {"type": "string", "enum": ["keep", "match", "natural", "moody", "none", "warm", "cool", "punchy", "film", "mono"]},
+        "adjust": {"type": "object", "properties": {
+            "brightness": {"type": "integer"}, "contrast": {"type": "integer"},
+            "saturation": {"type": "integer"}, "warmth": {"type": "integer"}},
+            "required": ["brightness", "contrast", "saturation", "warmth"], "additionalProperties": False},
+        "text_position": {"type": "string", "enum": ["keep", "top", "bottom"]},
+        "text_layout": {"type": "string", "enum": ["keep", "one_line", "auto", "split"]},
+        "lines": {"type": "array", "items": {"type": "string"}},
+        "text_size": {"type": "string", "enum": ["keep", "smaller", "bigger", "reset"]},
+        "start_seconds": {"type": ["number", "null"]},
+        "reply": {"type": "string"},
+    },
+    "required": ["on_screen_text", "post_caption", "look", "adjust", "text_position", "text_layout", "lines",
+                 "text_size", "start_seconds", "reply"],
+    "additionalProperties": False,
+}
+
+
+def edit_reel(current, message, history):
+    """Turn the creator's request ("darker and warmer, text at the top") into concrete edits."""
+    past = "\n".join(f"- them: {h['you']}\n  you: {h['bot']}" for h in history) or "(none)"
+    text = f"""You edit one Instagram reel for a creator. Current settings:
+{json.dumps(current, ensure_ascii=False)}
+
+Earlier requests on this reel:
+{past}
+
+Their new request: "{message}"
+
+Return the settings AFTER the change:
+- on_screen_text / post_caption: the new wording if they asked to change it, otherwise "" (keep).
+- look: "keep", or a colour look: "match" (copies their own reels), "natural" (real colour, slightly dark),
+  "moody" (desaturated, vignette), "none" (as filmed), or a filter: "warm", "cool", "punchy" (more contrast and
+  colour), "film" (soft, faded), "mono" (black and white).
+- adjust: the FULL new values from -100 to 100 for brightness, contrast, saturation and warmth (0 = unchanged).
+  Start from the current adjust values. "A bit" ≈ 15, "more"/normal ≈ 25-35, "a lot" ≈ 50. "Washed out" means more
+  contrast and saturation and a little less brightness. Never change values they didn't ask about.
+- text_position: "top", "bottom" or "keep".
+- text_layout: "one_line" (all on one line), "auto" (wrap long lines automatically), "split" (their own line breaks:
+  put each line in `lines`, e.g. ["Door shut.", "World on mute."]) or "keep". `lines` is [] unless split.
+  The words in `lines` must be the on-screen text (new wording if they changed it), just broken into lines.
+- text_size: "smaller", "bigger", "reset" (normal size) or "keep".
+- start_seconds: a new start point in the clip if they asked to use a different moment, otherwise null.
+- reply: one short friendly line saying what you changed (or what you can't do)."""
+    return _ask([{"type": "text", "text": text}], EDIT_SCHEMA, effort="low", max_tokens=3000)
