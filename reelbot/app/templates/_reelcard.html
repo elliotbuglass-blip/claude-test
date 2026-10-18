@@ -38,7 +38,7 @@
             <div class="i"><div class="who">
               <span class="tag">{{ {"instagram": "📸 Instagram", "tiktok": "🎵 TikTok", "google": "🔎 Google", "youtube": "▶️ YouTube", "you": "⭐ Your reel"}.get(x.platform, x.platform) }}</span>
               {% if x.account and x.account != 'you' %}<b>@{{ x.account }}</b>{% endif %}
-              {% if x.views %}<span class="meta">{{ x.views|num }} views{% if x.ratio %} · {{ x.ratio }}× their normal{% endif %}</span>{% endif %}
+              {% if x.views %}<span class="meta">{{ x.views|num }} {{ x.metric or 'views' }}{% if x.ratio %} · {{ x.ratio }}× their normal{% endif %}</span>{% endif %}
               {% if x.searches %}<span class="meta">{{ x.searches }} searches</span>{% endif %}
               {% if x.url %}<a href="{{ x.url }}" target="_blank">open ↗</a>{% endif %}</div>
               {% if x.text %}<div class="meta">“{{ x.text }}”</div>{% endif %}

@@ -49,7 +49,7 @@ competitors:
 
 # Competitor Radar: a reel counts as an "outlier" when it beats its creator's OWN median views.
 radar:
-  source: apify            # apify (automatic, pay-as-you-go) | meta (needs Meta app review) | hiker
+  source: meta             # meta (Instagram's own tool: free, likes not views) | apify (paid, has views) | hiker
   reels_per_account: 40
   min_age_hours: 72        # younger reels are still collecting views
   max_age_days: 30         # older topics may be stale
@@ -94,6 +94,7 @@ mode: review
 #   original  = something nobody in your niche is doing, in your voice; winners become a series (trend-setter)
 # auto_balance moves up to 10 points a week towards whichever source is getting the most views (never below 10% each).
 research_refresh_days: 7        # reuse research on the same topic for this many days (saves paid scrapes)
+research_budget_usd: 5          # most ReelBot may spend on paid (Apify) research a month; then it uses saved research
 
 research_mix:
   instagram: 40

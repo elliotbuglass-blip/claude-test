@@ -18,6 +18,13 @@
     <option value="manual" {{ 'selected' if s.times_mode == 'manual' }}>Manual: use the times below</option></select>
   <label>Manual times (UK, comma separated)</label><input name="post_times" value="{{ (s.post_times or [])|join(', ') }}">
   <label>Reuse research for (days)</label><input name="research_refresh_days" type="number" min="1" max="30" value="{{ s.research_refresh_days or 7 }}">
+  <label>Paid research budget ($ a month) <span class="meta">Instagram and TikTok searches through Apify. At the limit ReelBot stops searching and uses saved research. 0 = never pay.</span></label>
+  <input name="research_budget" type="number" min="0" max="500" step="1" value="{{ '%g'|format(s.research_budget if s.research_budget is not none else 5) }}">
+  <label>Competitor checks</label>
+  <select name="radar_source">
+    <option value="meta" {{ 'selected' if (s.radar_source or 'meta') == 'meta' }}>Instagram's own tool: free (shows likes, not views)</option>
+    <option value="apify" {{ 'selected' if s.radar_source == 'apify' }}>Apify: shows views, costs money (inside your budget)</option>
+  </select>
   <p class="meta">Clips on a topic researched in the last few days reuse the research library instead of paying for a new scrape. Higher = cheaper, lower = fresher.</p>
   <label>Reels to make straight away when you upload a clip (review)</label><input name="reels_per_clip" type="number" min="1" max="6" value="{{ s.reels_per_clip }}">
 </div></div>

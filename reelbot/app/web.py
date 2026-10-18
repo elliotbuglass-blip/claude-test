@@ -414,13 +414,16 @@ async def research(request: Request):
     return page("research.html", request, best=db.latest_research("best_times"), topic=db.latest_research("topic"),
                 radar=db.latest_research("radar"), times=jobs.posting_times(), trends=db.latest_research("trends"),
                 tiktok=db.latest_research("tiktok"), library=library, usage=usage, q=q, src=src,
+                spend=jobs.apify_spend(fresh=request.query_params.get("refresh") == "1"),
+                budget=float(jobs.setting("research_budget") or 0), board=jobs.whats_worked(),
+                radar_source=jobs.cfg()["radar"].get("source", "meta"),
                 look=db.latest_research("look"))
 
 
 async def settings_page(request: Request):
     if request.method == "POST":
         form = await request.form()
-        for key in ("mode", "niche", "times_mode", "text_style", "grade", "hashtags"):
+        for key in ("mode", "niche", "times_mode", "text_style", "grade", "hashtags", "radar_source"):
             if key in form:
                 db.set_setting(key, form[key])
         for key in ("posts_per_day", "reels_per_clip", "reel_seconds", "research_refresh_days"):
@@ -433,6 +436,8 @@ async def settings_page(request: Request):
             for s in jobs.SOURCES:
                 db.set_setting(f"mix_{s}", scaled[s])
             db.set_setting("mix_auto", form.get("mix_auto") == "1")
+        if form.get("research_budget") not in (None, ""):
+            db.set_setting("research_budget", max(0.0, float(form["research_budget"])))
         db.set_setting("broll_silent", form.get("broll_silent") == "1")
         if form.get("post_times") is not None:
             db.set_setting("post_times", [t.strip() for t in form["post_times"].split(",") if t.strip()])

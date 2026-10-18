@@ -90,7 +90,7 @@ def fetch_account(username, want):
     return data
 
 
-def fetch_account_meta(username, want, api_version="v23.0"):
+def fetch_account_meta(username, want, api_version="v23.0", errors=None):
     """Instagram's own Business Discovery API: free and within Meta's rules.
 
     Works for Business/Creator accounts. Meta doesn't share other accounts' view counts here,
@@ -109,6 +109,8 @@ def fetch_account_meta(username, want, api_version="v23.0"):
     if not resp.ok:
         message = resp.json().get("error", {}).get("message", resp.text) if resp.content else resp.text
         print(f"  ! @{username}: {message}")
+        if errors is not None:
+            errors.append(f"@{username}: {message}")
         return None
     info = resp.json()["business_discovery"]
     reels = []
@@ -189,10 +191,10 @@ def fetch_account_apify(username, want):
     resp = requests.post(APIFY_ACTOR, json={"username": [username], "resultsLimit": want},
                          headers={"Authorization": f"Bearer {token}"} if token else {}, timeout=600)
     if resp.status_code in (401, 403):
-        raise SystemExit("Apify rejected the token (401/403). Check the Apify secret: header "
-                         "Authorization, prefix Bearer, value = your Apify API token.")
+        raise RuntimeError("Apify rejected the token (401/403). Check the Apify secret: header "
+                           "Authorization, prefix Bearer, value = your Apify API token.")
     if resp.status_code == 402:
-        raise SystemExit("Apify account is out of credit. Top up at console.apify.com/billing.")
+        raise RuntimeError("Apify account is out of credit. Top up at console.apify.com/billing.")
     resp.raise_for_status()
     reels = [r for r in (apify_reel(i) for i in resp.json()) if r]
     if not reels:
@@ -226,8 +228,10 @@ def find_outliers(accounts, radar):
     return sorted(outliers, key=lambda r: r["ratio"], reverse=True)
 
 
-def run(competitors, radar, use_cache=False):
-    accounts = []
+def run(competitors, radar, use_cache=False, before_paid=None, after_paid=None):
+    """before_paid(n) is called before each paid fetch of ~n reels (it raises to stop, e.g. over budget);
+    after_paid(n) after it, with the reels actually returned."""
+    accounts, errors = [], []
     for c in competitors:
         name = c["username"] if isinstance(c, dict) else c
         cached = RAW_DIR / f"{name}.json"
@@ -236,15 +240,21 @@ def run(competitors, radar, use_cache=False):
             continue
         source = radar.get("source", "meta")
         if source == "meta":
-            acc = fetch_account_meta(name, radar["reels_per_account"])
+            acc = fetch_account_meta(name, radar["reels_per_account"], radar.get("api_version", "v23.0"), errors)
         elif source == "hiker":
             acc = fetch_account(name, radar["reels_per_account"])
         else:
+            if before_paid:
+                before_paid(radar["reels_per_account"])
             acc = fetch_account_apify(name, radar["reels_per_account"])
+            if after_paid:
+                after_paid(len(acc["reels"]) if acc else 0)
         if acc:
             print(f"  ✓ @{name}: {len(acc['reels'])} reels, {acc.get('followers') or '?'} followers")
             accounts.append(acc)
 
+    if not accounts and errors:
+        raise RuntimeError(f"Instagram wouldn't share competitors' reels: {errors[0]}")
     _print_distribution(accounts)
     if radar.get("source", "meta") == "meta":
         radar = {**radar, **radar.get("meta_likes", {})}  # likes-based floors for Meta's data

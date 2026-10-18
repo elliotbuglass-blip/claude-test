@@ -41,6 +41,8 @@ EDITABLE = {  # setting key -> (path in config.yaml, label)
     "post_times": ("autopilot.post_times", "Manual posting times"),
     "reels_per_clip": ("clips.variants_per_clip", "Reels per clip"),
     "research_refresh_days": ("research_refresh_days", "Reuse research for (days)"),
+    "research_budget": ("research_budget_usd", "Paid research budget ($ a month)"),
+    "radar_source": ("radar.source", "Competitor checks"),
     "reel_seconds": ("clips.reel_seconds", "Reel length (s)"),
     "text_style": ("look.text_style", "Text style"),
     "grade": ("look.grade", "Colour look"),
@@ -185,8 +187,10 @@ def _apify_headers():
     return {"Authorization": f"Bearer {token}"} if token else {}
 
 
-def _apify_run(url, payload):
-    """Run an Apify actor and return its items. Says what went wrong (e.g. "Monthly usage hard limit exceeded")."""
+def _apify_run(url, payload, expected=0, per_result=0.003):
+    """Run an Apify actor and return its items, if this month's budget allows it.
+    expected = roughly how many results it returns (for the budget check). Says what went wrong, e.g. "limit exceeded"."""
+    spend_check(expected * per_result)
     resp = requests.post(url, json=payload, headers=_apify_headers(), timeout=900)
     _count("apify_runs")
     if not resp.ok:
@@ -195,7 +199,57 @@ def _apify_run(url, payload):
         except Exception:
             message = resp.reason
         raise RuntimeError(f"Apify {resp.status_code}: {message}")
-    return resp.json()
+    items = resp.json()
+    spent(len(items) * per_result)
+    return items
+
+
+# --------------------------------------------------------------------------- research budget
+# Apify searches cost money. Before each one ReelBot checks this month's real Apify spend and stops at your budget
+# (Settings → Paid research budget), then falls back to research it has already saved.
+
+APIFY_LIMITS = "https://api.apify.com/v2/users/me/limits"
+PRICE = {"instagram": 0.003, "tiktok": 0.005}  # rough $ per result, only used until Apify reports the real spend
+
+
+class OverBudget(RuntimeError):
+    pass
+
+
+def apify_spend(fresh=False):
+    """This month's Apify spend: Apify's own figure when it answers, otherwise ReelBot's running estimate."""
+    cached = db.get_setting("apify_spend")
+    if cached and not fresh and time.time() - cached["at"] < 600:
+        return cached
+    est = round(float(db.get_setting(f"apify_est:{local_now():%Y-%m}", 0)), 2)
+    out = {"usd": est, "from": "estimate", "resets": None, "at": time.time()}
+    if env("APIFY_TOKEN", required=False):
+        try:
+            r = requests.get(APIFY_LIMITS, headers=_apify_headers(), timeout=20)
+            if r.ok:
+                d = r.json()["data"]
+                out = {"usd": round(float(d["current"]["monthlyUsageUsd"]), 2), "from": "apify", "at": time.time(),
+                       "resets": (d.get("monthlyUsageCycle") or {}).get("endAt"),
+                       "apify_cap": (d.get("limits") or {}).get("maxMonthlyUsageUsd")}
+        except Exception:
+            pass
+    db.set_setting("apify_spend", out)
+    return out
+
+
+def spend_check(cost):
+    budget = float(setting("research_budget") or 0)
+    now = apify_spend()
+    if now["usd"] + cost > budget:
+        raise OverBudget(f"monthly research budget reached (${now['usd']:.2f} of ${budget:.2f} spent), "
+                         "so ReelBot used research it had already saved")
+
+
+def spent(cost):
+    key = f"apify_est:{local_now():%Y-%m}"
+    db.set_setting(key, round(float(db.get_setting(key, 0)) + cost, 4))
+    now = apify_spend()  # Apify's own figure can lag a few minutes: add this run to it until it catches up
+    db.set_setting("apify_spend", now | {"usd": round(now["usd"] + cost, 2)})
 
 
 def _count(name):
@@ -231,7 +285,7 @@ def library_add(reels, platform, source, tags=(), note=None):
 def _reuse(prefix, tags, days):
     """A recent research run whose hashtags overlap these enough to reuse (saves a paid scrape)."""
     since = (datetime.now(ZoneInfo("UTC")) - timedelta(days=days)).isoformat(timespec="seconds")
-    need = min(2, len(tags))
+    need = 1 if tags else 99
     for row in db.q("SELECT data FROM research WHERE account = ? AND kind LIKE ? AND created_at >= ? ORDER BY created_at DESC",
                     db.ACCOUNT, prefix + ":%", since):
         data = json.loads(row["data"])
@@ -239,6 +293,25 @@ def _reuse(prefix, tags, days):
             _count("library_reuse")
             return data
     return None
+
+
+def saved_topic(tags, subject, platform="instagram", days=90):
+    """Research already in the library for these hashtags (free): stands in when a paid search can't run."""
+    since = (datetime.now(ZoneInfo("UTC")) - timedelta(days=days)).isoformat(timespec="seconds")
+    rows = [r for r in db.q("SELECT * FROM library WHERE account = ? AND platform = ? AND last_seen >= ? AND views > 0",
+                            db.ACCOUNT, platform, since)
+            if set(json.loads(r["tags"] or "[]")) & set(tags) or r["source"] == "saved"]
+    rows.sort(key=lambda r: (r["source"] != "saved", -(r["views"] or 0)))
+    if not rows:
+        return None
+    winners = [{"code": r["id"].split(":", 1)[1], "url": r["url"], "account": r["creator"], "views": r["views"] or 0,
+                "likes": r["likes"] or 0, "shares": r["shares"] or 0, "music": r["music"], "post_caption": r["post_caption"] or "",
+                "on_screen_text": r["on_screen_text"] or ""} for r in rows[:12]]
+    sounds = Counter(r["music"] for r in rows if r["music"] and r["music"] not in ("original audio", "?"))
+    original = sum(1 for r in rows if r["music"] == "original audio")
+    return {"checked_at": local_now().isoformat(), "hashtags": tags, "subject": subject, "found": len(rows),
+            "winners": winners, "trending_sounds": sounds.most_common(10), "sounds": sounds.most_common(8), "sounds_7d": [],
+            "recent_7d": 0, "original_audio_share": round(original / max(len(rows), 1), 2), "from_library": True}
 
 
 def save_links(text, note=""):
@@ -268,11 +341,12 @@ def fetch_saved(ids):
     found = []
     try:
         if ig:
-            items = _apify_run(APIFY_POSTS, {"directUrls": [r["url"] for r in ig], "resultsType": "posts", "resultsLimit": len(ig)})
+            items = _apify_run(APIFY_POSTS, {"directUrls": [r["url"] for r in ig], "resultsType": "posts", "resultsLimit": len(ig)},
+                               len(ig), PRICE["instagram"])
             found += [("instagram", x) for x in (competitors.apify_reel(i) for i in items) if x]
         if tt:
             items = _apify_run(APIFY_TIKTOK, {"postURLs": [r["url"] for r in tt], "shouldDownloadVideos": False,
-                                              "shouldDownloadCovers": False})
+                                              "shouldDownloadCovers": False}, len(tt), PRICE["tiktok"])
             found += [("tiktok", x) for x in (_tiktok_video(i) for i in items) if x]
     except Exception as e:
         db.log(f"Couldn't fetch saved reels' stats (kept the links): {e}")
@@ -299,14 +373,22 @@ def _read(reels, subject):
         return {}
 
 
-def research_topic(hashtags, subject, per_tag=25):
+def research_topic(hashtags, subject, per_tag=20):
     """Top recent reels for these hashtags: views, on-screen text, sounds.
     Reuses a recent run on overlapping hashtags (see research_refresh_days) instead of paying for a new scrape."""
-    tags = _tags(hashtags)[:3]
+    tags = _tags(hashtags)[:2]
     cached = _reuse("topic", tags, int(setting("research_refresh_days") or 7))
     if cached:
         return cached
-    items = _apify_run(APIFY_HASHTAG, {"hashtags": tags, "resultsType": "reels", "resultsLimit": per_tag})
+    try:
+        items = _apify_run(APIFY_HASHTAG, {"hashtags": tags, "resultsType": "reels", "resultsLimit": per_tag},
+                           len(tags) * per_tag, PRICE["instagram"])
+    except RuntimeError as e:
+        saved = saved_topic(tags, subject)
+        if saved:
+            db.log(f"Instagram search skipped ({e}): using {len(saved['winners'])} saved reels instead")
+            return saved
+        raise
     cutoff = time.time() - 60 * 86400
     reels = [r for r in (competitors.apify_reel(i) for i in items) if r and r["taken_at"] >= cutoff]
     reels.sort(key=lambda r: r["views"], reverse=True)
@@ -352,19 +434,26 @@ def _tiktok_video(item):
                      " — ".join(x for x in (music.get("musicName"), music.get("musicAuthor")) if x) or "?"}
 
 
-def research_tiktok(hashtags, subject, per_tag=20):
+def research_tiktok(hashtags, subject, per_tag=15):
     """Top TikToks for these hashtags in the last 30 days: views, shares, text and the sounds rising.
     Reuses a recent run on overlapping hashtags instead of paying for a new scrape."""
-    tags = _tags(hashtags)[:3]
+    tags = _tags(hashtags)[:2]
     if not tags:
         return None
     key = "tiktok:" + ",".join(tags)
-    cached = _reuse("tiktok", tags, int(setting("research_refresh_days") or 7))
+    cached = _reuse("tiktok", tags, max(7, int(setting("research_refresh_days") or 7)))  # at most once a week a topic
     if cached:
         return cached
-    items = _apify_run(APIFY_TIKTOK, {
-        "hashtags": tags, "resultsPerPage": per_tag, "shouldDownloadVideos": False, "shouldDownloadCovers": False,
-        "shouldDownloadSubtitles": False, "shouldDownloadSlideshowImages": False})
+    try:
+        items = _apify_run(APIFY_TIKTOK, {
+            "hashtags": tags, "resultsPerPage": per_tag, "shouldDownloadVideos": False, "shouldDownloadCovers": False,
+            "shouldDownloadSubtitles": False, "shouldDownloadSlideshowImages": False}, len(tags) * per_tag, PRICE["tiktok"])
+    except RuntimeError as e:
+        saved = saved_topic(tags, subject, "tiktok")
+        if saved:
+            db.log(f"TikTok search skipped ({e}): using {len(saved['winners'])} saved TikToks instead")
+            return saved
+        raise
     cutoff, week = time.time() - 30 * 86400, time.time() - 7 * 86400
     seen, videos = set(), []
     for v in (_tiktok_video(i) for i in items):
@@ -463,10 +552,15 @@ def google_keywords(terms, days=7):
 def run_radar():
     """Weekly: competitor reels that beat their own normal views, with their on-screen text."""
     c = cfg()
-    outliers = competitors.run(c["competitors"], c["radar"])
+    radar = c["radar"] | {"api_version": c["posting"]["graph_api_version"]}
+    if radar.get("source") == "apify":  # paid: smaller pulls, inside the monthly budget
+        radar["reels_per_account"] = min(radar["reels_per_account"], 20)
+    outliers = competitors.run(c["competitors"], radar, before_paid=lambda n: spend_check(n * PRICE["instagram"]),
+                               after_paid=lambda n: spent(n * PRICE["instagram"]))
     library_add([o | {"code": o.get("code") or o.get("url", "").rstrip("/").split("/")[-1]} for o in outliers if o.get("url")],
                 "instagram", "radar")
-    db.save_research("radar", {"checked_at": local_now().isoformat(), "outliers": outliers})
+    metric = "likes" if radar.get("source", "meta") == "meta" else "views"  # Instagram's free tool shares likes, not views
+    db.save_research("radar", {"checked_at": local_now().isoformat(), "outliers": outliers, "metric": metric})
     db.log(f"Competitor radar: {len(outliers)} outliers")
 
 
@@ -742,6 +836,13 @@ def build_context(topic, tiktok=None, keywords=None):
         parts.append(f"MY RECENT REELS (median {med:,} views). Captions usually match the on-screen hook.\n"
                      "Best:\n" + "\n".join(fmt(r) for r in ranked[:12]) + "\nWorst:\n" + "\n".join(fmt(r) for r in ranked[-8:]))
     parts.append("MY REELBOT TRIAL RESULTS:\n" + learnings())
+    board = whats_worked()
+    if board["reels"]:
+        fmt = lambda rows: "; ".join(f'{x["name"]} {x["ratio"]}x ({x["reels"]} reel{"s" if x["reels"] != 1 else ""})' for x in rows[:8]) or "—"
+        parts.append(f"WHAT'S WORKED BEFORE (from {board['reels']} posted ReelBot reels; views vs your usual, 1.0x = normal). "
+                     "Lean into what's above 1x, avoid what's below, but don't over-trust anything with only 1 reel:\n"
+                     f"- Creators/reels borrowed from: {fmt(board['creators'])}\n- Words used: {fmt(board['words'])}\n"
+                     f"- Angles: {fmt(board['formats'])}")
     lessons = db.q("SELECT on_screen_text, lesson FROM reels WHERE lesson IS NOT NULL ORDER BY posted_at DESC LIMIT 10")
     if lessons:
         parts.append("LESSONS FROM MY POSTED TRIAL REELS (newest first; apply them):\n" + "\n".join(
@@ -777,9 +878,10 @@ def build_context(topic, tiktok=None, keywords=None):
             f' {t["term"]} · {t["searches"]} · {t["headline"][:90]}' for t in trends["items"][:30]))
     radar = db.latest_research("radar")
     if radar and radar.get("outliers"):
-        parts.append("COMPETITOR OUTLIERS (beat their own median):\n" + "\n".join(
-            f'- {ref("C", {"platform": "instagram", "account": o["account"], "url": o.get("url"), "views": o["views"], "ratio": o["ratio"], "text": o.get("on_screen_text") or o.get("post_caption", "")[:60]})}'
-            f' @{o["account"]}: "{o.get("on_screen_text") or o.get("post_caption", "")[:60]}" {o["ratio"]}x, {o["views"]:,} views'
+        metric = radar.get("metric", "views")
+        parts.append(f"COMPETITOR OUTLIERS (beat their own median {metric}):\n" + "\n".join(
+            f'- {ref("C", {"platform": "instagram", "account": o["account"], "url": o.get("url"), "views": o["views"], "metric": metric, "ratio": o["ratio"], "text": o.get("on_screen_text") or o.get("post_caption", "")[:60]})}'
+            f' @{o["account"]}: "{o.get("on_screen_text") or o.get("post_caption", "")[:60]}" {o["ratio"]}x, {o["views"]:,} {metric}'
             for o in radar["outliers"][:12]))
     saved = db.q("SELECT * FROM library WHERE source = 'saved' ORDER BY last_seen DESC LIMIT 15")
     if saved:
@@ -798,6 +900,35 @@ def build_context(topic, tiktok=None, keywords=None):
         parts.append("HOOKS ALREADY USED on other ReelBot reels (don't repeat them; most aren't posted yet, so they are NOT "
                      "the creator's past winners and are no evidence of anything):\n" + "\n".join(used[-60:]))
     return "\n\n".join(parts), refs
+
+
+def whats_worked(days=180):
+    """Every creator, search word and angle ReelBot borrowed from, scored by how the reels that used them did
+    (views vs your usual, from each posted reel's latest results). The free research that gets better over time."""
+    usual = usual_views() or 1
+    since = (local_now() - timedelta(days=days)).isoformat()
+    rows = db.q("""SELECT r.inspirations, r.keywords, r.angle, r.on_screen_text, s.views FROM reels r JOIN snapshots s ON s.reel_id = r.id
+                   WHERE s.hours = (SELECT MAX(hours) FROM snapshots WHERE reel_id = r.id) AND r.posted_at >= ?""", since)
+    groups = {"creators": defaultdict(list), "words": defaultdict(list), "formats": defaultdict(list)}
+    for r in rows:
+        hit = ((r["views"] or 0) / usual, r["on_screen_text"], r["views"] or 0)
+        for x in json.loads(r["inspirations"] or "[]"):
+            if x.get("platform") == "you":
+                groups["creators"]["your own reels"].append(hit)
+            elif x.get("account"):
+                groups["creators"][f"@{x['account']} ({'TikTok' if x.get('platform') == 'tiktok' else 'Instagram'})"].append(hit)
+            elif x.get("text"):
+                groups["words"][x["text"].lower()].append(hit)
+        for k in json.loads(r["keywords"] or "[]"):
+            groups["words"][k["word"].lower()].append(hit)
+        if r["angle"]:
+            groups["formats"][r["angle"]].append(hit)
+    out = {"reels": len(rows), "usual": usual}
+    for g, items in groups.items():
+        out[g] = sorted(({"name": name, "reels": len(h), "ratio": round(statistics.median(x[0] for x in h), 1),
+                          "best": max(h, key=lambda x: x[2])[1]} for name, h in items.items()),
+                        key=lambda x: (-x["ratio"], -x["reels"]))
+    return out
 
 
 def resolve_refs(plan, refs):
@@ -948,13 +1079,16 @@ def gather_research(clip, sources):
     elif tags:
         topic = attempt("Instagram", research_topic, tags, clip["subject"])
         if topic:
-            status.append({"source": "Instagram", "ok": True, "text": f"{topic['found']} reels for #{' #'.join(topic['hashtags'])}, "
-                                                                     f"{len(topic['winners'])} on-topic winners read"})
+            status.append({"source": "Instagram", "ok": True, "text": (
+                f"used {len(topic['winners'])} saved reels for #{' #'.join(topic['hashtags'])} (free, no new search)" if topic.get("from_library")
+                else f"{topic['found']} reels for #{' #'.join(topic['hashtags'])}, {len(topic['winners'])} on-topic winners read")})
     tiktok = None
     if "tiktok" in sources and has_apify:
         tiktok = attempt("TikTok", research_tiktok, tags, clip["subject"])
         if tiktok:
-            status.append({"source": "TikTok", "ok": True, "text": f"{tiktok['found']} videos, {len(tiktok['winners'])} on-topic winners read"})
+            status.append({"source": "TikTok", "ok": True, "text": (
+                f"used {len(tiktok['winners'])} saved TikToks (free, no new search)" if tiktok.get("from_library")
+                else f"{tiktok['found']} videos, {len(tiktok['winners'])} on-topic winners read")})
     keywords = attempt("Google searches", google_keywords, terms)
     if keywords:
         status.append({"source": "Google searches", "ok": True,
@@ -1442,7 +1576,7 @@ def _clock():
                 submit("refresh history", refresh_history)
             if _due_daily("rebalance", 5, 45, weekday=0):
                 submit("rebalance research mix", rebalance_mix)
-            if _due_daily("radar", 5, 30, weekday=0) and env("APIFY_TOKEN", required=False) is not None:
+            if _due_daily("radar", 5, 30, weekday=0) and (cfg()["radar"].get("source") != "apify" or env("APIFY_TOKEN", required=False)):
                 submit("competitor radar", run_radar)
         except Exception as e:
             db.log(f"✗ clock: {e}")

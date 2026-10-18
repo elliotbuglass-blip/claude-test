@@ -3,6 +3,28 @@
 <h1>Research</h1>
 <p class="sub">What ReelBot is learning from your history, your competitors and the topics of your clips.</p>
 
+<div class="cols" style="margin-bottom:16px">
+<div class="card"><div class="body">
+  <p class="hook">💷 Research spend this month</p>
+  {% set pct = ((spend.usd / budget * 100) if budget else 100)|round|int %}
+  <p><b style="font-size:22px">${{ '%.2f'|format(spend.usd) }}</b> <span class="meta">of your ${{ '%g'|format(budget) }} budget{% if spend.from == 'estimate' %} (ReelBot's estimate){% else %} (from Apify){% endif %}</span></p>
+  <div class="g-bar" style="margin:6px 0 8px"><i style="left:0;right:auto;width:{{ [pct, 100]|min }}%;background:{{ '#ff8a8a' if pct >= 100 else ('#e8d27a' if pct >= 75 else '#8fd694') }}"></i></div>
+  <p class="meta">{% if pct >= 100 %}Budget reached: no new paid searches until it resets{% if spend.resets %} ({{ spend.resets[:10] }}){% endif %}. ReelBot is using saved research.
+    {% else %}Paid searches stop at your budget, then ReelBot uses saved research.{% if spend.resets %} Resets {{ spend.resets[:10] }}.{% endif %}{% endif %}
+    Free: Google trends, Google and YouTube searches{{ ', competitor checks (Instagram’s own tool)' if radar_source == 'meta' }}.
+    · <a href="/settings">change budget</a> · <a href="/research?refresh=1">refresh</a></p>
+</div></div>
+<div class="card"><div class="body">
+  <p class="hook">✅ What's worked before</p>
+  {% if board.reels %}<p class="meta">From {{ board.reels }} posted reel{{ 's' if board.reels != 1 }}: how the reels that borrowed each thing did vs your usual ({{ board.usual|num }} views). ReelBot leans into the ✅ and away from the ❌ every time it plans.</p>
+  {% for g, label in [("creators", "🎯 Creators"), ("words", "🔤 Words"), ("formats", "🎬 Angles")] %}{% if board[g] %}
+    <p class="meta" style="margin:10px 0 4px"><b>{{ label }}</b></p>
+    <table>{% for x in board[g][:6] %}<tr><td>{{ '✅' if x.ratio >= 1.2 else ('❌' if x.ratio <= 0.7 else '➖') }} {{ x.name }}</td>
+      <td><b>{{ x.ratio }}×</b></td><td class="meta">{{ x.reels }} reel{{ 's' if x.reels != 1 }}</td></tr>{% endfor %}</table>
+  {% endif %}{% endfor %}
+  {% else %}<p class="meta">Fills in as your reels get results. Each one records which creators, words and angles it borrowed, so ReelBot can see which ones actually work for you.</p>{% endif %}
+</div></div>
+</div>
 <div class="card" id="library" style="margin-bottom:16px"><div class="body">
   <p class="hook">📚 Research library</p>
   <p class="meta">Every reel ReelBot has researched, kept so it's paid for once and reused for every similar clip.
@@ -72,8 +94,9 @@
 {% for w in topic.winners %}<tr><td>{{ w.views|num }}</td><td>@{{ w.account }}</td><td>{{ w.on_screen_text or '(no text)' }}</td><td class="meta">{{ w.music }} · <a href="{{ w.url }}" target="_blank">open ↗</a></td></tr>{% endfor %}
 </table></div>{% else %}<div class="empty">No topic research yet.</div>{% endif %}
 <h2 class="hook" style="margin-top:28px">🛰️ Competitor outliers</h2>
-<form method="post" class="row" style="margin-bottom:10px"><button class="ghost" name="run" value="radar">Run competitor radar now</button><span class="meta">Runs by itself every Monday.</span></form>
-{% if radar and radar.outliers %}<div class="scroll"><table><tr><th>vs their normal</th><th>Views</th><th>Account</th><th>On-screen text</th></tr>
+<form method="post" class="row" style="margin-bottom:10px"><button class="ghost" name="run" value="radar">Run competitor radar now</button><span class="meta">Runs by itself every Monday{{ ', free' if radar_source == 'meta' }}.</span></form>
+{% if radar and radar.outliers %}<p class="meta">{{ 'Using Instagram’s own free tool, so this compares likes (it doesn’t share views).' if radar.metric == 'likes' else 'Compared by views.' }}</p>
+<div class="scroll"><table><tr><th>vs their normal</th><th>{{ 'Likes' if radar.metric == 'likes' else 'Views' }}</th><th>Account</th><th>On-screen text</th></tr>
 {% for o in radar.outliers %}<tr><td>{{ o.ratio }}×</td><td>{{ o.views|num }}</td><td>@{{ o.account }}</td><td>{{ o.on_screen_text or o.post_caption[:80] }} · <a href="{{ o.url }}" target="_blank">open ↗</a></td></tr>{% endfor %}
 </table></div>{% else %}<div class="empty">No radar results yet.</div>{% endif %}
 {% endblock %}
