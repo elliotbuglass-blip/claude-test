@@ -30,7 +30,7 @@ video { width: 100%; aspect-ratio: 9/16; background: #000; display: block; }
 .s-high { color: var(--good); } .s-mid { color: var(--warn); } .s-low { color: var(--bad); }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
 button, .btn { background: var(--accent); color: #111; border: 0; border-radius: 10px; padding: 9px 14px; font-weight: 600; cursor: pointer; font-size: 14px; }
-button.ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--line); }
+button.ghost, a.btn.ghostlink { background: var(--panel2); color: var(--text); border: 1px solid var(--line); }
 button.danger { background: transparent; color: var(--bad); border: 1px solid var(--line); }
 input, select, textarea { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font: inherit; width: 100%; }
 label { display: block; color: var(--muted); font-size: 13px; margin: 10px 0 4px; }
@@ -212,3 +212,4 @@ button.mini { padding: 5px 8px; font-size: 12px; border-radius: 8px; }
 .lesson { border-left: 4px solid var(--line); }
 .lesson.v-winner { border-left-color: #8fd694; } .lesson.v-flop { border-left-color: #ff8a8a; } .lesson.v-ok { border-left-color: #e8d27a; }
 .lessons { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin-bottom: 16px; }
+a.btn { display: inline-block; color: #111; }

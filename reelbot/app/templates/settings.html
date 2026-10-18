@@ -1,6 +1,25 @@
 {% extends "base.html" %}
 {% block main %}
 <h1>Settings</h1>
+<div class="card" id="instagram" style="margin-bottom:16px"><div class="body">
+  <p class="hook">📸 Instagram</p>
+  {% if ig.connected %}
+    <p>✅ Connected{% if ig.username %} as <b>@{{ ig.username }}</b>{% endif %}{% if ig.page %} <span class="meta">(through the Facebook Page “{{ ig.page }}”)</span>{% endif %}
+      {% if ig.how == 'variables' %}<span class="meta"> · set up by hand in Railway Variables</span>{% endif %}</p>
+    <div class="row">
+      {% if meta_ready %}<a class="btn ghostlink" href="/connect/instagram">Reconnect / switch account</a>{% endif %}
+      {% if ig.how == 'button' %}<form method="post" action="/connect/instagram/disconnect" onsubmit="return confirm('Disconnect Instagram? ReelBot stops posting until you connect again.')"><button class="ghost danger">Disconnect</button></form>{% endif %}
+    </div>
+  {% else %}
+    <p>Not connected yet: ReelBot can't post or read your results.</p>
+    {% if meta_ready %}<a class="btn" href="/connect/instagram">Connect Instagram ▸</a>
+      <p class="meta">You'll log in with Facebook and tick the Page linked to your Instagram. Your Instagram must be a Creator or Business account.</p>{% endif %}
+  {% endif %}
+  {% if not meta_ready or setup %}
+    <p class="meta" style="margin-top:10px">{{ '⚠️ ' if setup }}To use the Connect button, add <b>META_APP_ID</b> and <b>META_APP_SECRET</b> to Railway Variables, and add this address under
+      Facebook Login → Settings → Valid OAuth Redirect URIs in your Meta app: <code>{{ redirect_uri }}</code></p>
+  {% endif %}
+</div></div>
 <form method="post">
 <div class="cols">
 <div class="card"><div class="body">

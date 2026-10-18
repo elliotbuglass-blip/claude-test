@@ -22,7 +22,7 @@ from starlette.staticfiles import StaticFiles
 
 from .. import editor
 from ..settings import claude_key, env
-from . import db, jobs, links
+from . import connect, db, jobs, links
 
 HERE = Path(__file__).parent
 templates = Environment(loader=FileSystemLoader(HERE / "templates"), autoescape=select_autoescape())
@@ -420,6 +420,29 @@ async def research(request: Request):
                 look=db.latest_research("look"))
 
 
+async def connect_instagram(request: Request):
+    if not connect.ready():
+        return RedirectResponse("/settings?connect=setup#instagram", 303)
+    return RedirectResponse(connect.login_url(), 303)
+
+
+async def connect_done(request: Request):
+    q = request.query_params
+    if q.get("error"):
+        db.log(f"Instagram connect cancelled: {q.get('error_description') or q['error']}")
+        return RedirectResponse("/settings#instagram", 303)
+    try:
+        connect.finish(q.get("code"), q.get("state"))
+    except Exception as e:
+        db.log(f"✗ Instagram connect failed: {e}")
+    return RedirectResponse("/settings#instagram", 303)
+
+
+async def disconnect_instagram(request: Request):
+    connect.disconnect()
+    return RedirectResponse("/settings#instagram", 303)
+
+
 async def settings_page(request: Request):
     if request.method == "POST":
         form = await request.form()
@@ -451,7 +474,8 @@ async def settings_page(request: Request):
     return page("settings.html", request, c=c, mix=jobs.research_mix(), mix_change=db.latest_research("mix_change"),
                 outlook=jobs.outlook(), labels=jobs.SOURCE_LABELS,
                 sources=jobs.SOURCES, s={k: jobs.setting(k) for k in jobs.EDITABLE}, keys=keys,
-                styles=list(editor.TEXT_STYLES), grades=list(editor.GRADES))
+                styles=list(editor.TEXT_STYLES), grades=list(editor.GRADES), ig=connect.status(), meta_ready=connect.ready(),
+                redirect_uri=connect.redirect_uri(), setup=request.query_params.get("connect") == "setup")
 
 
 async def home(request: Request):
@@ -482,11 +506,14 @@ routes = [
     Route("/schedule", lambda r: RedirectResponse("/calendar", 303)), Route("/results", results),
     Route("/research", research, methods=["GET", "POST"]),
     Route("/settings", settings_page, methods=["GET", "POST"]),
+    Route("/connect/instagram", connect_instagram), Route("/connect/instagram/done", connect_done),
+    Route("/connect/instagram/disconnect", disconnect_instagram, methods=["POST"]),
     Mount("/static", StaticFiles(directory=HERE / "static"), name="static"),
 ]
 
 @contextlib.asynccontextmanager
 async def lifespan(app):
+    connect.apply()
     jobs.start()
     yield
 
