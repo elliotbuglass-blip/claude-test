@@ -22,7 +22,7 @@ from starlette.staticfiles import StaticFiles
 
 from .. import editor
 from ..settings import claude_key, env
-from . import db, jobs
+from . import db, jobs, links
 
 HERE = Path(__file__).parent
 templates = Environment(loader=FileSystemLoader(HERE / "templates"), autoescape=select_autoescape())
@@ -59,7 +59,7 @@ def _token():
 
 class Auth(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        open_paths = ("/login", "/static", "/health")
+        open_paths = ("/login", "/static", "/health", "/public/")  # /public/ links are signed and expire
         if os.environ.get("APP_PASSWORD") and not request.url.path.startswith(open_paths):
             if not hmac.compare_digest(request.cookies.get("rb", ""), _token()):
                 return RedirectResponse("/login", 303)
@@ -165,10 +165,23 @@ def thumb_spots(request):
     return FileResponse(path, media_type="image/jpeg") if path.exists() else HTMLResponse("", 404)
 
 
+async def public_video(request: Request):
+    """The reel for Instagram to download while publishing: only with a valid, unexpired signed link."""
+    reel_id = request.path_params["id"]
+    if not links.valid(reel_id, request.query_params.get("e"), request.query_params.get("s")):
+        return HTMLResponse("Link expired", 403)
+    reel = db.one("SELECT video_path FROM reels WHERE id = ?", reel_id)
+    if not reel or not reel["video_path"] or not Path(reel["video_path"]).exists():
+        return HTMLResponse("Not found", 404)
+    return FileResponse(reel["video_path"], media_type="video/mp4")
+
+
 async def video(request: Request):
     reel = db.one("SELECT video_path FROM reels WHERE id = ?", request.path_params["id"])
     if not reel or not reel["video_path"] or not Path(reel["video_path"]).exists():
         return HTMLResponse("Not ready", 404)
+    if request.query_params.get("download"):
+        return FileResponse(reel["video_path"], media_type="video/mp4", filename=f"reelbot-{request.path_params['id']}.mp4")
     return FileResponse(reel["video_path"], media_type="video/mp4")
 
 
@@ -392,7 +405,7 @@ routes = [
     Route("/reels/remake-all", rerender_all, methods=["POST"]),
     Route("/posting/resume", resume_posting, methods=["POST"]),
     Route("/reels/{id}/{action}", reel_action, methods=["POST"]),
-    Route("/video/{id}.mp4", video), Route("/thumb/{id}.jpg", thumb), Route("/spots/{id}.jpg", thumb_spots),
+    Route("/video/{id}.mp4", video), Route("/public/{id}.mp4", public_video), Route("/thumb/{id}.jpg", thumb), Route("/spots/{id}.jpg", thumb_spots),
     Route("/clips", clips_page), Route("/upload", upload_page), Route("/upload", upload, methods=["POST"]),
     Route("/pipeline", pipeline_part), Route("/calendar", calendar),
     Route("/clips/{id}/{action}", clip_action, methods=["POST"]),

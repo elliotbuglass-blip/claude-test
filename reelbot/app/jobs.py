@@ -1023,7 +1023,8 @@ def post_due():
         db.update("reels", reel["id"], status="posting")
         try:
             caption = " ".join(x for x in (reel["post_caption"] or reel["on_screen_text"], c["posting"].get("hashtags", "")) if x)
-            media_id = post_reel(reel["video_path"], caption, c["posting"])
+            from .links import public_video_url
+            media_id = post_reel(reel["video_path"], caption, c["posting"], video_url=public_video_url(reel["id"]))
             info = requests.get(f"https://graph.facebook.com/{c['posting']['graph_api_version']}/{media_id}",
                                 params={"fields": "permalink,is_shared_to_feed", **_ig_auth()}, timeout=30).json()
             db.update("reels", reel["id"], status="posted", media_id=media_id, permalink=info.get("permalink"),
