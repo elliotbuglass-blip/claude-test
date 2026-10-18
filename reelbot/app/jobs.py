@@ -125,11 +125,11 @@ def _frames(path, n=3, start=0.0, length=None):
     return out
 
 
-def add_clip(path, filename, kind=None, description=""):
+def add_clip(path, filename, kind=None, description="", keep_look=False):
     clip_id = db.new_id()
     duration, _ = editor.probe(path)
     db.insert("clips", {"id": clip_id, "filename": filename, "path": str(path), "duration": duration,
-                        "description": description.strip() or None,
+                        "description": description.strip() or None, "keep_look": 1 if keep_look else 0,
                         "kind": kind or "main", "notes": "kind set by you" if kind else "",
                         "broll_silent": 1 if setting("broll_silent") else 0})
     submit(f"analyse {filename}", analyse_clip, clip_id, kind is None)
@@ -796,7 +796,7 @@ def make_reels(clip_id, n=None, post_at=None, sources=None):
                 if trend else None}, ensure_ascii=False),
             "track": plan["track"] if plan["track"] in library else "",
             "seconds": length, "start": start, "cut_reason": cut_reason, "text_style": c["look"].get("text_style", "editorial"),
-            "grade": c["look"].get("grade", "match"), "recommended_time": slot,
+            "grade": "none" if clip["keep_look"] else c["look"].get("grade", "match"), "recommended_time": slot,
             "post_at": slot if mode == "autopilot" else None, "mode": mode, "status": "rendering"})
         render_reel(reel_id)
     db.update("clips", clip_id, status="used")

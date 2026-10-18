@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, account
 
 # Columns added after the first release: added to older databases on start-up.
 NEW_COLUMNS = {
-    "clips": {"description": "TEXT"},
+    "clips": {"description": "TEXT", "keep_look": "INTEGER"},
     "snapshots": {"account": "TEXT"},
     "reels": {"positives": "TEXT", "negatives": "TEXT", "sound_reason": "TEXT", "trend": "TEXT",
               "cut_reason": "TEXT", "text_reason": "TEXT", "research": "TEXT", "text_spots": "TEXT", "risky": "INTEGER", "source": "TEXT", "series": "TEXT",

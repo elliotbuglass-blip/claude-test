@@ -238,7 +238,8 @@ async def upload(request: Request):
         dest = db.CLIPS_DIR / f"{db.new_id()}_{Path(f.filename).name}"
         with dest.open("wb") as out:
             shutil.copyfileobj(f.file, out, 1 << 20)
-        jobs.add_clip(dest, f.filename, None if kind == "auto" else kind, form.get("description") or "")
+        jobs.add_clip(dest, f.filename, None if kind == "auto" else kind, form.get("description") or "",
+                      keep_look=form.get("keep_look") == "1")
         count += 1
     for f in form.getlist("music"):
         if getattr(f, "filename", None) and Path(f.filename).suffix.lower() in editor.AUDIO_EXTS:
