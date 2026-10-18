@@ -158,3 +158,4 @@ button.mini { padding: 5px 8px; font-size: 12px; border-radius: 8px; }
 .msg.you { background: var(--panel2); margin-left: auto; text-align: right; }
 .msg.bot { background: #1f1c15; color: var(--accent); }
 .colour label { display: flex; justify-content: space-between; }
+.paused { background: #2a1d10; border: 1px solid var(--warn); color: var(--warn); border-radius: 12px; padding: 10px 14px; margin-bottom: 16px; font-size: 14px; }

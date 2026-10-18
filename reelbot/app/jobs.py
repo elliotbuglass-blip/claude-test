@@ -1014,6 +1014,8 @@ def post_now(reel_id):
 def post_due():
     from ..publisher import post_reel
     c = cfg()
+    if db.get_setting("posting_paused"):
+        return
     due = db.q("SELECT * FROM reels WHERE status = 'scheduled' AND post_at <= ? ORDER BY post_at",
                local_now().isoformat(timespec="minutes"))
     for reel in due[:2]:
@@ -1021,11 +1023,16 @@ def post_due():
         try:
             caption = " ".join(x for x in (reel["post_caption"] or reel["on_screen_text"], c["posting"].get("hashtags", "")) if x)
             media_id = post_reel(reel["video_path"], caption, c["posting"])
-            link = requests.get(f"https://graph.facebook.com/{c['posting']['graph_api_version']}/{media_id}",
-                                params={"fields": "permalink", **_ig_auth()}, timeout=30).json().get("permalink")
-            db.update("reels", reel["id"], status="posted", media_id=media_id, permalink=link,
+            info = requests.get(f"https://graph.facebook.com/{c['posting']['graph_api_version']}/{media_id}",
+                                params={"fields": "permalink,is_shared_to_feed", **_ig_auth()}, timeout=30).json()
+            db.update("reels", reel["id"], status="posted", media_id=media_id, permalink=info.get("permalink"),
                       posted_at=local_now().isoformat(timespec="minutes"))
             db.log(f"Posted trial reel “{reel['on_screen_text']}”")
+            # Safety net: a trial reel shouldn't land on the grid. If Instagram says it did, stop posting.
+            if c["posting"].get("trial_reel") and info.get("is_shared_to_feed") is True:
+                db.set_setting("posting_paused", f"“{reel['on_screen_text']}” went out as a normal reel, not a trial")
+                db.log("⚠️ Posting paused: Instagram posted a reel to your grid instead of as a trial reel")
+                return
         except Exception as e:
             db.update("reels", reel["id"], status="failed", error=str(e)[:400])
             db.log(f"✗ Posting failed for “{reel['on_screen_text']}”: {e}")

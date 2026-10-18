@@ -45,6 +45,7 @@ templates.filters["fromjson"] = lambda v: json.loads(v) if v else None
 
 def page(name, request, **ctx):
     ctx.update(request=request, nav=request.url.path, busy=jobs.busy(), mode=jobs.setting("mode"),
+               paused=db.get_setting("posting_paused"),
                events=db.q("SELECT * FROM events ORDER BY id DESC LIMIT 6"))
     return HTMLResponse(templates.get_template(name).render(**ctx))
 
@@ -369,6 +370,12 @@ async def home(request: Request):
     return RedirectResponse("/upload", 303)
 
 
+async def resume_posting(request: Request):
+    db.set_setting("posting_paused", None)
+    db.log("Posting resumed")
+    return RedirectResponse(request.headers.get("referer", "/"), 303)
+
+
 async def health(request: Request):
     return JSONResponse({"ok": True, "queue": jobs.busy()})
 
@@ -378,6 +385,7 @@ routes = [
     Route("/login", login, methods=["GET", "POST"]),
     Route("/review", review),
     Route("/reels/remake-all", rerender_all, methods=["POST"]),
+    Route("/posting/resume", resume_posting, methods=["POST"]),
     Route("/reels/{id}/{action}", reel_action, methods=["POST"]),
     Route("/video/{id}.mp4", video), Route("/thumb/{id}.jpg", thumb), Route("/spots/{id}.jpg", thumb_spots),
     Route("/clips", clips_page), Route("/upload", upload_page), Route("/upload", upload, methods=["POST"]),
