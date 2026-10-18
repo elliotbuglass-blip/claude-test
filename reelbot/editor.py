@@ -15,7 +15,7 @@ W, H = 1080, 1920
 
 
 # Small servers have little memory: decode 4K with a couple of threads, not one per CPU core.
-THREADS = os.environ.get("REELBOT_FFMPEG_THREADS", "2")
+THREADS = os.environ.get("REELBOT_FFMPEG_THREADS", "4")
 
 
 def _run(cmd):
@@ -55,9 +55,9 @@ def working_copy(path):
         return path
     out = path.with_name(f"{path.stem.removesuffix('_1080')}_1080{'_sdr' if hdr else ''}.mp4")
     vf = "scale='if(gt(iw,ih),-2,1080)':'if(gt(iw,ih),1080,-2)'" + (f",{to_sdr(hdr)}" if hdr else "")
-    _run(["ffmpeg", "-y", "-v", "error", "-threads", "1", "-i", str(path),  # one thread: 4K decoding is the memory hog
+    _run(["ffmpeg", "-y", "-v", "error", "-threads", THREADS, "-i", str(path),  # 4K decoding is the memory hog
           "-vf", vf, *SDR_TAGS,
-          "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", "-x264-params", "rc-lookahead=10", "-threads", "1",
+          "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", "-x264-params", "rc-lookahead=10", "-threads", THREADS,
           "-pix_fmt", "yuv420p",
           "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(out)])
     return out
@@ -440,7 +440,7 @@ def render(clip, out_path, caption, start, length, look, audio_cfg, broll=None):
     cmd += ["-map", "[a]"] if audio else ["-an"]
 
     tmp = out_path.with_suffix(".tmp.mp4")
-    cmd += ["-t", f"{length:.2f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-threads", THREADS, "-x264-params", "rc-lookahead=20", *SDR_TAGS,
+    cmd += ["-t", f"{length:.2f}", "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-threads", THREADS, "-x264-params", "rc-lookahead=20", *SDR_TAGS,
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", "44100",
             "-movflags", "+faststart", str(tmp)]
     _run(cmd)

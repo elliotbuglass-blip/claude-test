@@ -7,6 +7,7 @@ A scheduler thread handles the clock: posting, 24/48/72h results, daily autopilo
 import copy
 import json
 import math
+import os
 import queue
 import statistics
 import threading
@@ -1002,8 +1003,8 @@ def chat_edit(reel_id, message):
 
 def rerender_all():
     """Re-make every reel that isn't posted yet (e.g. after a colour fix)."""
-    for r in db.q("SELECT id FROM reels WHERE status IN ('draft', 'failed', 'scheduled')"):
-        render_reel(r["id"])
+    for r in db.q("SELECT id FROM reels WHERE status IN ('draft', 'failed', 'scheduled', 'rendering')"):
+        submit("re-make reel", render_reel, r["id"])  # one job each, so both workers share them
 
 
 def post_now(reel_id):
@@ -1112,5 +1113,6 @@ def _resume():
 
 def start():
     _resume()
-    threading.Thread(target=_worker, daemon=True).start()
+    for _ in range(int(os.environ.get("REELBOT_WORKERS", "2"))):  # two reels at once
+        threading.Thread(target=_worker, daemon=True).start()
     threading.Thread(target=_clock, daemon=True).start()
