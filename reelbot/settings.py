@@ -30,6 +30,16 @@ def load_config():
     return yaml.safe_load((ROOT / "config.yaml").read_text())
 
 
+def claude_key():
+    """The Claude API key. REELBOT_ANTHROPIC_KEY works where ANTHROPIC_API_KEY is reserved (Claude Code cloud)."""
+    return os.environ.get("REELBOT_ANTHROPIC_KEY") or os.environ.get("ANTHROPIC_API_KEY") or ""
+
+
+def claude():
+    import anthropic
+    return anthropic.Anthropic(api_key=claude_key() or None)
+
+
 def env(name, required=True):
     value = os.environ.get(name, "")
     if required and not value:

@@ -21,7 +21,7 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from .. import editor
-from ..settings import env
+from ..settings import claude_key, env
 from . import db, jobs
 
 HERE = Path(__file__).parent
@@ -323,7 +323,7 @@ async def settings_page(request: Request):
         db.log("Settings saved")
         return RedirectResponse("/settings", 303)
     c = jobs.cfg()
-    keys = {k: bool(env(k, required=False)) for k in ("ANTHROPIC_API_KEY", "IG_ACCESS_TOKEN", "IG_USER_ID", "APIFY_TOKEN", "APP_PASSWORD")}
+    keys = {"ANTHROPIC_API_KEY": bool(claude_key())} | {k: bool(env(k, required=False)) for k in ("IG_ACCESS_TOKEN", "IG_USER_ID", "APIFY_TOKEN", "APP_PASSWORD")}
     return page("settings.html", request, c=c, mix=jobs.research_mix(), mix_change=db.latest_research("mix_change"),
                 outlook=jobs.outlook(), labels=jobs.SOURCE_LABELS,
                 sources=jobs.SOURCES, s={k: jobs.setting(k) for k in jobs.EDITABLE}, keys=keys,

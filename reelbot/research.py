@@ -9,7 +9,7 @@ from datetime import date
 import anthropic
 
 from . import competitors, stats
-from .settings import DATA, OUTPUT
+from .settings import claude, DATA, OUTPUT
 
 MODEL = "claude-opus-5-5"
 BRIEF = DATA / "research_brief.json"
@@ -84,7 +84,7 @@ def build(niche):
             f' | shows: {o.get("visual") or "?"} | post caption: "{o["post_caption"][:100]}"'
             for o in outliers))
 
-    client = anthropic.Anthropic()
+    client = claude()
     with client.beta.messages.stream(
         model=MODEL,
         max_tokens=32000,

@@ -5,6 +5,8 @@ import json
 
 import anthropic
 
+from .settings import claude
+
 from . import competitors, research, stats
 
 MODEL = "claude-opus-5-5"
@@ -78,7 +80,7 @@ def _research_text():
 
 
 def write_captions(niche, frame_path, clip_notes, count):
-    client = anthropic.Anthropic()
+    client = claude()
     user_content = [
         _frame_block(frame_path),
         {"type": "text", "text": (

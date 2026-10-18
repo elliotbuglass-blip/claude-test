@@ -6,6 +6,8 @@ import os
 
 import anthropic
 
+from ..settings import claude, claude_key
+
 MODEL = "claude-opus-5-5"
 
 
@@ -15,9 +17,9 @@ def _images(frames):
 
 
 def _ask(content, schema, system=None, effort="medium", max_tokens=16000):
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    if not claude_key():
         raise RuntimeError("Claude isn't connected: add ANTHROPIC_API_KEY to the server's settings, then retry.")
-    client = anthropic.Anthropic()
+    client = claude()
     kwargs = {"system": system} if system else {}
     response = client.beta.messages.create(
         model=MODEL,

@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 from .. import competitors, editor, vision
-from ..settings import DATA, env, load_config
+from ..settings import DATA, claude_key, env, load_config
 from . import brain, db
 
 # --------------------------------------------------------------------------- settings
@@ -677,7 +677,7 @@ def place_text(reel_id, clip, start, length, text, n_lines, size):
     preview = db.RENDERS_DIR / f"{reel_id}_spots.jpg"
     spots = editor.text_spots(clip, start, length, n_lines, size, k=7, spread=True)
     editor.spots_preview(clip, start, length, spots, n_lines, size, preview)
-    if env("ANTHROPIC_API_KEY", required=False):
+    if claude_key():
         try:
             picks = db.get_setting("text_picks", [])[-6:]
             examples = ("\nThe creator moved the text themselves on earlier reels; match their taste:\n"

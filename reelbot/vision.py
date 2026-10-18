@@ -11,7 +11,7 @@ import tempfile
 import anthropic
 import requests
 
-from .settings import DATA
+from .settings import claude, DATA
 
 MODEL = "claude-opus-5-5"
 CACHE = DATA / "onscreen_text.json"
@@ -77,7 +77,7 @@ def gather_frames(video=None, thumbnail=None):
 
 
 def ask_claude(frames):
-    client = anthropic.Anthropic()
+    client = claude()
     content = [
         {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                      "data": base64.standard_b64encode(f).decode()}}
