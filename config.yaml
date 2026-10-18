@@ -118,4 +118,4 @@ posting:
   max_posts_per_run: 1         # the cloud runs every 3 hours, so 1 per run spaces them out nicely
   minutes_between_posts: 20
   hashtags: ""                # e.g. "#astonmartin #db12" (added to the post caption)
-  graph_api_version: v23.0
+  graph_api_version: v25.0   # trial_params (trial reels) is ignored by older versions

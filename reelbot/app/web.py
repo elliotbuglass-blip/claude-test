@@ -117,8 +117,10 @@ async def reel_action(request: Request):
         jobs.submit("re-render", jobs.render_reel, reel_id)
     elif action == "postnow":
         jobs.post_now(reel_id)
-    elif action == "reject":
-        db.update("reels", reel_id, status="rejected")
+    elif action in ("reject", "remove"):
+        db.update("reels", reel_id, status="rejected", post_at=None)
+        if action == "remove":
+            db.log(f"Removed “{reel['on_screen_text']}” from the calendar")
     elif action == "unschedule":
         db.update("reels", reel_id, status="draft", post_at=None)
     elif action == "caption":
