@@ -135,9 +135,23 @@ def add_clip(path, filename, kind=None, description=""):
     return clip_id
 
 
+def ensure_working_copy(clip):
+    """Swap a 4K original for a 1080p working copy (and delete the original to save space)."""
+    path = Path(clip["path"])
+    if not path.exists():
+        return clip
+    small = editor.working_copy(path)
+    if small != path:
+        path.unlink(missing_ok=True)
+        db.update("clips", clip["id"], path=str(small))
+        clip = {**clip, "path": str(small)}
+    return clip
+
+
 def analyse_clip(clip_id, decide_kind=True, make_after=True):
     clip = db.one("SELECT * FROM clips WHERE id = ?", clip_id)
     db.update("clips", clip_id, status="analysing")
+    clip = ensure_working_copy(clip)
     duration, has_audio = editor.probe(clip["path"])
     loud = editor.loudest_start(clip["path"], duration, min(8, duration)) + 1.0 if has_audio else 0.0
     try:
@@ -838,6 +852,7 @@ def render_reel(reel_id):
     clip = db.one("SELECT * FROM clips WHERE id = ?", reel["clip_id"])
     db.update("reels", reel_id, status="rendering", error=None)
     try:
+        clip = ensure_working_copy(clip)
         duration, has_audio = editor.probe(clip["path"])
         length = min(reel["seconds"] or c["clips"]["reel_seconds"], duration)
         start, cut_reason = reel["start"], reel["cut_reason"]
@@ -865,7 +880,7 @@ def render_reel(reel_id):
         broll = None
         if reel["broll"]:
             b = json.loads(reel["broll"])
-            bclip = db.one("SELECT * FROM clips WHERE id = ?", b["clip_id"])
+            bclip = ensure_working_copy(db.one("SELECT * FROM clips WHERE id = ?", b["clip_id"]))
             broll = {**b, "clip": bclip["path"], "silent": bool(bclip["broll_silent"])}
         out = db.RENDERS_DIR / f"{reel_id}.mp4"
         editor.render(clip["path"], out, editor.clean_text(reel["on_screen_text"]), start, length, look, audio, broll)

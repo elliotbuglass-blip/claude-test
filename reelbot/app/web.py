@@ -111,6 +111,9 @@ async def reel_action(request: Request):
             jobs.approve(reel_id, form.get("custom_at") if when == "custom" and form.get("custom_at") else when)
     elif action == "spot":
         jobs.pick_text_spot(reel_id, int(form.get("spot") or 0))
+    elif action == "retry":
+        db.update("reels", reel_id, status="rendering", error=None)
+        jobs.submit("re-render", jobs.render_reel, reel_id)
     elif action == "postnow":
         jobs.post_now(reel_id)
     elif action == "reject":

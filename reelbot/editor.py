@@ -2,6 +2,7 @@
 
 import array
 import json
+import os
 import random
 import re
 import subprocess
@@ -13,11 +14,36 @@ AUDIO_EXTS = {".mp3", ".m4a", ".wav", ".aac"}
 W, H = 1080, 1920
 
 
+# Small servers have little memory: decode 4K with a couple of threads, not one per CPU core.
+THREADS = os.environ.get("REELBOT_FFMPEG_THREADS", "2")
+
+
 def _run(cmd):
+    if cmd[0] == "ffmpeg" and "-threads" not in cmd:
+        cmd = [x for part in cmd for x in (["-threads", THREADS, part] if part == "-i" else [part])]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg failed:\n{result.stderr[-2000:]}")
+        if result.returncode < 0 or not result.stderr.strip():
+            raise RuntimeError(f"{cmd[0]} was stopped by the server (code {result.returncode}): usually it ran out of memory")
+        raise RuntimeError(f"{cmd[0]} failed:\n{result.stderr[-2000:]}")
     return result.stdout
+
+
+def working_copy(path):
+    """Shrink a 4K phone clip to a 1080p working copy (the reel is 1080x1920 anyway).
+    Uses far less memory, disk and time for every later step. Returns the new path, or the old one if it's small already."""
+    path = Path(path)
+    info = json.loads(_run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                            "stream=width,height", "-of", "json", str(path)]))["streams"][0]
+    if min(info["width"], info["height"]) <= 1080:
+        return path
+    out = path.with_name(f"{path.stem}_1080.mp4")
+    _run(["ffmpeg", "-y", "-v", "error", "-threads", "1", "-i", str(path),  # one thread: 4K decoding is the memory hog
+          "-vf", "scale='if(gt(iw,ih),-2,1080)':'if(gt(iw,ih),1080,-2)'",
+          "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", "-x264-params", "rc-lookahead=10", "-threads", "1",
+          "-pix_fmt", "yuv420p",
+          "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(out)])
+    return out
 
 
 def probe(path):
@@ -323,7 +349,7 @@ def render(clip, out_path, caption, start, length, look, audio_cfg, broll=None):
             print(f"  (no music track found in {audio_cfg['folder']}/, keeping original sound)")
             track, mode = None, "original"
 
-    cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{start:.2f}", "-t", f"{length:.2f}", "-i", str(clip)]
+    cmd = ["ffmpeg", "-y", "-v", "error", "-threads", THREADS, "-ss", f"{start:.2f}", "-t", f"{length:.2f}", "-i", str(clip)]
     video = f"[0:v]{frame},setpts=PTS-STARTPTS[base]"
     last = "base"
     n = 1
@@ -360,7 +386,7 @@ def render(clip, out_path, caption, start, length, look, audio_cfg, broll=None):
     cmd += ["-map", "[a]"] if audio else ["-an"]
 
     tmp = out_path.with_suffix(".tmp.mp4")
-    cmd += ["-t", f"{length:.2f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+    cmd += ["-t", f"{length:.2f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-threads", THREADS, "-x264-params", "rc-lookahead=20",
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", "44100",
             "-movflags", "+faststart", str(tmp)]
     _run(cmd)

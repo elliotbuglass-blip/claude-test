@@ -8,7 +8,8 @@
   {% set pos = r.positives|fromjson or [] %}{% set neg = r.negatives|fromjson or [] %}{% set res = r.research|fromjson or {} %}
   <div class="card">
     {% if r.status == 'rendering' %}<div class="placeholder">⏳ Making this reel…</div>
-    {% elif r.status == 'failed' %}<div class="placeholder s-low">Failed: {{ r.error }}</div>
+    {% elif r.status == 'failed' %}<div class="placeholder s-low"><div style="padding:16px;text-align:center">Couldn't make this reel: {{ r.error }}
+      <form method="post" action="/reels/{{ r.id }}/retry" class="row" style="justify-content:center"><button>Try again</button></form></div></div>
     {% else %}<video src="/video/{{ r.id }}.mp4" poster="/thumb/{{ r.id }}.jpg" controls playsinline preload="none"></video>{% endif %}
     <div class="body">
       <p class="hook">“{{ r.on_screen_text }}”</p>
