@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block main %}
+<p><a href="javascript:history.back()">← Back</a></p>
+<h1>“{{ r.on_screen_text }}”</h1>
+<p class="sub">
+  {% if r.status == 'scheduled' %}⏰ Scheduled for <b>{{ r.post_at|when }}</b>
+  {% elif r.status == 'posting' %}🚀 Posting now…
+  {% elif r.status == 'posted' %}✅ Posted {{ r.posted_at|when }}{% if r.permalink %} · <a href="{{ r.permalink }}" target="_blank">open on Instagram ↗</a>{% endif %}
+  {% elif r.status == 'draft' %}👀 Waiting for your review · suggested {{ r.recommended_time|when }}
+  {% elif r.status == 'failed' %}✗ Failed: {{ r.error }}
+  {% else %}{{ r.status }}{% endif %}
+</p>
+<div class="reelpage">
+  <div>{% include "_reelcard.html" %}</div>
+  <div class="side">
+    {% if r.status == 'scheduled' %}
+    <div class="card"><div class="body">
+      <p class="hook">⏰ Posting</p>
+      <form method="post" action="/reels/{{ r.id }}/reschedule">
+        <label>Move to</label>
+        <select name="post_at">{% for t in ([r.post_at] + times)|unique %}<option value="{{ t }}">{{ t|when }}{{ ' (current)' if loop.first }}</option>{% endfor %}</select>
+        <div class="row"><button class="ghost">Move</button></div>
+      </form>
+      <div class="row">
+        <form method="post" action="/reels/{{ r.id }}/postnow" onsubmit="return confirm('Post this trial reel now?')"><button>🚀 Post now</button></form>
+        <form method="post" action="/reels/{{ r.id }}/unschedule"><button class="ghost">Unschedule</button></form>
+      </div>
+    </div></div>
+    {% endif %}
+    {% if snaps %}
+    <div class="card"><div class="body">
+      <p class="hook">📈 Results</p>
+      <table><tr><th></th><th>Views</th><th>Shares</th><th>Saves</th><th>Watch</th></tr>
+      {% for s in snaps %}<tr><td>{{ s.hours }}h</td><td>{{ s.views|num }}</td><td>{{ s.shares|num }}</td><td>{{ s.saved|num }}</td>
+        <td>{{ ('%.1fs'|format(s.avg_watch_ms / 1000)) if s.avg_watch_ms else '–' }}</td></tr>{% endfor %}</table>
+    </div></div>
+    {% endif %}
+    {% if r.status != 'posting' %}
+    <form method="post" action="/reels/{{ r.id }}/remove" class="row"
+          onsubmit="return confirm('{{ 'Remove this from ReelBot? (It stays on Instagram: delete it in the app if you want it gone there too.)' if r.status == 'posted' else 'Remove this reel?' }}')">
+      <button class="danger">🗑 Remove</button></form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

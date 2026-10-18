@@ -72,6 +72,12 @@ def probe(path):
 
 def loudest_start(path, duration, length, window=0.25):
     """Find where the clip is loudest (engine rev, cold start) and start the reel just before it."""
+    return loudest_starts(path, duration, length, 1, window)[0]
+
+
+def loudest_starts(path, duration, length, k=1, window=0.25):
+    """Up to k different, non-overlapping reel windows, loudest first. Reels from the same clip use different
+    parts of it, so Instagram doesn't see them as duplicates of each other."""
     rate = 8000
     raw = subprocess.run(
         ["ffmpeg", "-v", "error", "-i", str(path), "-ac", "1", "-ar", str(rate), "-f", "s16le", "-"],
@@ -85,19 +91,26 @@ def loudest_start(path, duration, length, window=0.25):
     ]
     per_reel = max(int(length / window), 1)
     if len(energy) <= per_reel:
-        return 0.0
-    # Slide a reel-length window over the clip and keep the loudest stretch.
-    cur = sum(energy[:per_reel])
-    best_i, best_sum = 0, cur
+        return [0.0]
+    # Slide a reel-length window over the clip; keep the loudest stretches that don't overlap.
+    sums, cur = [], sum(energy[:per_reel])
+    sums.append(cur)
     for i in range(1, len(energy) - per_reel + 1):
         cur += energy[i + per_reel - 1] - energy[i - 1]
-        if cur > best_sum:
-            best_i, best_sum = i, cur
-    # Find where the noise kicks in inside that stretch, and start one second before it
-    # so the hook text has a beat before the rev hits.
-    chunk = energy[best_i:best_i + per_reel]
-    onset = best_i + next(i for i, e in enumerate(chunk) if e >= max(chunk) * 0.5)
-    return max(min(onset * window - 1.0, duration - length), 0.0)
+        sums.append(cur)
+    starts, taken = [], []
+    for best_i in sorted(range(len(sums)), key=lambda i: -sums[i]):
+        if any(abs(best_i - t) < per_reel for t in taken):
+            continue
+        taken.append(best_i)
+        # Find where the noise kicks in inside that stretch, and start one second before it
+        # so the hook text has a beat before the rev hits.
+        chunk = energy[best_i:best_i + per_reel]
+        onset = best_i + next(i for i, e in enumerate(chunk) if e >= max(chunk) * 0.5)
+        starts.append(max(min(onset * window - 1.0, duration - length), 0.0))
+        if len(starts) == k:
+            break
+    return starts
 
 
 # Instagram covers the top (header) and the bottom of a reel (profile, caption, buttons: ~35% when the caption is
@@ -334,6 +347,35 @@ def adjust_filter(adjust):
     return ",".join(parts) or None
 
 
+def combine(segments, out_path, broll=None):
+    """Edit several clips into one: each segment = (path, start, length), joined in order.
+    A b-roll shot (path, start) is laid over each join for 1.5s, so the cut between clips is hidden by it;
+    the main clips' sound keeps playing underneath. Returns the new file."""
+    frame = f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},fps=30,setsar=1,format=yuv420p"
+    cmd, parts = ["ffmpeg", "-y", "-v", "error"], []
+    for i, (path, start, length) in enumerate(segments):
+        cmd += ["-threads", THREADS, "-ss", f"{start:.2f}", "-t", f"{length:.2f}", "-i", str(path)]
+        has_audio = probe(path)[1]
+        audio = (f"[{i}:a]aresample=48000,aformat=channel_layouts=stereo,asetpts=PTS-STARTPTS[a{i}]" if has_audio
+                 else f"anullsrc=r=48000:cl=stereo,atrim=0:{length:.2f}[a{i}]")
+        parts.append(f"[{i}:v]{frame},setpts=PTS-STARTPTS[v{i}];{audio}")
+    graph = ";".join(parts) + ";" + "".join(f"[v{i}][a{i}]" for i in range(len(segments)))
+    graph += f"concat=n={len(segments)}:v=1:a=1[cv][ca]"
+    last = "cv"
+    if broll and len(segments) > 1:
+        n = len(segments)
+        cmd += ["-threads", THREADS, "-ss", f"{broll[1]:.2f}", "-t", "1.5", "-i", str(broll[0])]
+        at = max(segments[0][2] - 0.75, 0)
+        graph += (f";[{n}:v]{frame},setpts=PTS-STARTPTS+{at:.2f}/TB[br]"
+                  f";[cv][br]overlay=enable='between(t,{at:.2f},{at + 1.5:.2f})':eof_action=pass[ov]")
+        last = "ov"
+    cmd += ["-filter_complex", graph, "-map", f"[{last}]", "-map", "[ca]",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "14", "-threads", THREADS, *SDR_TAGS,
+            "-c:a", "aac", "-b:a", "256k", "-movflags", "+faststart", str(out_path)]
+    _run(cmd)
+    return Path(out_path)
+
+
 def build_reference(videos, per_video=3):
     """A colour reference from my own posted reels, for match_look."""
     frames = []
@@ -405,7 +447,11 @@ def render(clip, out_path, caption, start, length, look, audio_cfg, broll=None):
             track, mode = None, "original"
 
     cmd = ["ffmpeg", "-y", "-v", "error", "-threads", THREADS, "-ss", f"{start:.2f}", "-t", f"{length:.2f}", "-i", str(clip)]
-    video = f"[0:v]{frame},setpts=PTS-STARTPTS[base]"
+    main_frame = frame
+    if look.get("motion") == "push":  # a slow 8% push-in: same footage, visibly different framing
+        main_frame += (f",scale=w='trunc({W}*(1+0.08*t/{length:.2f})/2)*2':h='trunc({H}*(1+0.08*t/{length:.2f})/2)*2'"
+                       f":eval=frame,crop={W}:{H}")
+    video = f"[0:v]{main_frame},setpts=PTS-STARTPTS[base]"
     last = "base"
     n = 1
     if broll:

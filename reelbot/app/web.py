@@ -121,6 +121,9 @@ async def reel_action(request: Request):
         db.update("reels", reel_id, status="rejected", post_at=None)
         if action == "remove":
             db.log(f"Removed “{reel['on_screen_text']}” from the calendar")
+    elif action == "reschedule":
+        if form.get("post_at"):
+            jobs.approve(reel_id, form["post_at"])
     elif action == "unschedule":
         db.update("reels", reel_id, status="draft", post_at=None)
     elif action == "trim":
@@ -164,6 +167,18 @@ async def thumb(request: Request):
     return FileResponse(path, media_type="image/jpeg") if path.exists() else HTMLResponse("", 404)
 
 
+def clip_thumb(request):
+    """A still from a clip for the library (made once, then kept)."""
+    clip = db.one("SELECT path FROM clips WHERE id = ?", request.path_params["id"])
+    out = db.RENDERS_DIR / f"clip_{request.path_params['id']}.jpg"
+    if clip and not out.exists() and Path(clip["path"]).exists():
+        try:
+            editor.extract_frame(clip["path"], 1.0, out)
+        except Exception:
+            pass
+    return FileResponse(out, media_type="image/jpeg") if out.exists() else HTMLResponse("", 404)
+
+
 def thumb_spots(request):
     path = db.RENDERS_DIR / f"{request.path_params['id']}_spots.jpg"
     return FileResponse(path, media_type="image/jpeg") if path.exists() else HTMLResponse("", 404)
@@ -193,6 +208,7 @@ async def clips_page(request: Request):
     clips = db.q("SELECT * FROM clips ORDER BY created_at DESC")
     for c in clips:
         c["reels"] = db.one("SELECT COUNT(*) n FROM reels WHERE clip_id = ? AND status != 'rejected'", c["id"])["n"]
+        c["allowance"] = max(jobs.clip_allowance(c["id"]), 0)
     return page("clips.html", request, clips=clips)
 
 
@@ -221,7 +237,23 @@ def pipeline():
 
 async def upload_page(request: Request):
     stages, brolls = pipeline()
-    return page("upload.html", request, stages=stages, brolls=brolls)
+    picked = request.query_params.get("clips", "")
+    library = [c for c in (db.one("SELECT id, filename, kind, subject, description, duration FROM clips WHERE id = ?", i)
+                           for i in picked.split(",") if i) if c]
+    return page("upload.html", request, stages=stages, brolls=brolls, picked=library)
+
+
+async def upload_start(request: Request):
+    """The Start button: a batch of new files (sent next) and/or clips picked from the library."""
+    data = await request.json()
+    library = [x for x in data.get("library", []) if db.one("SELECT id FROM clips WHERE id = ?", x.get("id"))]
+    for x in library:
+        if x.get("note"):
+            db.update("clips", x["id"], description=x["note"])
+        if x.get("kind") in ("main", "broll"):
+            db.update("clips", x["id"], kind=x["kind"])
+    jobs.start_batch(data["batch"], data.get("combine"), int(data.get("expected") or 0), [x["id"] for x in library])
+    return JSONResponse({"ok": True})
 
 
 async def pipeline_part(request: Request):
@@ -240,8 +272,9 @@ async def upload(request: Request):
         dest = db.CLIPS_DIR / f"{db.new_id()}_{Path(f.filename).name}"
         with dest.open("wb") as out:
             shutil.copyfileobj(f.file, out, 1 << 20)
-        jobs.add_clip(dest, f.filename, None if kind == "auto" else kind, form.get("description") or "",
-                      keep_look=form.get("keep_look") == "1")
+        note = " ".join(x for x in (form.get("description"), form.get("note")) if x and x.strip())
+        jobs.add_clip(dest, f.filename, None if kind == "auto" else kind, note,
+                      keep_look=form.get("keep_look") == "1", batch=form.get("batch") or None)
         count += 1
     for f in form.getlist("music"):
         if getattr(f, "filename", None) and Path(f.filename).suffix.lower() in editor.AUDIO_EXTS:
@@ -277,26 +310,44 @@ async def clip_action(request: Request):
 # --------------------------------------------------------------------------- schedule + results
 
 async def calendar(request: Request):
-    week = int(request.query_params.get("week", 0))
+    """Month view: a small picture per reel on its day. Tap one for all its details."""
     today = jobs.local_now().date()
-    monday = today - timedelta(days=today.weekday()) + timedelta(weeks=week)
-    end = monday + timedelta(days=7)
+    month = request.query_params.get("m") or f"{today:%Y-%m}"
+    first = datetime.strptime(month + "-01", "%Y-%m-%d").date()
+    nxt = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+    prev = (first - timedelta(days=1)).replace(day=1)
+    grid_start = first - timedelta(days=first.weekday())
+    grid_end = nxt + timedelta(days=(7 - nxt.weekday()) % 7)
     rows = db.q("""SELECT r.*, c.filename FROM reels r JOIN clips c ON c.id = r.clip_id
                    WHERE r.status IN ('scheduled', 'posting', 'posted', 'failed', 'draft')""")
-    snaps = {s["reel_id"]: s for s in db.q("SELECT * FROM snapshots ORDER BY hours")}
-    days = {monday + timedelta(days=i): [] for i in range(7)}
+    days = {grid_start + timedelta(days=i): [] for i in range((grid_end - grid_start).days)}
     for r in rows:
         when = r["posted_at"] if r["status"] == "posted" else r["post_at"] or (r["recommended_time"] if r["status"] == "draft" else None)
         if not when:
             continue
         d = datetime.fromisoformat(when).date()
-        if monday <= d < end:
-            days[d].append({**r, "when": when, "snap": snaps.get(r["id"])})
+        if d in days:
+            days[d].append({**r, "when": when})
     for items in days.values():
         items.sort(key=lambda r: r["when"])
-    counts = Counter(r["status"] for items in days.values() for r in items)
-    return page("calendar.html", request, days=days, week=week, today=today, monday=monday, sunday=end - timedelta(days=1), counts=counts,
-                times=jobs.posting_times())
+    in_month = [r for d, items in days.items() if first <= d < nxt for r in items]
+    counts = Counter(r["status"] for r in in_month)
+    weeks = [list(days.items())[i:i + 7] for i in range(0, len(days), 7)]
+    return page("calendar.html", request, weeks=weeks, first=first, today=today, counts=counts,
+                prev=f"{prev:%Y-%m}", next=f"{nxt:%Y-%m}", this=f"{today:%Y-%m}", month=month, times=jobs.posting_times())
+
+
+async def reel_page(request: Request):
+    """Everything about one reel: the video, hook, caption, score, reasons, research, and when it goes out."""
+    r = db.one("""SELECT r.*, c.filename, c.duration AS clip_seconds FROM reels r JOIN clips c ON c.id = r.clip_id
+                  WHERE r.id = ?""", request.path_params["id"])
+    if not r:
+        return RedirectResponse("/calendar", 303)
+    r["look_note"] = look_note(r["grade"], db.latest_research("look"))
+    snaps = db.q("SELECT * FROM snapshots WHERE reel_id = ? ORDER BY hours", r["id"])
+    brolls = db.q("SELECT * FROM clips WHERE kind = 'broll' ORDER BY created_at DESC")
+    return page("reel.html", request, r=r, snaps=snaps, brolls=brolls, times=jobs.next_free_slots(6),
+                hashtags=jobs.cfg()["posting"].get("hashtags", ""))
 
 
 async def results(request: Request):
@@ -408,9 +459,9 @@ routes = [
     Route("/reels/remake-all", rerender_all, methods=["POST"]),
     Route("/posting/resume", resume_posting, methods=["POST"]),
     Route("/reels/{id}/{action}", reel_action, methods=["POST"]),
-    Route("/video/{id}.mp4", video), Route("/public/{id}.mp4", public_video), Route("/thumb/{id}.jpg", thumb), Route("/spots/{id}.jpg", thumb_spots),
+    Route("/video/{id}.mp4", video), Route("/public/{id}.mp4", public_video), Route("/thumb/{id}.jpg", thumb), Route("/spots/{id}.jpg", thumb_spots), Route("/clipthumb/{id}.jpg", clip_thumb),
     Route("/clips", clips_page), Route("/upload", upload_page), Route("/upload", upload, methods=["POST"]),
-    Route("/pipeline", pipeline_part), Route("/calendar", calendar),
+    Route("/pipeline", pipeline_part), Route("/reel/{id}", reel_page), Route("/upload/start", upload_start, methods=["POST"]), Route("/calendar", calendar),
     Route("/clips/{id}/{action}", clip_action, methods=["POST"]),
     Route("/schedule", lambda r: RedirectResponse("/calendar", 303)), Route("/results", results),
     Route("/research", research, methods=["GET", "POST"]),

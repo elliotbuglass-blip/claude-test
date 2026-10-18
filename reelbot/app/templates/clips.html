@@ -1,14 +1,17 @@
 {% extends "base.html" %}
 {% block main %}
-<h1>Clips</h1>
-<p class="sub">Main clips become reels. B-roll clips are short detail shots that only get cut into other reels.</p>
-<p><a class="btn" href="/upload">＋ Upload clips</a></p>
-<h2 class="hook" style="margin-top:28px">Your clips</h2>
+<h1>Clip library</h1>
+<p class="sub">Every clip you've uploaded. Tick some and press <b>Use in a new reel</b> to send them to Upload (no re-uploading),
+  e.g. two main clips and a b-roll to edit together.</p>
+<div class="row pickbar"><a class="btn ghostlink" href="/upload">＋ Upload new clips</a>
+  <button id="usepicked" disabled>Use in a new reel ▸</button> <span class="meta" id="pickcount"></span></div>
 {% if not clips %}<div class="empty">No clips yet.</div>{% endif %}
 <div class="scroll"><table>
-<tr><th>Clip</th><th>What it is</th><th>Type</th><th>Reels</th><th></th></tr>
+<tr><th></th><th>Clip</th><th>What it is</th><th>Type</th><th>Reels (30 days)</th><th></th></tr>
 {% for c in clips %}
 <tr>
+  <td><label class="pick"><input type="checkbox" class="pickbox" value="{{ c.id }}" {{ 'disabled' if c.status in ('new','analysing') }}>
+    <img src="/clipthumb/{{ c.id }}.jpg" alt="" loading="lazy"></label></td>
   <td>{{ c.filename }}<div class="meta">{{ '%.0f'|format(c.duration or 0) }}s · {{ c.status }}</div></td>
   <td>{{ c.subject or ('✗ not analysed' if c.status == 'failed' else '⏳ analysing…') }}<div class="meta">{{ c.notes }}</div>
     <form method="post" action="/clips/{{ c.id }}/describe" class="desc">
@@ -21,7 +24,7 @@
     {% if c.kind == 'broll' %}<form method="post" action="/clips/{{ c.id }}/silent"><select name="silent" onchange="this.form.submit()" style="margin-top:6px">
       <option value="1" {{ 'selected' if c.broll_silent }}>Silent</option><option value="0" {{ 'selected' if not c.broll_silent }}>Keep its sound</option></select></form>{% endif %}
   </td>
-  <td>{{ c.reels }}</td>
+  <td>{{ c.reels }}{% if c.kind == 'main' %}<div class="meta">{{ c.allowance }} left</div>{% endif %}</td>
   <td>
     {% if c.kind == 'main' %}<form method="post" action="/clips/{{ c.id }}/make" class="row" style="margin:0"><input name="n" value="3" style="width:56px"><button class="ghost">Make reels</button></form>{% endif %}
     <form method="post" action="/clips/{{ c.id }}/delete" onsubmit="return confirm('Delete this clip?')" class="row"><button class="danger">Delete</button></form>
@@ -29,4 +32,10 @@
 </tr>
 {% endfor %}
 </table></div>
+<script>
+const boxes = [...document.querySelectorAll('.pickbox')], btn = document.getElementById('usepicked'), cnt = document.getElementById('pickcount');
+const sync = () => { const n = boxes.filter(b => b.checked).length; btn.disabled = !n; cnt.textContent = n ? `${n} selected` : ''; };
+boxes.forEach(b => b.onchange = sync); sync();
+btn.onclick = () => { location.href = '/upload?clips=' + boxes.filter(b => b.checked).map(b => b.value).join(','); };
+</script>
 {% endblock %}

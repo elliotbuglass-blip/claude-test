@@ -125,11 +125,12 @@ def _frames(path, n=3, start=0.0, length=None):
     return out
 
 
-def add_clip(path, filename, kind=None, description="", keep_look=False):
+def add_clip(path, filename, kind=None, description="", keep_look=False, batch=None):
     clip_id = db.new_id()
     duration, _ = editor.probe(path)
     db.insert("clips", {"id": clip_id, "filename": filename, "path": str(path), "duration": duration,
                         "description": description.strip() or None, "keep_look": 1 if keep_look else 0,
+                        "batch": batch, "combine": 1 if batch and (db.get_setting(f"batch:{batch}") or {}).get("combine") else 0,
                         "kind": kind or "main", "notes": "kind set by you" if kind else "",
                         "broll_silent": 1 if setting("broll_silent") else 0})
     submit(f"analyse {filename}", analyse_clip, clip_id, kind is None)
@@ -167,7 +168,9 @@ def analyse_clip(clip_id, decide_kind=True, make_after=True):
         fields["notes"] += f" · {info['kind']}: {info['kind_reason']}"
     db.update("clips", clip_id, **fields)
     db.log(f"Analysed {clip['filename']}: {info['subject']} ({fields.get('kind', clip['kind'])})")
-    if make_after and fields.get("kind", clip["kind"]) == "main" and setting("mode") == "review":
+    if clip["batch"]:
+        batch_ready(clip["batch"])
+    elif make_after and fields.get("kind", clip["kind"]) == "main" and setting("mode") == "review":
         submit(f"make reels for {clip['filename']}", make_reels, clip_id)
 
 
@@ -622,6 +625,17 @@ def rebalance_mix(min_reels=4):
     db.log(f"Research mix rebalanced: +{move}% {SOURCE_LABELS[best]}, −{move}% {SOURCE_LABELS[worst]} ({reason})")
 
 
+def spread_slots(count, start_day=None):
+    """Free posting times for reels made from the same clip: never two on the same day."""
+    day = start_day or local_now().date()
+    slots = []
+    for i in range(count):
+        slot = next_free_slots(1, day)[0]
+        slots.append(slot)
+        day = datetime.fromisoformat(slot).date() + timedelta(days=1)
+    return slots
+
+
 def next_free_slots(count, start_day=None):
     """The next posting times that don't already have a reel booked."""
     taken = {r["post_at"] for r in db.q("SELECT post_at FROM reels WHERE status IN ('scheduled','posting','posted')")}
@@ -731,6 +745,93 @@ def series_to_continue(limit=4):
     return sorted(best.values(), key=lambda s: -s["views"])[:limit]
 
 
+MAX_PER_CLIP = 2  # trial reels per clip per 30 days
+
+
+def clip_allowance(clip_id, day=None):
+    """How many more trial reels this clip may get: max 2 per 30 days, and none on a day it already has one."""
+    since = (datetime.now(ZoneInfo("UTC")) - timedelta(days=30)).isoformat(timespec="seconds")
+    rows = db.q("SELECT COALESCE(post_at, recommended_time) AS t FROM reels WHERE clip_id = ? AND status != 'rejected' "
+                "AND created_at >= ?", clip_id, since)
+    if day and any(r["t"] and r["t"].startswith(str(day)) for r in rows):
+        return 0
+    return MAX_PER_CLIP - len(rows)
+
+
+# --------------------------------------------------------------------------- uploads in batches
+
+def start_batch(batch, combine, expected, library_ids=()):
+    """Upload page pressed Start: remember what's coming so a combined edit waits for every clip."""
+    db.set_setting(f"batch:{batch}", {"combine": bool(combine), "expected": int(expected)})
+    for cid in library_ids:  # clips picked from the library: no re-upload needed
+        db.update("clips", cid, batch=batch, combine=1 if combine else 0)
+    if library_ids and not expected:
+        batch_ready(batch)
+
+
+_batch_lock = threading.Lock()
+
+
+def batch_ready(batch):
+    """When every clip of a batch is analysed: combine them into one edit, or make reels from each."""
+    with _batch_lock:  # two workers can finish the last two clips at the same moment
+        _batch_ready(batch)
+
+
+def _batch_ready(batch):
+    info = db.get_setting(f"batch:{batch}") or {}
+    clips = db.q("SELECT * FROM clips WHERE batch = ?", batch)
+    uploads = [c for c in clips if c["status"] in ("new", "analysing")]
+    if uploads or len([c for c in clips if not c["filename"].startswith("Combined:")]) < info.get("expected", 0):
+        return  # still waiting for some
+    if info.get("done"):
+        return
+    db.set_setting(f"batch:{batch}", {**info, "done": True})
+    mains = [c for c in clips if c["kind"] == "main" and c["status"] != "failed" and not c["filename"].startswith("Combined:")]
+    brolls = [c for c in clips if c["kind"] == "broll" and c["status"] != "failed"]
+    if info.get("combine") and mains:
+        submit("edit clips together", make_combo, batch)
+    elif setting("mode") == "review":
+        for c in mains:
+            submit(f"make reels for {c['filename']}", make_reels, c["id"])
+
+
+def make_combo(batch):
+    """Edit a batch's main clips into one (best part of each, in upload order) with its b-roll over the cut,
+    then make reels from that edit like any other clip."""
+    c = cfg()
+    clips = db.q("SELECT * FROM clips WHERE batch = ? ORDER BY created_at", batch)
+    mains = [ensure_working_copy(x) for x in clips if x["kind"] == "main" and x["status"] != "failed"
+             and not x["filename"].startswith("Combined:")]
+    brolls = [ensure_working_copy(x) for x in clips if x["kind"] == "broll" and x["status"] != "failed"]
+    each = max(4.0, float(c["clips"]["reel_seconds"]) * 0.75)
+    segments = []
+    for m in mains:
+        if m["keep_look"]:
+            segments.append((m["path"], 0.0, min(m["duration"], 60)))
+        else:
+            start, length, _ = cut(m["path"], each)
+            segments.append((m["path"], start, length))
+    broll = (brolls[0]["path"], max(0.0, min(1.0, brolls[0]["duration"] - 1.5))) if brolls else None
+    out = db.CLIPS_DIR / f"{db.new_id()}_combined.mp4"
+    editor.combine(segments, out, broll)
+    names = " + ".join(m["filename"] for m in mains) + (f" (b-roll {brolls[0]['filename']})" if brolls else "")
+    tags = list(dict.fromkeys(t for m in mains for t in json.loads(m["hashtags"] or "[]")))[:5]
+    combo_id = db.new_id()
+    db.insert("clips", {
+        "id": combo_id, "filename": f"Combined: {names}"[:200], "path": str(out), "kind": "main",
+        "duration": editor.probe(out)[0], "batch": batch, "combine": 1,
+        "keep_look": 1 if all(m["keep_look"] for m in mains) else 0, "status": "analysed",
+        "subject": " → ".join(m["subject"] or m["filename"] for m in mains),
+        "description": " / ".join(m["description"] for m in mains if m["description"]) or None,
+        "hashtags": json.dumps(tags), "notes": f"Edited together by ReelBot from {names}",
+        "broll_silent": 1})
+    for m in mains + brolls:
+        db.update("clips", m["id"], status="used")
+    db.log(f"Edited {len(mains)} clip(s){' + b-roll' if brolls else ''} into one: {names}")
+    make_reels(combo_id)
+
+
 def cut(path, seconds):
     """Which part of the clip a reel uses: the window with the biggest sound moment. Returns (start, length, reason)."""
     duration, has_audio = editor.probe(path)
@@ -747,6 +848,13 @@ def make_reels(clip_id, n=None, post_at=None, sources=None):
     c = cfg()
     clip = db.one("SELECT * FROM clips WHERE id = ?", clip_id)
     n = n or int(setting("reels_per_clip") or 3)
+    allowed = clip_allowance(clip_id)
+    if allowed <= 0:
+        db.update("clips", clip_id, status="used")
+        db.log(f"Skipped {clip['filename']}: it already has {MAX_PER_CLIP} trial reels in the last 30 days "
+               "(more would look like duplicates to Instagram). Upload new clips or combine it with others.")
+        return
+    n = min(n, allowed)
     db.update("clips", clip_id, status="making")
     try:
         google_trends()
@@ -771,8 +879,11 @@ def make_reels(clip_id, n=None, post_at=None, sources=None):
     if clip["keep_look"]:  # you edited and trimmed it yourself: use the whole clip (Instagram's limit is 3 minutes)
         start, length = 0.0, min(clip["duration"], 180)
         cut_reason = f"The whole clip ({length:.0f}s): you edited and trimmed it yourself"
+        windows = [start]
     else:
         start, length, cut_reason = cut(clip["path"], c["clips"]["reel_seconds"])
+        # Each reel from this clip gets its own part of it, so they aren't near-duplicates of each other.
+        windows = editor.loudest_starts(clip["path"], clip["duration"], length, n) if clip["duration"] > length * 1.6 else [start]
     info = {"filename": clip["filename"], "subject": clip["subject"], "notes": clip["notes"], "seconds": clip["duration"],
             "reel_cut": f"{start:.1f}s–{start + length:.1f}s of the clip, so the reel is {length:.0f}s long",
             "creator_description": clip["description"] or ""}
@@ -784,10 +895,17 @@ def make_reels(clip_id, n=None, post_at=None, sources=None):
         db.update("clips", clip_id, status="failed", notes=f"Planning reels failed: {str(e)[:300]}")
         raise
     mode = setting("mode")
-    slots = post_at or next_free_slots(len(plans))
+    slots = post_at or spread_slots(len(plans))
     research = research_snapshot(topic, tiktok)
-    for plan, slot in zip(plans, slots):
+    for i, (plan, slot) in enumerate(zip(plans, slots)):
         reel_id = db.new_id()
+        if i < len(windows):
+            w_start, motion = windows[i], None
+            w_reason = cut_reason if i == 0 else (f"{w_start:.1f}s–{w_start + length:.1f}s: a different part of the clip "
+                                                  "from its other reels, so Instagram doesn't see a duplicate")
+        else:  # not enough clip for a different part: same moment, different framing
+            w_start, motion = windows[0], "push"
+            w_reason = cut_reason + " · with a slow push-in so it isn't a duplicate of the other reel"
         trend = plan.get("trend") or ""
         db.insert("reels", {
             "id": reel_id, "clip_id": clip_id,
@@ -799,7 +917,8 @@ def make_reels(clip_id, n=None, post_at=None, sources=None):
                 (t for t in (db.latest_research("trends") or {}).get("items", []) if t["term"].lower() == trend.lower()), None)
                 if trend else None}, ensure_ascii=False),
             "track": plan["track"] if plan["track"] in library else "",
-            "seconds": length, "start": start, "cut_reason": cut_reason, "text_style": c["look"].get("text_style", "editorial"),
+            "seconds": length, "start": w_start, "cut_reason": w_reason, "motion": motion,
+            "text_style": c["look"].get("text_style", "editorial"),
             "grade": "none" if clip["keep_look"] else c["look"].get("grade", "match"), "recommended_time": slot,
             "post_at": slot if mode == "autopilot" else None, "mode": mode, "status": "rendering"})
         render_reel(reel_id)
@@ -865,7 +984,7 @@ def render_reel(reel_id):
             start, length, cut_reason = cut(clip["path"], length)
         look = {**c["look"], "text_style": reel["text_style"], "grade": reel["grade"],
                 "adjust": json.loads(reel["adjust"]) if reel["adjust"] else None,
-                "layout": reel["text_layout"] or "auto", "text_scale": reel["text_scale"] or 1}
+                "layout": reel["text_layout"] or "auto", "text_scale": reel["text_scale"] or 1, "motion": reel["motion"]}
         if look["grade"] == "match":
             look["reference"] = look_reference()
         style = editor.TEXT_STYLES[look["text_style"]]
@@ -909,15 +1028,21 @@ def autopilot_daily():
     slots = next_free_slots(n, tomorrow)
     if not slots:
         return
-    clips = db.q("SELECT * FROM clips WHERE kind = 'main' AND status IN ('analysed') ORDER BY created_at")
-    if not clips:  # nothing new: reuse past clips with fresh hooks
-        clips = db.q("SELECT * FROM clips WHERE kind = 'main' AND status = 'used' ORDER BY RANDOM() LIMIT 3")
+    # Fresh clips first, then clips with room left (max 2 trial reels per clip per 30 days, one a day).
+    # Never recycle beyond that: Instagram treats near-identical reels as duplicates.
+    clips = [cl for cl in db.q("SELECT * FROM clips WHERE kind = 'main' AND status IN ('analysed', 'used') "
+                                "AND (batch IS NULL OR combine = 0 OR filename LIKE 'Combined:%') "
+                                "ORDER BY status = 'used', created_at")
+             if clip_allowance(cl["id"], tomorrow) > 0][:len(slots)]
     if not clips:
-        db.log("Autopilot: no clips to use. Upload some main clips.")
+        db.log("Autopilot: no fresh clips left. Upload some new clips (old ones would look like duplicates).")
         return
+    if len(clips) < len(slots):
+        db.log(f"Autopilot: only {len(clips)} clip(s) can post tomorrow without repeating; upload more for {n} a day")
+        slots = slots[:len(clips)]
     planned, sources = len(slots), mix_plan(len(slots))
     split = Counter(sources)
-    per_clip = math.ceil(len(slots) / len(clips))
+    per_clip = 1
     for clip in clips:
         mine, slots = slots[:per_clip], slots[per_clip:]
         theirs, sources = sources[:len(mine)], sources[len(mine):]

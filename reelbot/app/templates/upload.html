@@ -1,52 +1,115 @@
 {% extends "base.html" %}
 {% block main %}
 <h1>Upload</h1>
-<p class="sub">Drop clips in. ReelBot works out what's in them, does the research, makes the reels, and you watch each one move along below.</p>
+<p class="sub">Drop clips in, add a note to each if you like, then press <b>Start</b>. Want one reel from several clips? Tick "Edit these together".</p>
 <label for="desc">What are these clips? <span class="meta">(optional, but it helps: what's in them, what they're for, anything ReelBot can't see)</span></label>
 <textarea id="desc" rows="2" placeholder="e.g. My new navy suit from Reiss, outfit check before a wedding. Want to push the tailoring angle."></textarea>
 <label class="opt" style="margin-top:10px"><input type="checkbox" id="keeplook"> Already edited: keep my colours (ReelBot adds text, captions and timing, but no colour grade)</label>
-<p class="meta" style="margin:4px 0 14px">Applies to the clips you drop next. ReelBot still watches every clip itself; your words fill in what it can't see.</p>
+<p class="meta" style="margin:4px 0 14px">Applies to the clips you upload next. ReelBot still watches every clip itself; your words fill in what it can't see.</p>
 <div class="drops">
   <label class="dropzone" data-kind="main"><input type="file" accept="video/*" multiple hidden>
-    <b>🎬 Main clips</b><span>Walk-ups, start-ups, drives, POVs: clips that can be a reel on their own</span><em>Drop here or tap to choose</em></label>
+    <b>🎬 Main clips</b><span>Walk-ups, start-ups, drives, POVs: clips that can be a reel on their own</span><em>Drop here or tap to add</em></label>
   <label class="dropzone" data-kind="broll"><input type="file" accept="video/*" multiple hidden>
-    <b>🎞 B-roll</b><span>Short detail shots (door, sill, badge) to cut into reels. Silent unless you say otherwise.</span><em>Drop here or tap to choose</em></label>
+    <b>🎞 B-roll</b><span>Short detail shots (door, sill, badge) to cut into reels. Silent unless you say otherwise.</span><em>Drop here or tap to add</em></label>
   <label class="dropzone" data-kind="auto"><input type="file" accept="video/*" multiple hidden>
-    <b>🤔 Not sure</b><span>ReelBot watches each clip and decides: main or b-roll</span><em>Drop here or tap to choose</em></label>
+    <b>🤔 Not sure</b><span>ReelBot watches each clip and decides: main or b-roll</span><em>Drop here or tap to add</em></label>
   <label class="dropzone small" data-kind="music"><input type="file" accept="audio/*" multiple hidden>
     <b>🎵 Music</b><span>Tracks you have the rights to, for your library</span><em>Drop here</em></label>
 </div>
+<div class="tray" id="tray" hidden>
+  <div class="tray-h"><b>Ready to upload</b> <span class="meta">Add a note to each clip if it helps, then press Start.</span></div>
+  <div id="items"></div>
+  <label class="opt" id="combinebox"><input type="checkbox" id="combine"> ✂️ Edit these together into one reel
+    <span class="meta">(main clips in this order, b-roll cut in where they join)</span></label>
+  <div class="row"><button id="start">Start ▸</button> <button class="ghost" id="clear" type="button">Clear</button>
+    <a class="meta" href="/clips?pick=1">＋ Add clips from your library</a></div>
+</div>
+<p class="meta" style="margin-top:8px"><a href="/clips?pick=1">＋ Pick clips you've already uploaded from your library</a></p>
 <div id="uploads"></div>
 
 <h2 class="h2">Pipeline <span class="meta">· updates by itself</span></h2>
 <div id="pipeline">{% include "_pipeline.html" %}</div>
 
 <script>
-const list = document.getElementById('uploads');
-function send(file, kind) {
-  const row = document.createElement('div'); row.className = 'up';
-  row.innerHTML = `<span>${file.name}</span><div class="bar2"><i></i></div><small>0%</small>`;
-  list.prepend(row);
-  const fd = new FormData();
-  if (kind === 'music') fd.append('music', file);
-  else { fd.append('files', file); fd.append('kind', kind); fd.append('description', document.getElementById('desc').value);
-    if (document.getElementById('keeplook').checked) fd.append('keep_look', '1'); }
-  const x = new XMLHttpRequest();
-  x.open('POST', '/upload'); x.setRequestHeader('X-Requested-With', 'fetch');
-  x.upload.onprogress = e => { if (e.lengthComputable) { const p = Math.round(e.loaded / e.total * 100);
-    row.querySelector('i').style.width = p + '%'; row.querySelector('small').textContent = p + '%'; } };
-  x.onload = () => { row.querySelector('small').textContent = x.status === 200 ? '✓ uploaded' : '✗ failed';
-    row.classList.add(x.status === 200 ? 'ok' : 'bad'); refresh(); };
-  x.onerror = () => { row.querySelector('small').textContent = '✗ failed'; row.classList.add('bad'); };
-  x.send(fd);
+const PICKED = {{ picked|tojson }};
+const tray = document.getElementById('tray'), itemsEl = document.getElementById('items'), list = document.getElementById('uploads');
+let items = [];
+const KINDS = {main: '🎬 Main', broll: '🎞 B-roll', auto: '🤔 Let ReelBot decide'};
+function draw() {
+  tray.hidden = !items.length;
+  itemsEl.innerHTML = '';
+  items.forEach((it, i) => {
+    const row = document.createElement('div'); row.className = 'item';
+    row.innerHTML = `<div class="thumb">${it.file ? '<video muted playsinline preload="metadata"></video>' : '📚'}</div>
+      <div class="info"><b>${it.name}</b>${it.file ? '' : ' <span class="tag">from library</span>'}
+        <select>${Object.entries(KINDS).filter(([k]) => it.file || k !== 'auto').map(([k, l]) => `<option value="${k}" ${k === it.kind ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <input placeholder="Note for this clip (optional): what it is, what it's for" value="${(it.note || '').replace(/"/g, '&quot;')}"></div>
+      <button class="mini danger" title="Remove">✕</button>`;
+    if (it.file) { const v = row.querySelector('video'); v.src = it.url; }
+    row.querySelector('select').onchange = e => { it.kind = e.target.value; };
+    row.querySelector('input').oninput = e => { it.note = e.target.value; };
+    row.querySelector('button').onclick = () => { items.splice(i, 1); draw(); };
+    itemsEl.appendChild(row);
+  });
+  document.getElementById('combinebox').style.display = items.length > 1 ? '' : 'none';
 }
+function add(files, kind) {
+  for (const f of files) {
+    if (kind === 'music') { sendMusic(f); continue; }
+    items.push({file: f, name: f.name, kind, note: '', url: URL.createObjectURL(f)});
+  }
+  draw();
+}
+PICKED.forEach(c => items.push({id: c.id, name: c.filename, kind: c.kind, note: c.description || ''}));
+draw();
 document.querySelectorAll('.dropzone').forEach(z => {
   const input = z.querySelector('input');
-  input.onchange = () => { [...input.files].forEach(f => send(f, z.dataset.kind)); input.value = ''; };
+  input.onchange = () => { add([...input.files], z.dataset.kind); input.value = ''; };
   z.ondragover = e => { e.preventDefault(); z.classList.add('over'); };
   z.ondragleave = () => z.classList.remove('over');
-  z.ondrop = e => { e.preventDefault(); z.classList.remove('over'); [...e.dataTransfer.files].forEach(f => send(f, z.dataset.kind)); };
+  z.ondrop = e => { e.preventDefault(); z.classList.remove('over'); add([...e.dataTransfer.files], z.dataset.kind); };
 });
+document.getElementById('clear').onclick = () => { items = []; history.replaceState(null, '', '/upload'); draw(); };
+function progressRow(name) {
+  const row = document.createElement('div'); row.className = 'up';
+  row.innerHTML = `<span>${name}</span><div class="bar2"><i></i></div><small>waiting</small>`;
+  list.prepend(row); return row;
+}
+function sendFile(it, batch, row) {
+  return new Promise(done => {
+    const fd = new FormData();
+    fd.append('files', it.file); fd.append('kind', it.kind); fd.append('batch', batch); fd.append('note', it.note || '');
+    fd.append('description', document.getElementById('desc').value);
+    if (document.getElementById('keeplook').checked) fd.append('keep_look', '1');
+    const x = new XMLHttpRequest();
+    x.open('POST', '/upload'); x.setRequestHeader('X-Requested-With', 'fetch');
+    x.upload.onprogress = e => { if (e.lengthComputable) { const p = Math.round(e.loaded / e.total * 100);
+      row.querySelector('i').style.width = p + '%'; row.querySelector('small').textContent = p + '%'; } };
+    x.onload = () => { const ok = x.status === 200; row.querySelector('small').textContent = ok ? '✓ uploaded' : '✗ failed';
+      row.classList.add(ok ? 'ok' : 'bad'); done(); };
+    x.onerror = () => { row.querySelector('small').textContent = '✗ failed'; row.classList.add('bad'); done(); };
+    x.send(fd);
+  });
+}
+function sendMusic(f) {
+  const row = progressRow(f.name), fd = new FormData(); fd.append('music', f);
+  const x = new XMLHttpRequest(); x.open('POST', '/upload'); x.setRequestHeader('X-Requested-With', 'fetch');
+  x.onload = () => { row.querySelector('small').textContent = '✓ added to music'; row.classList.add('ok'); };
+  x.send(fd);
+}
+document.getElementById('start').onclick = async () => {
+  if (!items.length) return;
+  const batch = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const files = items.filter(it => it.file), library = items.filter(it => !it.file);
+  const combine = items.length > 1 && document.getElementById('combine').checked;
+  await fetch('/upload/start', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({batch, combine, expected: files.length,
+                          library: library.map(it => ({id: it.id, note: it.note, kind: it.kind}))})});
+  const rows = files.map(it => progressRow(it.name));
+  const todo = items; items = []; draw(); history.replaceState(null, '', '/upload');
+  for (let i = 0; i < files.length; i++) await sendFile(files[i], batch, rows[i]);
+  refresh();
+};
 async function refresh() {
   const r = await fetch('/pipeline'); if (r.ok) document.getElementById('pipeline').innerHTML = await r.text();
 }

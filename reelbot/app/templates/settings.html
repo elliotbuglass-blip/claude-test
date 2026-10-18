@@ -10,6 +10,8 @@
     <option value="autopilot" {{ 'selected' if s.mode == 'autopilot' }}>🤖 Autopilot: plan, edit, schedule and post by itself</option></select>
   <label>Trial reels per day</label><input name="posts_per_day" id="ppd" type="number" min="1" max="10" value="{{ s.posts_per_day }}">
   <p class="meta">Both modes. Every morning ReelBot plans tomorrow's reels: autopilot schedules them, review mode lines them up for your OK.</p>
+  <p class="meta s-mid" id="ppdwarn" hidden>⚠️ More than 10 trial reels a day can look spammy to Instagram. ReelBot also keeps each clip to 2 trial reels per 30 days, so you'll need plenty of fresh clips.</p>
+  <script>(() => { const p = document.getElementById('ppd'), w = document.getElementById('ppdwarn'); const f = () => w.hidden = +p.value <= 10; p.addEventListener('input', f); f(); })();</script>
 
   <label>Posting times</label>
   <select name="times_mode"><option value="best" {{ 'selected' if s.times_mode != 'manual' }}>Automatic: my best times from my history</option>
