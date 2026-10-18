@@ -180,8 +180,6 @@ async def video(request: Request):
     reel = db.one("SELECT video_path FROM reels WHERE id = ?", request.path_params["id"])
     if not reel or not reel["video_path"] or not Path(reel["video_path"]).exists():
         return HTMLResponse("Not ready", 404)
-    if request.query_params.get("download"):
-        return FileResponse(reel["video_path"], media_type="video/mp4", filename=f"reelbot-{request.path_params['id']}.mp4")
     return FileResponse(reel["video_path"], media_type="video/mp4")
 
 

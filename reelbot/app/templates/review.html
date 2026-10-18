@@ -118,8 +118,7 @@
           <div class="row"><button class="ghost">Re-make reel</button></div>
         </form>
       </details>
-      <div class="row"><form method="post" action="/reels/{{ r.id }}/reject"><button class="danger">Reject</button></form>
-        {% if r.video_path %}<a class="btn ghostlink mini" href="/video/{{ r.id }}.mp4?download=1">⬇ Download</a>{% endif %}</div>
+      <form method="post" action="/reels/{{ r.id }}/reject" class="row"><button class="danger">Reject</button></form>
     </div>
   </div>
 {% endfor %}
