@@ -94,7 +94,9 @@ def read_reels(reels, subject):
         content += _images(r["frame_bytes"])
     content.append({"type": "text", "text": f"""For each reel code above:
 - on_screen_text: the text edited onto the video, word for word (empty if none). Ignore Instagram's UI, watermarks, number plates and signs in the scene.
-- relevant: true only if the reel is genuinely about the same kind of thing as: {subject}. (Hashtags attract junk like house listings.)"""})
+- relevant: true if the reel is in the same niche as this clip, so its hook, format or sound could carry over: {subject}.
+  Judge the niche, not the exact item (for a men's jacket try-on, any men's outfit, try-on or styling reel counts; for a
+  supercar clip, any car reel). False for junk the hashtags attract (house listings, memes, ads, unrelated topics)."""})
     return _ask(content, READ_SCHEMA, effort="low", max_tokens=8000)["reels"]
 
 
@@ -126,6 +128,10 @@ PLAN_SCHEMA = {
 }
 
 PLAN_SYSTEM = """You plan Instagram trial reels for a creator. Each reel = one clip + one line of on-screen text (the hook) + a post caption + sound.
+
+The reel uses only the part of the clip in CLIP reel_cut (the frames are from that part), starting just before its
+biggest sound moment. Write for what the viewer sees and hears in that part: never quote timings from the full clip
+("13 seconds of calm") or promise a payoff that comes later.
 
 Write about what THIS clip actually shows (see CLIP, and the creator's own description of it if given: it says what
 the clip is for, so follow it). The creator's past reels tell you their voice and what works for them; they don't
@@ -189,17 +195,22 @@ SPOT_SCHEMA = {
 }
 
 
-def choose_text_spot(preview_jpg, n_spots, text, examples=""):
+def choose_text_spot(preview_jpg, n_spots, text, examples="", subject=""):
     """Look at the numbered candidate boxes on 3 moments of the reel and pick where the text should go."""
+    shows = f"\nThe clip shows: {subject}\n" if subject else ""
     prompt = f"""This picture shows 3 moments (left to right) from a vertical Instagram reel. The yellow boxes numbered 1–{n_spots}
 (top to bottom) are candidate places for one line of small, thin white on-screen text: "{text}".
-
+{shows}
 Pick the box where the text will be easiest to read AND blocks nothing important, in all 3 moments:
 1. Readability first: the background must be dark or mid-toned and even. Never pick bright or overexposed areas
    (windscreen, sky, white walls, glare, bright windows) — thin white text disappears there.
-2. Don't cover the steering wheel, dashboard screens, badges or logos, faces, or the main action.
-   Covering calm, dark parts of the scene is fine: the centre console, an arm or legs, seats, floor, dark trim.
-3. If several are equally good, prefer the lower-middle of the frame.
+2. Don't cover the steering wheel, dashboard screens, badges or logos, faces, hands or wrists (watch, rings), or the
+   main action. Covering calm, dark parts of the scene is fine: the centre console, legs, seats, floor, dark trim.
+   In outfit or fashion clips the clothes are the point: don't cover the garment being shown.
+3. People move between and during these moments: never pick a box that touches or nearly touches a head, face, hand or
+   phone in ANY of the 3 moments. Leave a clear gap. If every box touches someone at some moment (e.g. they walk
+   towards the camera), pick the one that stays clear longest, above all in the first moment: the hook is read first.
+4. If several are equally good, prefer the lower-middle of the frame.
 {examples}
 spot: the box number. reason: one short line saying what's behind the text and what it keeps clear, e.g.
 "over the dark centre console — easy to read and keeps the wheel and screen clear"."""

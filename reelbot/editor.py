@@ -57,8 +57,9 @@ def loudest_start(path, duration, length, window=0.25):
     return max(min(onset * window - 1.0, duration - length), 0.0)
 
 
-# Instagram covers the top (header) and the bottom ~35% (profile, caption, buttons) of a reel.
-SAFE_TOP, SAFE_BOTTOM = 0.14, 0.62
+# Instagram covers the top (header) and the bottom of a reel (profile, caption, buttons: ~35% when the caption is
+# long, ~25% for a one-line caption). 0.68 leaves room for the dark console in car interiors, the best spot there.
+SAFE_TOP, SAFE_BOTTOM = 0.14, 0.68
 
 
 def _gray_frames(clip, start, length, w, h, n=5):
@@ -148,7 +149,7 @@ def spots_preview(clip, start, length, spots, n_lines, size, out_path):
         t = start + length * (i + 0.5) / 3
         part = out_path.with_name(f"{out_path.stem}_{i}.jpg")
         _run(["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.2f}", "-i", str(clip), "-frames:v", "1", "-vf",
-              f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},{boxes},scale=360:-2", str(part)])
+              f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},{boxes},scale=480:-2", str(part)])
         parts.append(part)
     _run(["ffmpeg", "-y", "-v", "error", *sum((["-i", str(p)] for p in parts), []),
           "-filter_complex", "hstack=inputs=3", str(out_path)])

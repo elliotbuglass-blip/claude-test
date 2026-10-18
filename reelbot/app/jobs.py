@@ -165,22 +165,43 @@ def _apify_headers():
     return {"Authorization": f"Bearer {token}"} if token else {}
 
 
+def _apify_run(url, payload):
+    """Run an Apify actor and return its items. Says what went wrong (e.g. "Monthly usage hard limit exceeded")."""
+    resp = requests.post(url, json=payload, headers=_apify_headers(), timeout=900)
+    if not resp.ok:
+        try:
+            message = resp.json()["error"]["message"]
+        except Exception:
+            message = resp.reason
+        raise RuntimeError(f"Apify {resp.status_code}: {message}")
+    return resp.json()
+
+
+def _read(reels, subject):
+    """Claude reads the reels' on-screen text. If that fails, keep the (paid) research without the text."""
+    if not reels:
+        return {}
+    try:
+        return {x["code"]: x for x in brain.read_reels(reels, subject)}
+    except Exception as e:
+        db.log(f"Reading research reels skipped: {e}")
+        return {}
+
+
 def research_topic(hashtags, subject, per_tag=40):
     """Top recent reels for these hashtags: views, on-screen text, sounds. Cached for 3 days."""
     tags = sorted({h.lstrip("#").lower() for h in hashtags})[:5]
     cached = db.latest_research("topic:" + ",".join(tags))
     if cached and datetime.fromisoformat(cached["checked_at"]) > local_now() - timedelta(days=3):
         return cached
-    resp = requests.post(APIFY_HASHTAG, json={"hashtags": tags, "resultsType": "reels", "resultsLimit": per_tag},
-                         headers=_apify_headers(), timeout=900)
-    resp.raise_for_status()
+    items = _apify_run(APIFY_HASHTAG, {"hashtags": tags, "resultsType": "reels", "resultsLimit": per_tag})
     cutoff = time.time() - 60 * 86400
-    reels = [r for r in (competitors.apify_reel(i) for i in resp.json()) if r and r["taken_at"] >= cutoff]
+    reels = [r for r in (competitors.apify_reel(i) for i in items) if r and r["taken_at"] >= cutoff]
     reels.sort(key=lambda r: r["views"], reverse=True)
     top = reels[:12]
     for r in top:
         r["frame_bytes"] = vision.gather_frames(r.get("video"), r.get("thumbnail"))[:2]
-    reads = {x["code"]: x for x in brain.read_reels(top, subject)} if top else {}
+    reads = _read(top, subject)
     winners = []
     for r in top:
         read = reads.get(r["code"], {})
@@ -225,13 +246,12 @@ def research_tiktok(hashtags, subject, per_tag=30):
     cached = db.latest_research(key)
     if cached and datetime.fromisoformat(cached["checked_at"]) > local_now() - timedelta(days=3):
         return cached
-    resp = requests.post(APIFY_TIKTOK, headers=_apify_headers(), timeout=900, json={
+    items = _apify_run(APIFY_TIKTOK, {
         "hashtags": tags, "resultsPerPage": per_tag, "shouldDownloadVideos": False, "shouldDownloadCovers": False,
         "shouldDownloadSubtitles": False, "shouldDownloadSlideshowImages": False})
-    resp.raise_for_status()
     cutoff, week = time.time() - 30 * 86400, time.time() - 7 * 86400
     seen, videos = set(), []
-    for v in (_tiktok_video(i) for i in resp.json()):
+    for v in (_tiktok_video(i) for i in items):
         if v and v["taken_at"] >= cutoff and v["code"] not in seen:
             seen.add(v["code"])
             videos.append(v)
@@ -239,9 +259,7 @@ def research_tiktok(hashtags, subject, per_tag=30):
     top = videos[:12]
     for v in top:
         v["frame_bytes"] = vision.gather_frames(None, v.get("thumbnail"))[:1]
-    reads = {}
-    if any(v["frame_bytes"] for v in top):
-        reads = {x["code"]: x for x in brain.read_reels([v for v in top if v["frame_bytes"]], subject)}
+    reads = _read([v for v in top if v["frame_bytes"]], subject)
     winners = [{k: v.get(k) for k in ("code", "url", "account", "views", "likes", "shares", "music", "post_caption")}
                | {"on_screen_text": reads.get(v["code"], {}).get("on_screen_text", "")}
                for v in top if reads.get(v["code"], {}).get("relevant", True)]
@@ -401,14 +419,17 @@ def mix_counts(n, mix=None):
     return counts
 
 
-def mix_plan(n):
-    """The sources for n reels, interleaved so each clip gets a spread (ig, tiktok, trends, ig, …)."""
-    left, order = mix_counts(n), []
-    while len(order) < n:
-        for s in SOURCES:
-            if left[s]:
-                order.append(s)
-                left[s] -= 1
+def mix_plan(n, recent=40):
+    """The sources for n reels, each different where possible. Each goes to the source furthest behind its share over
+    your last reels, so the mix holds across batches: with 2 reels per clip, trends and original still get their turn."""
+    mix, made, order = research_mix(), Counter(), []
+    made.update(r["source"] for r in db.q("SELECT source FROM reels WHERE source IS NOT NULL ORDER BY created_at DESC LIMIT ?", recent))
+    total = sum(mix.values())
+    for _ in range(n):
+        count = sum(made.values()) + 1
+        s = max((s for s in SOURCES if mix[s]), key=lambda s: (s not in order, count * mix[s] / total - made[s], -SOURCES.index(s)))
+        order.append(s)
+        made[s] += 1
     return order
 
 
@@ -541,7 +562,7 @@ def build_context(topic, tiktok=None):
     if topic:
         parts.append(f"TOPIC RESEARCH (#{' #'.join(topic['hashtags'])}, last 60 days, relevant winners):\n" + "\n".join(
             f'- @{w["account"]}: on-screen "{w["on_screen_text"] or "(no text)"}" → {w["views"]:,} views, sound: {w["music"] or "?"}'
-            for w in topic["winners"]))
+            for w in topic["winners"]) or "(none on topic: don't cite topic winners or formats)")
         parts.append(f"Trending sounds on these reels: {', '.join(f'{s} ({n})' for s, n in topic['trending_sounds']) or 'none'}."
                      f" Share using original audio: {int(topic['original_audio_share'] * 100)}%.")
         if topic.get("sounds_7d"):
@@ -570,7 +591,8 @@ def build_context(topic, tiktok=None):
                                   for s in series))
     used = [r["on_screen_text"] for r in db.q("SELECT on_screen_text FROM reels WHERE status != 'rejected'")]
     if used:
-        parts.append("HOOKS ALREADY USED (don't repeat):\n" + "\n".join(used[-60:]))
+        parts.append("HOOKS ALREADY USED on other ReelBot reels (don't repeat them; most aren't posted yet, so they are NOT "
+                     "the creator's past winners and are no evidence of anything):\n" + "\n".join(used[-60:]))
     return "\n\n".join(parts)
 
 
@@ -586,6 +608,17 @@ def series_to_continue(limit=4):
         s["next_part"] = db.one("SELECT COUNT(*) n FROM reels WHERE series = ? OR (series IS NULL AND on_screen_text = ?)",
                                 s["series"], s["series"])["n"] + 1
     return sorted(best.values(), key=lambda s: -s["views"])[:limit]
+
+
+def cut(path, seconds):
+    """Which part of the clip a reel uses: the window with the biggest sound moment. Returns (start, length, reason)."""
+    duration, has_audio = editor.probe(path)
+    length = min(seconds, duration)
+    start = editor.loudest_start(path, duration, length) if has_audio else 0.0
+    reason = (f"{start:.1f}s–{start + length:.1f}s of the {duration:.0f}s clip: the window with the biggest "
+              "sound moment, so the payoff lands inside the reel" if has_audio
+              else f"First {length:.0f}s of the clip (no sound to find the big moment)")
+    return start, length, reason
 
 
 def make_reels(clip_id, n=None, post_at=None, sources=None):
@@ -614,11 +647,13 @@ def make_reels(clip_id, n=None, post_at=None, sources=None):
         if not tiktok or not tiktok.get("winners"):  # no TikTok research: those reels lean on Instagram instead
             sources = ["instagram" if s == "tiktok" else s for s in sources]
     library = sorted(p.name for p in db.AUDIO_DIR.glob("*") if p.suffix.lower() in editor.AUDIO_EXTS)
+    start, length, cut_reason = cut(clip["path"], c["clips"]["reel_seconds"])
     info = {"filename": clip["filename"], "subject": clip["subject"], "notes": clip["notes"], "seconds": clip["duration"],
+            "reel_cut": f"{start:.1f}s–{start + length:.1f}s of the clip, so the reel is {length:.0f}s long",
             "creator_description": clip["description"] or ""}
     counts = Counter(sources)
     try:
-        plans = brain.plan_reels(_frames(clip["path"], 3), info, n, build_context(topic, tiktok), library,
+        plans = brain.plan_reels(_frames(clip["path"], 3, start, length), info, n, build_context(topic, tiktok), library,
                                  {s: counts.get(s, 0) for s in SOURCES})
     except Exception as e:
         db.update("clips", clip_id, status="failed", notes=f"Planning reels failed: {str(e)[:300]}")
@@ -639,7 +674,7 @@ def make_reels(clip_id, n=None, post_at=None, sources=None):
                 (t for t in (db.latest_research("trends") or {}).get("items", []) if t["term"].lower() == trend.lower()), None)
                 if trend else None}, ensure_ascii=False),
             "track": plan["track"] if plan["track"] in library else "",
-            "seconds": c["clips"]["reel_seconds"], "text_style": c["look"].get("text_style", "editorial"),
+            "seconds": length, "start": start, "cut_reason": cut_reason, "text_style": c["look"].get("text_style", "editorial"),
             "grade": c["look"].get("grade", "match"), "recommended_time": slot,
             "post_at": slot if mode == "autopilot" else None, "mode": mode, "status": "rendering"})
         render_reel(reel_id)
@@ -670,7 +705,7 @@ def look_reference():
     return json.loads(path.read_text()) if path.exists() else None
 
 
-def place_text(reel_id, clip, start, length, text, n_lines, size):
+def place_text(reel_id, clip, start, length, text, n_lines, size, subject=""):
     """Find where the text is easy to read and blocks nothing: candidate bands are drawn on 3 moments
     of the reel and Claude picks one (using the spots you picked yourself as examples).
     Without Claude, the darkest, calmest band wins. Returns (position, reason, candidate spots)."""
@@ -682,7 +717,7 @@ def place_text(reel_id, clip, start, length, text, n_lines, size):
             picks = db.get_setting("text_picks", [])[-6:]
             examples = ("\nThe creator moved the text themselves on earlier reels; match their taste:\n"
                         + "\n".join(f"- {p}" for p in picks)) if picks else ""
-            pick = brain.choose_text_spot(preview.read_bytes(), len(spots), text, examples)
+            pick = brain.choose_text_spot(preview.read_bytes(), len(spots), text, examples, subject)
             i = min(max(pick["spot"], 1), len(spots)) - 1
             return spots[i][0], f"Checked {len(spots)} spots on 3 moments of the video: {pick['reason']}", spots
         except Exception as e:
@@ -701,10 +736,7 @@ def render_reel(reel_id):
         length = min(reel["seconds"] or c["clips"]["reel_seconds"], duration)
         start, cut_reason = reel["start"], reel["cut_reason"]
         if start is None:
-            start = editor.loudest_start(clip["path"], duration, length) if has_audio else 0.0
-            cut_reason = (f"{start:.1f}s–{start + length:.1f}s of the {duration:.0f}s clip: the window with the biggest "
-                          "sound moment, so the payoff lands inside the reel" if has_audio
-                          else f"First {length:.0f}s of the clip (no sound to find the big moment)")
+            start, length, cut_reason = cut(clip["path"], length)
         look = {**c["look"], "text_style": reel["text_style"], "grade": reel["grade"]}
         if look["grade"] == "match":
             look["reference"] = look_reference()
@@ -713,7 +745,8 @@ def render_reel(reel_id):
         n_lines = len(editor.textwrap.wrap(text, style["wrap"]))
         pos, text_reason, spots = reel["text_position"], reel["text_reason"], reel["text_spots"]
         if pos is None:
-            pos, text_reason, found = place_text(reel_id, clip["path"], start, length, text, n_lines, style["size"])
+            pos, text_reason, found = place_text(reel_id, clip["path"], start, length, text, n_lines, style["size"],
+                                                 clip["subject"] or "")
             spots = json.dumps(found)
         look["text_position"] = pos
         if editor.band_brightness(clip["path"], start, length, pos, n_lines, style["size"]) > 140:
@@ -754,7 +787,7 @@ def autopilot_daily():
         db.log("Autopilot: no clips to use. Upload some main clips.")
         return
     planned, sources = len(slots), mix_plan(len(slots))
-    split = mix_counts(planned)
+    split = Counter(sources)
     per_clip = math.ceil(len(slots) / len(clips))
     for clip in clips:
         mine, slots = slots[:per_clip], slots[per_clip:]
