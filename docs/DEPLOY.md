@@ -5,8 +5,8 @@ ReelBot runs on **Railway**, a website that keeps small apps running 24/7. Cost:
 ## 1. Get your keys ready
 | Key | Where |
 |---|---|
-| `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys (add ~$10 credit; each reel costs pennies) |
-| `IG_ACCESS_TOKEN` | Graph API Explorer → Generate Access Token → Access Token Debugger → **Extend** (lasts 60 days) |
+| `ANTHROPIC_API_KEY` | console.anthropic.com → Get API key → name it **ReelBot-server** (each reel costs pennies) |
+| `IG_ACCESS_TOKEN` | Your **Page token** (never expires): Graph API Explorer → extended token → `me/accounts` → Elliot Cameron's `access_token` |
 | `IG_USER_ID` | `17841400621094281` |
 | `APIFY_TOKEN` | apify.com → Settings → API & Integrations |
 | `APP_PASSWORD` | make one up: it's your login for the ReelBot website |
@@ -28,5 +28,6 @@ This keeps your clips, reels and results safe when the app restarts.
 Service → **Settings** → **Networking** → **Generate domain**.
 Open it on your phone → sign in with your `APP_PASSWORD` → add it to your home screen.
 
-## Every 60 days
-Remake the Instagram key (step 1) and paste it into Railway → Variables → `IG_ACCESS_TOKEN`.
+## Every ~90 days
+The Instagram Page token never expires, but Meta asks you to re-confirm data access about every 90 days:
+open the Graph API Explorer once, pick the ReelBot app and press Generate Access Token. Nothing to paste.
