@@ -69,7 +69,7 @@
 </div></div>
 <div class="card"><div class="body">
   <p class="hook">🎵 Trending sounds{% if topic %} for #{{ topic.hashtags|join(' #') }}{% endif %}</p>
-  {% if topic %}<p class="meta">{{ (topic.original_audio_share * 100)|round|int }}% of top reels use their own sound.</p>
+  {% if topic %}{% if topic.original_audio_share is number %}<p class="meta">{{ (topic.original_audio_share * 100)|round|int }}% of top reels use their own sound.</p>{% endif %}
   <table>{% for s, n in topic.trending_sounds %}<tr><td>{{ s }}</td><td>{{ n }}</td></tr>{% else %}<tr><td class="meta">No trending tracks; original audio wins.</td></tr>{% endfor %}</table>
   {% if topic.sounds_7d %}<p class="meta" style="margin-top:10px">Last 7 days ({{ topic.recent_7d }} new reels): {% for s, n in topic.sounds_7d %}{{ s }} ({{ n }}){{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
   {% else %}<p class="meta">Appears after ReelBot researches your first clips.</p>{% endif %}
@@ -77,10 +77,10 @@
 </div>
 <h2 class="hook" style="margin-top:28px">🎵 TikTok{% if tiktok %} — #{{ tiktok.hashtags|join(' #') }}{% endif %}</h2>
 {% if tiktok %}
-<p class="meta">{{ tiktok.found }} TikToks from the last 30 days · {{ (tiktok.original_audio_share * 100)|round|int }}% use their own sound · checked {{ tiktok.checked_at[:16].replace('T', ' ') }}</p>
+<p class="meta">{{ tiktok.found }} TikToks{% if tiktok.via %} via {{ tiktok.via|join(', ') }}{% endif %}{% if tiktok.original_audio_share is number %} · {{ (tiktok.original_audio_share * 100)|round|int }}% use their own sound{% endif %} · checked {{ tiktok.checked_at[:16].replace('T', ' ') }}</p>
 {% if tiktok.sounds_7d %}<p class="meta">Rising this week: {% for s, n in tiktok.sounds_7d %}<b>{{ s }}</b> ({{ n }}){{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
 <div class="scroll"><table><tr><th>Views</th><th>Shares</th><th>Account</th><th>On-screen text / caption</th><th>Sound</th></tr>
-{% for w in tiktok.winners %}<tr><td>{{ w.views|num }}</td><td>{{ w.shares|num }}</td><td>@{{ w.account }}</td><td>{{ w.on_screen_text or (w.post_caption or '')[:90] }}</td><td class="meta">{{ w.music }} · <a href="{{ w.url }}" target="_blank">open ↗</a></td></tr>{% endfor %}
+{% for w in tiktok.winners %}<tr><td>{{ w.views|num if w.views else '–' }}</td><td>{{ w.shares|num if w.shares else '–' }}</td><td>@{{ w.account }}</td><td>{{ w.on_screen_text or (w.post_caption or '')[:90] }}</td><td class="meta">{{ w.music }} · <a href="{{ w.url }}" target="_blank">open ↗</a></td></tr>{% endfor %}
 </table></div>
 {% else %}<div class="empty">TikTok research runs when ReelBot makes reels with TikTok in the research mix.</div>{% endif %}
 <h2 class="hook" style="margin-top:28px">🔥 Trending on Google right now</h2>
@@ -90,8 +90,8 @@
 {% for t in trends["items"][:20] %}<tr><td>{{ t.term }} <span class="tag">{{ t.geo }}</span></td><td>{{ t.searches }}</td><td class="meta">{{ t.headline }}{% if t.url %} · <a href="{{ t.url }}" target="_blank">news ↗</a>{% endif %}</td></tr>{% endfor %}
 </table></div><p class="meta">Checked {{ trends.checked_at[:16].replace('T', ' ') }}</p>{% else %}<div class="empty">No trends checked yet.</div>{% endif %}
 <h2 class="hook" style="margin-top:28px">🏆 Topic winners{% if topic %} — {{ topic.subject }}{% endif %}</h2>
-{% if topic %}<div class="scroll"><table><tr><th>Views</th><th>Account</th><th>On-screen text</th><th>Sound</th></tr>
-{% for w in topic.winners %}<tr><td>{{ w.views|num }}</td><td>@{{ w.account }}</td><td>{{ w.on_screen_text or '(no text)' }}</td><td class="meta">{{ w.music }} · <a href="{{ w.url }}" target="_blank">open ↗</a></td></tr>{% endfor %}
+{% if topic %}<div class="scroll"><table><tr><th>Views / likes</th><th>Account</th><th>On-screen text / caption</th><th>Sound</th></tr>
+{% for w in topic.winners %}<tr><td>{{ (w.views|num ~ ' ' ~ (w.metric or 'views')) if w.views else 'web' }}</td><td>@{{ w.account or '?' }}</td><td>{{ w.on_screen_text or (w.post_caption or '')[:90] or '(no text)' }}</td><td class="meta">{{ w.music }} · <a href="{{ w.url }}" target="_blank">open ↗</a></td></tr>{% endfor %}
 </table></div>{% else %}<div class="empty">No topic research yet.</div>{% endif %}
 <h2 class="hook" style="margin-top:28px">🛰️ Competitor outliers</h2>
 <form method="post" class="row" style="margin-bottom:10px"><button class="ghost" name="run" value="radar">Run competitor radar now</button><span class="meta">Runs by itself every Monday{{ ', free' if radar_source == 'meta' }}.</span></form>

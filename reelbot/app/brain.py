@@ -346,3 +346,32 @@ first second lost them). Likes per view show whether the payoff landed. Be speci
   For a winner, pick a different part of the clip so the remake isn't a duplicate.
 - lesson_for_next: one line ReelBot should remember for every future reel (e.g. "Night walk-ups beat daytime 3 to 1")."""
     return _ask([{"type": "text", "text": text}], LESSON_SCHEMA, effort="medium", max_tokens=6000)
+
+
+def web_reels(subject, terms, sites, max_uses=3):
+    """Search the web (like Googling "site:instagram.com/reel …") for popular reels/TikToks on a topic.
+    Returns the result links Claude's web search found: [{url, title, page_age}]. Costs about a penny a search."""
+    if not claude_key():
+        raise RuntimeError("Claude isn't connected")
+    response = claude().beta.messages.create(
+        model=MODEL,
+        max_tokens=4000,
+        betas=["server-side-fallback-2026-07-01"],
+        fallbacks="default",
+        output_config={"effort": "low"},
+        tools=[{"type": "web_search_20260209", "name": "web_search", "allowed_domains": list(sites), "max_uses": max_uses,
+                "user_location": {"type": "approximate", "country": "GB"}}],
+        messages=[{"role": "user", "content": f"""Find popular, recent short videos ({" and ".join(sites)}) about: {subject}.
+Try a few searches, e.g. {"; ".join(f'"{t}"' for t in terms[:3])}, and the topic with words like reel, POV, sound.
+Prefer individual video pages (instagram.com/reel/…, tiktok.com/@…/video/…) from the last few months.
+Then list the 10 best links, one per line."""}],
+    )
+    found = []
+    for block in response.content:
+        if block.type == "web_search_tool_result" and isinstance(block.content, list):
+            found += [{"url": r.url, "title": r.title or "", "page_age": getattr(r, "page_age", None)} for r in block.content]
+    if not found:
+        errors = [b.content for b in response.content if b.type == "web_search_tool_result" and not isinstance(b.content, list)]
+        if errors:
+            raise RuntimeError(f"web search failed: {getattr(errors[0], 'error_code', errors[0])}")
+    return found

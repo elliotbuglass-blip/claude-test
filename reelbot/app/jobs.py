@@ -9,6 +9,7 @@ import json
 import math
 import os
 import queue
+import re
 import statistics
 import threading
 import tempfile
@@ -43,6 +44,7 @@ EDITABLE = {  # setting key -> (path in config.yaml, label)
     "research_refresh_days": ("research_refresh_days", "Reuse research for (days)"),
     "research_budget": ("research_budget_usd", "Paid research budget ($ a month)"),
     "radar_source": ("radar.source", "Competitor checks"),
+    "apify_mode": ("research_apify", "Apify (paid research)"),
     "reel_seconds": ("clips.reel_seconds", "Reel length (s)"),
     "text_style": ("look.text_style", "Text style"),
     "grade": ("look.grade", "Colour look"),
@@ -373,24 +375,110 @@ def _read(reels, subject):
         return {}
 
 
-def research_topic(hashtags, subject, per_tag=20):
-    """Top recent reels for these hashtags: views, on-screen text, sounds.
-    Reuses a recent run on overlapping hashtags (see research_refresh_days) instead of paying for a new scrape."""
+# Research order, cheapest first: Instagram's own hashtag search (free) → reels found on the web via Claude's web
+# search (pennies) → Apify (paid, last resort: only when the free sources found too little, and inside the budget).
+
+def ig_hashtag_top(tags, want=25):
+    """Instagram's own hashtag search (free, official): top reels for each hashtag. Likes, not views.
+    Instagram allows 30 different hashtags a week per account, so hashtag ids are remembered."""
+    graph = f"https://graph.facebook.com/{cfg()['posting']['graph_api_version']}"
+    uid, ids, reels = env("IG_USER_ID", required=False), db.get_setting("ig_hashtag_ids") or {}, []
+    if not uid:
+        raise RuntimeError("Instagram isn't connected (IG_USER_ID)")
+    for tag in tags:
+        if tag not in ids:
+            r = requests.get(f"{graph}/ig_hashtag_search", params={"user_id": uid, "q": tag, **_ig_auth()}, timeout=30)
+            if not r.ok or not r.json().get("data"):
+                raise RuntimeError(f"Instagram hashtag search: {(r.json().get('error') or {}).get('message', r.reason) if r.content else r.reason}")
+            ids[tag] = r.json()["data"][0]["id"]
+            db.set_setting("ig_hashtag_ids", ids)
+        r = requests.get(f"{graph}/{ids[tag]}/top_media", params={
+            "user_id": uid, "limit": 50, **_ig_auth(),
+            "fields": "id,media_type,like_count,comments_count,caption,permalink,timestamp,media_url"}, timeout=30)
+        if not r.ok:
+            raise RuntimeError(f"Instagram top reels for #{tag}: {(r.json().get('error') or {}).get('message', r.reason) if r.content else r.reason}")
+        for m in r.json().get("data", []):
+            if m.get("media_type") != "VIDEO" or not m.get("permalink"):
+                continue
+            reels.append({"code": m["permalink"].rstrip("/").split("/")[-1], "url": m["permalink"], "account": None,
+                          "views": int(m.get("like_count") or 0), "likes": int(m.get("like_count") or 0), "metric": "likes",
+                          "comments": int(m.get("comments_count") or 0), "taken_at": competitors._epoch(m.get("timestamp")),
+                          "post_caption": (m.get("caption") or "")[:300], "music": None, "video": m.get("media_url")})
+    seen = set()
+    return [r for r in sorted(reels, key=lambda r: -r["views"]) if not (r["code"] in seen or seen.add(r["code"]))][:want]
+
+
+def web_found(subject, terms, platform):
+    """Reels or TikToks found on the web for a topic (Claude's web search), as research items without numbers."""
+    sites = ("instagram.com",) if platform == "instagram" else ("tiktok.com",)
+    _count("web_searches")
+    out, seen = [], set()
+    for r in brain.web_reels(subject, terms, sites):
+        url = r["url"].split("?")[0]
+        m = re.search(r"instagram\.com/(?:[\w.]+/)?(?:reel|reels|p)/([\w-]+)", url) or re.search(r"tiktok\.com/@([\w.]+)/video/(\d+)", url)
+        if not m or url in seen:
+            continue
+        seen.add(url)
+        title = r["title"]
+        if platform == "tiktok":
+            account, code = m.group(1), m.group(2)
+        else:
+            code = m.group(1)
+            who = re.search(r"\(@([\w.]+)\)", title) or re.match(r"([\w.]+) on Instagram", title)
+            account = who.group(1) if who else None
+        caption = title.split(":", 1)[1].strip(' "“”') if ":" in title else title
+        out.append({"code": code, "url": url, "account": account, "views": 0, "likes": 0, "shares": 0, "metric": "found on the web",
+                    "music": None, "post_caption": caption[:300], "on_screen_text": "", "taken_at": None, "via": "web"})
+    out = out[:10]
+    if platform == "tiktok":  # TikTok's free embed info gives the cover image, so the on-screen text can still be read
+        for v in out:
+            try:
+                info = requests.get("https://www.tiktok.com/oembed", params={"url": v["url"]}, timeout=15).json()
+                v["thumbnail"] = info.get("thumbnail_url")
+                v["post_caption"] = (info.get("title") or v["post_caption"])[:300]
+            except Exception:
+                pass
+    return out
+
+
+def apify_allowed():
+    return bool(env("APIFY_TOKEN", required=False)) and (setting("apify_mode") or "last_resort") != "off"
+
+
+def research_topic(hashtags, subject, per_tag=20, terms=()):
+    """Top recent reels for this clip's topic, with their on-screen text. Free sources first; Apify only as a last
+    resort. Reuses a recent run on overlapping hashtags (see research_refresh_days)."""
     tags = _tags(hashtags)[:2]
     cached = _reuse("topic", tags, int(setting("research_refresh_days") or 7))
     if cached:
         return cached
+    reels, web, via, problems = [], [], [], []
     try:
-        items = _apify_run(APIFY_HASHTAG, {"hashtags": tags, "resultsType": "reels", "resultsLimit": per_tag},
-                           len(tags) * per_tag, PRICE["instagram"])
-    except RuntimeError as e:
+        reels = ig_hashtag_top(tags)
+        via.append("Instagram hashtag search (free)")
+    except Exception as e:
+        problems.append(str(e)[:160])
+    try:
+        web = web_found(subject, list(terms) or tags, "instagram")
+        via.append("web search")
+    except Exception as e:
+        problems.append(f"web search: {str(e)[:120]}")
+    if len(reels) + len(web) < 5 and apify_allowed():  # the free sources came up short: pay, if the budget allows
+        try:
+            items = _apify_run(APIFY_HASHTAG, {"hashtags": tags, "resultsType": "reels", "resultsLimit": per_tag},
+                               len(tags) * per_tag, PRICE["instagram"])
+            reels = [r for r in (competitors.apify_reel(i) for i in items) if r]
+            via.append("Apify (paid, last resort)")
+        except RuntimeError as e:
+            problems.append(str(e)[:160])
+    if not reels and not web:
         saved = saved_topic(tags, subject)
         if saved:
-            db.log(f"Instagram search skipped ({e}): using {len(saved['winners'])} saved reels instead")
+            db.log(f"Instagram research: nothing new ({'; '.join(problems)}), using {len(saved['winners'])} saved reels")
             return saved
-        raise
+        raise RuntimeError("; ".join(problems) or "nothing found")
     cutoff = time.time() - 60 * 86400
-    reels = [r for r in (competitors.apify_reel(i) for i in items) if r and r["taken_at"] >= cutoff]
+    reels = [r for r in reels if r["taken_at"] >= cutoff]
     reels.sort(key=lambda r: r["views"], reverse=True)
     top = reels[:12]
     for r in top:
@@ -401,20 +489,22 @@ def research_topic(hashtags, subject, per_tag=20):
         read = reads.get(r["code"], {})
         if read.get("relevant", True):
             winners.append({k: r.get(k) for k in ("code", "url", "account", "views", "likes", "music", "post_caption")}
-                           | {"on_screen_text": read.get("on_screen_text", "")})
+                           | {"on_screen_text": read.get("on_screen_text", ""), "metric": r.get("metric", "views")})
+    winners += web[: max(0, 14 - len(winners))]
     library_add([w | {"taken_at": next((r["taken_at"] for r in top if r["code"] == w["code"]), None)} for w in winners],
                 "instagram", "research", tags)
     sounds = Counter(r["music"] for r in reels[:30] if r.get("music") and r["music"] != "original audio")
     week = time.time() - 7 * 86400
     sounds_7d = Counter(r["music"] for r in reels if r["taken_at"] >= week and r.get("music") and r["music"] != "original audio")
-    original = sum(1 for r in reels[:30] if r.get("music") == "original audio")
-    result = {"checked_at": local_now().isoformat(), "hashtags": tags, "subject": subject,
-              "found": len(reels), "winners": winners, "trending_sounds": sounds.most_common(10),
+    with_music = [r for r in reels[:30] if r.get("music")]
+    original = sum(1 for r in with_music if r["music"] == "original audio")
+    result = {"checked_at": local_now().isoformat(), "hashtags": tags, "subject": subject, "via": via, "problems": problems,
+              "found": len(reels) + len(web), "winners": winners, "trending_sounds": sounds.most_common(10),
               "sounds_7d": sounds_7d.most_common(10), "recent_7d": sum(1 for r in reels if r["taken_at"] >= week),
-              "original_audio_share": round(original / max(len(reels[:30]), 1), 2)}
+              "original_audio_share": round(original / len(with_music), 2) if with_music else None}
     db.save_research("topic:" + ",".join(tags), result)
     db.save_research("topic", result)
-    db.log(f"Researched #{' #'.join(tags)}: {len(winners)} relevant winners")
+    db.log(f"Researched #{' #'.join(tags)} via {', '.join(via)}: {len(winners)} relevant winners")
     return result
 
 
@@ -434,26 +524,47 @@ def _tiktok_video(item):
                      " — ".join(x for x in (music.get("musicName"), music.get("musicAuthor")) if x) or "?"}
 
 
-def research_tiktok(hashtags, subject, per_tag=15):
-    """Top TikToks for these hashtags in the last 30 days: views, shares, text and the sounds rising.
-    Reuses a recent run on overlapping hashtags instead of paying for a new scrape."""
+def research_tiktok(hashtags, subject, per_tag=15, terms=()):
+    """Top TikToks for this topic: found on the web first (pennies); Apify (paid, has views and rising sounds) only
+    when that finds too little. At most once a week a topic."""
     tags = _tags(hashtags)[:2]
     if not tags:
         return None
     key = "tiktok:" + ",".join(tags)
-    cached = _reuse("tiktok", tags, max(7, int(setting("research_refresh_days") or 7)))  # at most once a week a topic
+    cached = _reuse("tiktok", tags, max(7, int(setting("research_refresh_days") or 7)))
     if cached:
         return cached
+    web, problems = [], []
     try:
-        items = _apify_run(APIFY_TIKTOK, {
-            "hashtags": tags, "resultsPerPage": per_tag, "shouldDownloadVideos": False, "shouldDownloadCovers": False,
-            "shouldDownloadSubtitles": False, "shouldDownloadSlideshowImages": False}, len(tags) * per_tag, PRICE["tiktok"])
-    except RuntimeError as e:
-        saved = saved_topic(tags, subject, "tiktok")
-        if saved:
-            db.log(f"TikTok search skipped ({e}): using {len(saved['winners'])} saved TikToks instead")
-            return saved
-        raise
+        web = web_found(subject, list(terms) or tags, "tiktok")
+    except Exception as e:
+        problems.append(f"web search: {str(e)[:120]}")
+    items = None
+    if len(web) < 4 and apify_allowed():
+        try:
+            items = _apify_run(APIFY_TIKTOK, {
+                "hashtags": tags, "resultsPerPage": per_tag, "shouldDownloadVideos": False, "shouldDownloadCovers": False,
+                "shouldDownloadSubtitles": False, "shouldDownloadSlideshowImages": False}, len(tags) * per_tag, PRICE["tiktok"])
+        except RuntimeError as e:
+            problems.append(str(e)[:160])
+    if items is None:
+        if not web:
+            saved = saved_topic(tags, subject, "tiktok")
+            if saved:
+                return saved
+            raise RuntimeError("; ".join(problems) or "nothing found")
+        for v in web:
+            v["frame_bytes"] = vision.gather_frames(None, v.get("thumbnail"))[:1]
+        reads = _read([v for v in web if v["frame_bytes"]], subject)
+        web = [{k: v[k] for k in v if k not in ("frame_bytes", "thumbnail")} | {"on_screen_text": reads.get(v["code"], {}).get("on_screen_text", "")}
+               for v in web if reads.get(v["code"], {}).get("relevant", True)]
+        result = {"checked_at": local_now().isoformat(), "hashtags": tags, "subject": subject, "found": len(web),
+                  "winners": web, "sounds": [], "sounds_7d": [], "original_audio_share": None, "via": ["web search"]}
+        library_add(web, "tiktok", "research", tags)
+        db.save_research(key, result)
+        db.save_research("tiktok", result)
+        db.log(f"TikTok research #{' #'.join(tags)}: {len(web)} found on the web")
+        return result
     cutoff, week = time.time() - 30 * 86400, time.time() - 7 * 86400
     seen, videos = set(), []
     for v in (_tiktok_video(i) for i in items):
@@ -468,10 +579,12 @@ def research_tiktok(hashtags, subject, per_tag=15):
     winners = [{k: v.get(k) for k in ("code", "url", "account", "views", "likes", "shares", "music", "post_caption")}
                | {"on_screen_text": reads.get(v["code"], {}).get("on_screen_text", "")}
                for v in top if reads.get(v["code"], {}).get("relevant", True)]
+    winners += web[: max(0, 12 - len(winners))]  # keep what the web search found too
     sounds = lambda vs: Counter(v["music"] for v in vs if v["music"] not in ("original audio", "?")).most_common(8)
     result = {"checked_at": local_now().isoformat(), "hashtags": tags, "subject": subject, "found": len(videos),
               "winners": winners, "sounds": sounds(videos), "sounds_7d": sounds([v for v in videos if v["taken_at"] >= week]),
               "original_audio_share": round(sum(v["music"] == "original audio" for v in videos[:30]) / max(len(videos[:30]), 1), 2)}
+    result["via"] = (["web search"] if web else []) + ["Apify (paid, last resort)"]
     library_add([w | {"taken_at": None} for w in winners], "tiktok", "research", tags)
     db.save_research(key, result)
     db.save_research("tiktok", result)
@@ -850,11 +963,13 @@ def build_context(topic, tiktok=None, keywords=None):
             for r in lessons))
     if topic:
         parts.append(f"TOPIC RESEARCH (#{' #'.join(topic['hashtags'])}, last 60 days, relevant winners):\n" + ("\n".join(
-            f'- {ref("I", {"platform": "instagram", "account": w["account"], "url": w["url"], "views": w["views"], "text": w["on_screen_text"], "music": w.get("music")})}'
-            f' @{w["account"]}: on-screen "{w["on_screen_text"] or "(no text)"}" → {w["views"]:,} views, sound: {w["music"] or "?"}'
+            f'- {ref("I", {"platform": "instagram", "account": w["account"], "url": w["url"], "views": w["views"], "metric": w.get("metric", "views"), "text": w["on_screen_text"] or (w.get("post_caption") or "")[:90], "music": w.get("music")})}'
+            f' @{w["account"] or "?"}: ' + (f'caption "{(w["post_caption"] or "")[:90]}" (found on the web, no numbers)' if w.get("via") == "web"
+            else (f'on-screen "{w["on_screen_text"]}"' if w["on_screen_text"] else f'caption "{(w.get("post_caption") or "")[:90]}"')
+                 + f' → {w["views"]:,} {w.get("metric", "views")}, sound: {w["music"] or "?"}')
             for w in topic["winners"]) or "(none on topic: don't cite topic winners or formats)"))
         parts.append(f"Trending sounds on these reels: {', '.join(f'{s} ({n})' for s, n in topic['trending_sounds']) or 'none'}."
-                     f" Share using original audio: {int(topic['original_audio_share'] * 100)}%.")
+                     + (f" Share using original audio: {int(topic['original_audio_share'] * 100)}%." if topic.get("original_audio_share") is not None else ""))
         if topic.get("sounds_7d"):
             parts.append(f"Sounds on reels posted in the LAST 7 DAYS ({topic.get('recent_7d', 0)} reels): "
                          + ", ".join(f"{s} ({n} reels)" for s, n in topic["sounds_7d"]))
@@ -1072,23 +1187,20 @@ def gather_research(clip, sources):
     trends = attempt("Google trends", google_trends)
     if trends:
         status.append({"source": "Google trends", "ok": True, "text": f"{len(trends.get('items', []))} trending searches (UK + US)"})
-    has_apify = env("APIFY_TOKEN", required=False) is not None
-    topic = None
-    if not has_apify:
-        status.append({"source": "Instagram", "ok": False, "text": "No APIFY_TOKEN set, so no Instagram or TikTok research"})
-    elif tags:
-        topic = attempt("Instagram", research_topic, tags, clip["subject"])
-        if topic:
-            status.append({"source": "Instagram", "ok": True, "text": (
-                f"used {len(topic['winners'])} saved reels for #{' #'.join(topic['hashtags'])} (free, no new search)" if topic.get("from_library")
-                else f"{topic['found']} reels for #{' #'.join(topic['hashtags'])}, {len(topic['winners'])} on-topic winners read")})
+    how = lambda r: f" via {', '.join(r['via'])}" if r.get("via") else ""
+    topic = attempt("Instagram", research_topic, tags, clip["subject"], 20, terms) if tags else None
+    if topic:
+        status.append({"source": "Instagram", "ok": True, "text": (
+            f"used {len(topic['winners'])} saved reels for #{' #'.join(topic['hashtags'])} (free, no new search)" if topic.get("from_library")
+            else f"{topic['found']} reels for #{' #'.join(topic['hashtags'])}{how(topic)}, {len(topic['winners'])} on-topic winners"
+            + (f" · didn't work: {'; '.join(topic['problems'])}" if topic.get("problems") else ""))})
     tiktok = None
-    if "tiktok" in sources and has_apify:
-        tiktok = attempt("TikTok", research_tiktok, tags, clip["subject"])
+    if "tiktok" in sources and tags:
+        tiktok = attempt("TikTok", research_tiktok, tags, clip["subject"], 15, terms)
         if tiktok:
             status.append({"source": "TikTok", "ok": True, "text": (
                 f"used {len(tiktok['winners'])} saved TikToks (free, no new search)" if tiktok.get("from_library")
-                else f"{tiktok['found']} videos, {len(tiktok['winners'])} on-topic winners read")})
+                else f"{tiktok['found']} videos{how(tiktok)}, {len(tiktok['winners'])} winners")})
     keywords = attempt("Google searches", google_keywords, terms)
     if keywords:
         status.append({"source": "Google searches", "ok": True,

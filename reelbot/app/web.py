@@ -423,7 +423,7 @@ async def research(request: Request):
 async def settings_page(request: Request):
     if request.method == "POST":
         form = await request.form()
-        for key in ("mode", "niche", "times_mode", "text_style", "grade", "hashtags", "radar_source"):
+        for key in ("mode", "niche", "times_mode", "text_style", "grade", "hashtags", "radar_source", "apify_mode"):
             if key in form:
                 db.set_setting(key, form[key])
         for key in ("posts_per_day", "reels_per_clip", "reel_seconds", "research_refresh_days"):

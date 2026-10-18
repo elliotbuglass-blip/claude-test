@@ -20,6 +20,11 @@
   <label>Reuse research for (days)</label><input name="research_refresh_days" type="number" min="1" max="30" value="{{ s.research_refresh_days or 7 }}">
   <label>Paid research budget ($ a month) <span class="meta">Instagram and TikTok searches through Apify. At the limit ReelBot stops searching and uses saved research. 0 = never pay.</span></label>
   <input name="research_budget" type="number" min="0" max="500" step="1" value="{{ '%g'|format(s.research_budget if s.research_budget is not none else 5) }}">
+  <label>Apify (paid research)</label>
+  <select name="apify_mode">
+    <option value="last_resort" {{ 'selected' if (s.apify_mode or 'last_resort') == 'last_resort' }}>Last resort only: when Instagram's own search and web search find too little</option>
+    <option value="off" {{ 'selected' if s.apify_mode == 'off' }}>Off: never use Apify</option>
+  </select>
   <label>Competitor checks</label>
   <select name="radar_source">
     <option value="meta" {{ 'selected' if (s.radar_source or 'meta') == 'meta' }}>Instagram's own tool: free (shows likes, not views)</option>

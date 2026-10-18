@@ -58,9 +58,9 @@
             {% if res.original_share is number %}<br>{{ (res.original_share * 100)|round|int }}% of the top reels for #{{ res.hashtags|join(' #') }} use their own sound.{% endif %}
             {% if res.sounds_7d %}<br>Posted with in the last 7 days: {% for s, n in res.sounds_7d %}{{ s }} ({{ n }} reels){{ ', ' if not loop.last }}{% endfor %}.{% endif %}</p>
           {% if res.winners %}<h4>🏆 Research it looked at</h4>
-            <ul class="src">{% for w in res.winners %}<li><b>{{ w.views|num }}</b> · @{{ w.account }} · “{{ w.on_screen_text or '(no text)' }}” · {{ w.music or '?' }} <a href="{{ w.url }}" target="_blank">↗</a></li>{% endfor %}</ul>{% endif %}
+            <ul class="src">{% for w in res.winners %}<li><b>{{ (w.views|num ~ ' ' ~ (w.metric or 'views')) if w.views else 'found on the web' }}</b> · @{{ w.account or '?' }} · “{{ w.on_screen_text or (w.post_caption or '')[:80] or '(no text)' }}” · {{ w.music or '?' }} <a href="{{ w.url }}" target="_blank">↗</a></li>{% endfor %}</ul>{% endif %}
           {% if res.tiktok %}<h4>🎵 TikTok it looked at</h4>
-            <ul class="src">{% for w in res.tiktok %}<li><b>{{ w.views|num }}</b> · @{{ w.account }} · “{{ w.on_screen_text or (w.post_caption or '')[:60] }}” · {{ w.music }} <a href="{{ w.url }}" target="_blank">↗</a></li>{% endfor %}</ul>
+            <ul class="src">{% for w in res.tiktok %}<li><b>{{ w.views|num if w.views else 'found on the web' }}</b> · @{{ w.account }} · “{{ w.on_screen_text or (w.post_caption or '')[:60] }}” · {{ w.music }} <a href="{{ w.url }}" target="_blank">↗</a></li>{% endfor %}</ul>
             {% if res.tiktok_sounds_7d %}<p>Rising on TikTok this week: {% for s, n in res.tiktok_sounds_7d %}{{ s }} ({{ n }}){{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}{% endif %}
           {% if res.outliers %}<h4>🛰️ Competitor outliers</h4>
             <ul class="src">{% for o in res.outliers %}<li><b>{{ o.ratio }}×</b> their normal · @{{ o.account }} · “{{ o.on_screen_text or (o.post_caption or '')[:60] }}” <a href="{{ o.url }}" target="_blank">↗</a></li>{% endfor %}</ul>{% endif %}
