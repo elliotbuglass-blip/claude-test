@@ -11,10 +11,11 @@
   <link rel="stylesheet" href="/static/rail.css">
   {% if busy and nav != '/upload' %}<meta http-equiv="refresh" content="20">{% endif %}
 </head>
-<body>
+{% set section = (nav.strip('/').split('/')[0] or 'home')|replace('reel', 'review') %}
+<body data-section="{{ section }}">
 <div class="page-glow" aria-hidden="true"><span></span><span></span><span></span></div>
 <div class="app">
-  {% include "_rail.html" %}
+  {% with rail_class = "glass" %}{% include "_rail.html" %}{% endwith %}
   <div class="app-main">
     <div class="app-top">
       <span class="pill {{ 'auto' if mode == 'autopilot' }}">{{ '🤖 Autopilot' if mode == 'autopilot' else '👀 Review mode' }}</span>
@@ -29,5 +30,15 @@
     </footer>
   </div>
 </div>
+<script>
+  // Soft spotlight follows the mouse across the panel (mouse only; off for reduced motion).
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches && matchMedia("(pointer: fine)").matches) {
+    const app = document.querySelector(".app"); let raf;
+    app.addEventListener("pointermove", e => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => { const r = app.getBoundingClientRect(); app.style.setProperty("--mx", e.clientX - r.left + "px"); app.style.setProperty("--my", e.clientY - r.top + "px"); });
+    });
+  }
+</script>
 </body>
 </html>
