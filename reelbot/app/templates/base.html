@@ -4,15 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Creatr</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@500,600,700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
   {% if busy and nav != '/upload' %}<meta http-equiv="refresh" content="20">{% endif %}
 </head>
 <body>
+<div class="page-glow" aria-hidden="true"><span></span><span></span><span></span></div>
 <header><div class="bar">
-  <a class="logo" href="/">Creatr</a>
-  <nav>
+  <a class="logo" href="/"><span class="brand-mark" aria-hidden="true"></span>Creatr</a>
+  <nav aria-label="Main">
     {% for path, label in [("/upload","Upload"),("/review","Review"),("/calendar","Calendar"),("/results","Results"),("/research","Research"),("/clips","Clips"),("/settings","Settings")] %}
-      <a href="{{ path }}" class="{{ 'on' if nav.startswith(path) }}">{{ label }}</a>
+      <a href="{{ path }}" class="{{ 'on' if nav.startswith(path) }}"{{ ' aria-current="page"'|safe if nav.startswith(path) }}>{{ label }}</a>
     {% endfor %}
   </nav>
   <span class="pill {{ 'auto' if mode == 'autopilot' }}">{{ '🤖 Autopilot' if mode == 'autopilot' else '👀 Review mode' }}</span>

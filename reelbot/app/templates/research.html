@@ -8,7 +8,7 @@
   <p class="hook">💷 Research spend this month</p>
   {% set pct = ((spend.usd / budget * 100) if budget else 100)|round|int %}
   <p><b style="font-size:22px">${{ '%.2f'|format(spend.usd) }}</b> <span class="meta">of your ${{ '%g'|format(budget) }} budget{% if spend.from == 'estimate' %} (Creatr's estimate){% else %} (from Apify){% endif %}</span></p>
-  <div class="g-bar" style="margin:6px 0 8px"><i style="left:0;right:auto;width:{{ [pct, 100]|min }}%;background:{{ '#ff8a8a' if pct >= 100 else ('#e8d27a' if pct >= 75 else '#8fd694') }}"></i></div>
+  <div class="g-bar" style="margin:6px 0 8px"><i style="left:0;right:auto;width:{{ [pct, 100]|min }}%;background:var({{ '--bad' if pct >= 100 else ('--warn' if pct >= 75 else '--good') }})"></i></div>
   <p class="meta">{% if pct >= 100 %}Budget reached: no new paid searches until it resets{% if spend.resets %} ({{ spend.resets[:10] }}){% endif %}. Creatr is using saved research.
     {% else %}Paid searches stop at your budget, then Creatr uses saved research.{% if spend.resets %} Resets {{ spend.resets[:10] }}.{% endif %}{% endif %}
     Free: Google trends, Google and YouTube searches{{ ', competitor checks (Instagram’s own tool)' if radar_source == 'meta' }}.

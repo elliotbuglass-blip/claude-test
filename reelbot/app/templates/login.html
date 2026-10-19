@@ -1,7 +1,27 @@
-<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Creatr</title>
-<link rel="stylesheet" href="/static/style.css"></head>
-<body><main style="max-width:360px;padding-top:15vh">
-<h1>Creatr</h1><p class="sub">Sign in</p>
-<form method="post"><input type="password" name="password" placeholder="Password" autofocus>
-<div class="row"><button>Sign in</button></div>{% if error %}<p class="s-low">{{ error }}</p>{% endif %}</form>
-</main></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Creatr</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@500,600,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main class="auth">
+  <div class="page-glow" aria-hidden="true"><span></span><span></span><span></span></div>
+  <div class="card"><div class="body">
+    <h1><span class="brand-mark" aria-hidden="true"></span>Creatr</h1>
+    <p class="sub">Sign in to get creative.</p>
+    <form method="post">
+      <label for="password">Password</label>
+      <input id="password" type="password" name="password" autocomplete="current-password" autofocus>
+      <div class="row"><button style="width:100%">Sign in</button></div>
+      {% if error %}<p class="s-low" role="alert">{{ error }}</p>{% endif %}
+    </form>
+  </div></div>
+</main>
+</body>
+</html>
