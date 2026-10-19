@@ -67,7 +67,7 @@ def _graph(video_path, caption, posting, video_url=None):
     graph = f"https://graph.facebook.com/{version}"
 
     if posting.get("trial_reel") and not video_url:
-        raise RuntimeError("Not posted: trial reels need ReelBot's public web address (PUBLIC_URL), so it refused "
+        raise RuntimeError("Not posted: trial reels need Creatr's public web address (PUBLIC_URL), so it refused "
                            "rather than post a normal reel to your followers.")
     params = {"media_type": "REELS", "caption": caption, **auth}
     # Every documented trial-reel example passes video_url; the resumable upload route dropped trial_params.

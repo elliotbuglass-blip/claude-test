@@ -244,7 +244,7 @@ def spend_check(cost):
     now = apify_spend()
     if now["usd"] + cost > budget:
         raise OverBudget(f"monthly research budget reached (${now['usd']:.2f} of ${budget:.2f} spent), "
-                         "so ReelBot used research it had already saved")
+                         "so Creatr used research it had already saved")
 
 
 def spent(cost):
@@ -1151,7 +1151,7 @@ def make_combo(batch):
         "keep_look": 1 if all(m["keep_look"] for m in mains) else 0, "status": "analysed",
         "subject": " → ".join(m["subject"] or m["filename"] for m in mains),
         "description": " / ".join(m["description"] for m in mains if m["description"]) or None,
-        "hashtags": json.dumps(tags), "notes": f"Edited together by ReelBot from {names}",
+        "hashtags": json.dumps(tags), "notes": f"Edited together by Creatr from {names}",
         "search_terms": json.dumps(list(dict.fromkeys(t for m in mains for t in json.loads(m["search_terms"] or "[]")))[:3]),
         "broll_silent": 1})
     for m in mains + brolls:

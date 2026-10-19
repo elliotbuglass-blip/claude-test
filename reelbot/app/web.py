@@ -1,5 +1,6 @@
 """The ReelBot website. Run locally with:  python -m reelbot.app  (then open http://localhost:8000)"""
 
+import asyncio
 import contextlib
 import hashlib
 import hmac
@@ -22,7 +23,7 @@ from starlette.staticfiles import StaticFiles
 
 from .. import editor
 from ..settings import claude_key, env
-from . import connect, db, jobs, links
+from . import brain, connect, db, jobs, links
 
 HERE = Path(__file__).parent
 templates = Environment(loader=FileSystemLoader(HERE / "templates"), autoescape=select_autoescape())
@@ -479,7 +480,24 @@ async def settings_page(request: Request):
 
 
 async def home(request: Request):
-    return RedirectResponse("/upload", 303)
+    """The signed-in home page: "Let's get creative", with a chat box to make reels or ask a question."""
+    recent = db.q("""SELECT r.id, r.on_screen_text, r.status, r.post_at, r.recommended_time FROM reels r
+                     WHERE r.status IN ('draft', 'scheduled', 'posted') ORDER BY r.created_at DESC LIMIT 6""")
+    name = connect.status().get("username") or ""
+    return page("home.html", request, recent=recent, initials=(name.replace(".", " ").replace("_", " ").title().replace(" ", "")[:2] or "Me"))
+
+
+async def ask(request: Request):
+    """The home page chat box, when no clips are attached: Creatr answers from your research and results."""
+    question = ((await request.json()).get("question") or "").strip()[:2000]
+    if not question:
+        return JSONResponse({"error": "Type a question first."}, 400)
+    try:
+        context, _ = jobs.build_context(db.latest_research("topic"), db.latest_research("tiktok"))
+        answer = await asyncio.to_thread(brain.ask, question, context, jobs.cfg()["niche"])
+    except Exception as e:
+        return JSONResponse({"error": f"Couldn't answer that: {str(e)[:200]}"}, 500)
+    return JSONResponse({"answer": answer})
 
 
 async def resume_posting(request: Request):
@@ -493,7 +511,7 @@ async def health(request: Request):
 
 
 routes = [
-    Route("/", home), Route("/health", health),
+    Route("/", home), Route("/health", health), Route("/ask", ask, methods=["POST"]),
     Route("/login", login, methods=["GET", "POST"]),
     Route("/review", review),
     Route("/reels/remake-all", rerender_all, methods=["POST"]),

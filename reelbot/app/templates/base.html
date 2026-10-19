@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ReelBot</title>
+  <title>Creatr</title>
   <link rel="stylesheet" href="/static/style.css">
   {% if busy and nav != '/upload' %}<meta http-equiv="refresh" content="20">{% endif %}
 </head>
 <body>
 <header><div class="bar">
-  <a class="logo" href="/">ReelBot</a>
+  <a class="logo" href="/">Creatr</a>
   <nav>
     {% for path, label in [("/upload","Upload"),("/review","Review"),("/calendar","Calendar"),("/results","Results"),("/research","Research"),("/clips","Clips"),("/settings","Settings")] %}
       <a href="{{ path }}" class="{{ 'on' if nav.startswith(path) }}">{{ label }}</a>

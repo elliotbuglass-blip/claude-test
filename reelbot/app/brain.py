@@ -375,3 +375,28 @@ Then list the 10 best links, one per line."""}],
         if errors:
             raise RuntimeError(f"web search failed: {getattr(errors[0], 'error_code', errors[0])}")
     return found
+
+
+ASK_SYSTEM = """You are Creatr, an assistant inside an app that turns a creator's clips into Instagram trial reels.
+You know their account, results and research (below). Answer their question in plain, friendly words a 10-year-old
+would follow: short sentences, at most about 150 words, a short list when it helps. Use real names, numbers and
+examples from the research. Never show the bracketed ids like [I3]. If the research doesn't cover it, say so honestly
+and say what would help (e.g. "upload a clip about it and I'll research it")."""
+
+
+def ask(question, context, niche):
+    """A question typed into the home page chat box, answered from the creator's own research and results."""
+    if not claude_key():
+        raise RuntimeError("Claude isn't connected: add ANTHROPIC_API_KEY to the server's settings.")
+    response = claude().beta.messages.create(
+        model=MODEL,
+        max_tokens=4000,
+        betas=["server-side-fallback-2026-07-01"],
+        fallbacks="default",
+        output_config={"effort": "low"},
+        system=ASK_SYSTEM + f"\n\nTHE CREATOR'S ACCOUNT: {niche}\n\n{context}",
+        messages=[{"role": "user", "content": question}],
+    )
+    if response.stop_reason == "refusal":
+        raise RuntimeError("Claude declined this question.")
+    return "".join(b.text for b in response.content if b.type == "text").strip()

@@ -29,10 +29,10 @@
         <div class="why-b">
           {% set insp = r.inspirations|fromjson or [] %}{% set kws = r.keywords|fromjson or [] %}
           {% if res.remake_of %}<h4>🔁 Remake</h4><p>New version of “{{ res.remake_of.hook }}” <a href="/reel/{{ res.remake_of.id }}">see it ↗</a>. The tweak: {{ res.remake_of.tweak }}</p>{% endif %}
-          {% if res.status %}<h4>🔎 What ReelBot checked</h4>
+          {% if res.status %}<h4>🔎 What Creatr checked</h4>
             <div class="health"><ul>{% for st in res.status %}<li class="{{ 'good' if st.ok else 'bad' }}">{{ '✓' if st.ok else '✗' }} <b>{{ st.source }}</b>: {{ st.text }}</li>{% endfor %}</ul>
             {% if res.status|rejectattr('ok')|list %}<p class="meta">✗ = that research didn't run for this reel, so it couldn't borrow from it.</p>{% endif %}</div>
-          {% elif r.research %}<p class="meta">Made before ReelBot recorded what it checked.</p>{% endif %}
+          {% elif r.research %}<p class="meta">Made before Creatr recorded what it checked.</p>{% endif %}
           <h4>🎯 Inspired by</h4>
           {% if insp %}<div class="insp">{% for x in insp %}
             <div class="i"><div class="who">
@@ -125,7 +125,7 @@
         <form method="post" action="/reels/{{ r.id }}/spot" class="row spotpick">
           {% for s in spots %}<button name="spot" value="{{ loop.index }}" class="mini {{ '' if (s[0] - r.text_position)|abs < 0.005 else 'ghost' }}">{{ loop.index }}</button>{% endfor %}
         </form>
-        <p class="meta">Tap a number to move the text there. ReelBot remembers your picks and learns your taste.</p>
+        <p class="meta">Tap a number to move the text there. Creatr remembers your picks and learns your taste.</p>
       </details>
       {% endif %}
       <details>

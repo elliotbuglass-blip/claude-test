@@ -1,41 +1,41 @@
 {% extends "base.html" %}
 {% block main %}
 <h1>Research</h1>
-<p class="sub">What ReelBot is learning from your history, your competitors and the topics of your clips.</p>
+<p class="sub">What Creatr is learning from your history, your competitors and the topics of your clips.</p>
 
 <div class="cols" style="margin-bottom:16px">
 <div class="card"><div class="body">
   <p class="hook">💷 Research spend this month</p>
   {% set pct = ((spend.usd / budget * 100) if budget else 100)|round|int %}
-  <p><b style="font-size:22px">${{ '%.2f'|format(spend.usd) }}</b> <span class="meta">of your ${{ '%g'|format(budget) }} budget{% if spend.from == 'estimate' %} (ReelBot's estimate){% else %} (from Apify){% endif %}</span></p>
+  <p><b style="font-size:22px">${{ '%.2f'|format(spend.usd) }}</b> <span class="meta">of your ${{ '%g'|format(budget) }} budget{% if spend.from == 'estimate' %} (Creatr's estimate){% else %} (from Apify){% endif %}</span></p>
   <div class="g-bar" style="margin:6px 0 8px"><i style="left:0;right:auto;width:{{ [pct, 100]|min }}%;background:{{ '#ff8a8a' if pct >= 100 else ('#e8d27a' if pct >= 75 else '#8fd694') }}"></i></div>
-  <p class="meta">{% if pct >= 100 %}Budget reached: no new paid searches until it resets{% if spend.resets %} ({{ spend.resets[:10] }}){% endif %}. ReelBot is using saved research.
-    {% else %}Paid searches stop at your budget, then ReelBot uses saved research.{% if spend.resets %} Resets {{ spend.resets[:10] }}.{% endif %}{% endif %}
+  <p class="meta">{% if pct >= 100 %}Budget reached: no new paid searches until it resets{% if spend.resets %} ({{ spend.resets[:10] }}){% endif %}. Creatr is using saved research.
+    {% else %}Paid searches stop at your budget, then Creatr uses saved research.{% if spend.resets %} Resets {{ spend.resets[:10] }}.{% endif %}{% endif %}
     Free: Google trends, Google and YouTube searches{{ ', competitor checks (Instagram’s own tool)' if radar_source == 'meta' }}.
     · <a href="/settings">change budget</a> · <a href="/research?refresh=1">refresh</a></p>
 </div></div>
 <div class="card"><div class="body">
   <p class="hook">✅ What's worked before</p>
-  {% if board.reels %}<p class="meta">From {{ board.reels }} posted reel{{ 's' if board.reels != 1 }}: how the reels that borrowed each thing did vs your usual ({{ board.usual|num }} views). ReelBot leans into the ✅ and away from the ❌ every time it plans.</p>
+  {% if board.reels %}<p class="meta">From {{ board.reels }} posted reel{{ 's' if board.reels != 1 }}: how the reels that borrowed each thing did vs your usual ({{ board.usual|num }} views). Creatr leans into the ✅ and away from the ❌ every time it plans.</p>
   {% for g, label in [("creators", "🎯 Creators"), ("words", "🔤 Words"), ("formats", "🎬 Angles")] %}{% if board[g] %}
     <p class="meta" style="margin:10px 0 4px"><b>{{ label }}</b></p>
     <table>{% for x in board[g][:6] %}<tr><td>{{ '✅' if x.ratio >= 1.2 else ('❌' if x.ratio <= 0.7 else '➖') }} {{ x.name }}</td>
       <td><b>{{ x.ratio }}×</b></td><td class="meta">{{ x.reels }} reel{{ 's' if x.reels != 1 }}</td></tr>{% endfor %}</table>
   {% endif %}{% endfor %}
-  {% else %}<p class="meta">Fills in as your reels get results. Each one records which creators, words and angles it borrowed, so ReelBot can see which ones actually work for you.</p>{% endif %}
+  {% else %}<p class="meta">Fills in as your reels get results. Each one records which creators, words and angles it borrowed, so Creatr can see which ones actually work for you.</p>{% endif %}
 </div></div>
 </div>
 <div class="card" id="library" style="margin-bottom:16px"><div class="body">
   <p class="hook">📚 Research library</p>
-  <p class="meta">Every reel ReelBot has researched, kept so it's paid for once and reused for every similar clip.
+  <p class="meta">Every reel Creatr has researched, kept so it's paid for once and reused for every similar clip.
     This month: <b>{{ usage.scrapes }}</b> paid scrape{{ 's' if usage.scrapes != 1 }}, <b>{{ usage.reused }}</b> reused from the library · {{ usage.total }} reels stored.</p>
   <form method="post" class="addlinks">
     <label>Seen a reel or TikTok that did well? Paste the link(s), one per line</label>
     <textarea name="links" rows="2" placeholder="https://www.instagram.com/reel/…&#10;https://www.tiktok.com/@…/video/…"></textarea>
-    <label>Why you liked it (optional, ReelBot uses this)</label>
+    <label>Why you liked it (optional, Creatr uses this)</label>
     <input name="note" placeholder="e.g. love the slow push-in and the one-word hook">
     <div class="row"><button name="run" value="save">Save to library</button>
-      <span class="meta">ReelBot fetches the views, sound and on-screen text, and treats your saves as a strong signal of your taste.</span></div>
+      <span class="meta">Creatr fetches the views, sound and on-screen text, and treats your saves as a strong signal of your taste.</span></div>
   </form>
   <form method="get" class="row" style="margin-top:14px">
     <input name="q" value="{{ q }}" placeholder="Search hooks, accounts, sounds, hashtags…" style="flex:1;min-width:180px">
@@ -72,7 +72,7 @@
   {% if topic %}{% if topic.original_audio_share is number %}<p class="meta">{{ (topic.original_audio_share * 100)|round|int }}% of top reels use their own sound.</p>{% endif %}
   <table>{% for s, n in topic.trending_sounds %}<tr><td>{{ s }}</td><td>{{ n }}</td></tr>{% else %}<tr><td class="meta">No trending tracks; original audio wins.</td></tr>{% endfor %}</table>
   {% if topic.sounds_7d %}<p class="meta" style="margin-top:10px">Last 7 days ({{ topic.recent_7d }} new reels): {% for s, n in topic.sounds_7d %}{{ s }} ({{ n }}){{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
-  {% else %}<p class="meta">Appears after ReelBot researches your first clips.</p>{% endif %}
+  {% else %}<p class="meta">Appears after Creatr researches your first clips.</p>{% endif %}
 </div></div>
 </div>
 <h2 class="hook" style="margin-top:28px">🎵 TikTok{% if tiktok %} — #{{ tiktok.hashtags|join(' #') }}{% endif %}</h2>
@@ -82,10 +82,10 @@
 <div class="scroll"><table><tr><th>Views</th><th>Shares</th><th>Account</th><th>On-screen text / caption</th><th>Sound</th></tr>
 {% for w in tiktok.winners %}<tr><td>{{ w.views|num if w.views else '–' }}</td><td>{{ w.shares|num if w.shares else '–' }}</td><td>@{{ w.account }}</td><td>{{ w.on_screen_text or (w.post_caption or '')[:90] }}</td><td class="meta">{{ w.music }} · <a href="{{ w.url }}" target="_blank">open ↗</a></td></tr>{% endfor %}
 </table></div>
-{% else %}<div class="empty">TikTok research runs when ReelBot makes reels with TikTok in the research mix.</div>{% endif %}
+{% else %}<div class="empty">TikTok research runs when Creatr makes reels with TikTok in the research mix.</div>{% endif %}
 <h2 class="hook" style="margin-top:28px">🔥 Trending on Google right now</h2>
 <form method="post" class="row" style="margin-bottom:10px"><button class="ghost" name="run" value="trends">Check trends now</button>
-<span class="meta">Checked before every batch of reels. When a trend fits your clip (e.g. Batman → a black car), ReelBot makes 1–2 riskier "wildcard" reels with it.</span></form>
+<span class="meta">Checked before every batch of reels. When a trend fits your clip (e.g. Batman → a black car), Creatr makes 1–2 riskier "wildcard" reels with it.</span></form>
 {% if trends and trends["items"] %}<div class="scroll"><table><tr><th>Search</th><th>Searches</th><th>Why it's trending</th></tr>
 {% for t in trends["items"][:20] %}<tr><td>{{ t.term }} <span class="tag">{{ t.geo }}</span></td><td>{{ t.searches }}</td><td class="meta">{{ t.headline }}{% if t.url %} · <a href="{{ t.url }}" target="_blank">news ↗</a>{% endif %}</td></tr>{% endfor %}
 </table></div><p class="meta">Checked {{ trends.checked_at[:16].replace('T', ' ') }}</p>{% else %}<div class="empty">No trends checked yet.</div>{% endif %}

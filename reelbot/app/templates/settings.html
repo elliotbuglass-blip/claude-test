@@ -8,10 +8,10 @@
       {% if ig.how == 'variables' %}<span class="meta"> · set up by hand in Railway Variables</span>{% endif %}</p>
     <div class="row">
       {% if meta_ready %}<a class="btn ghostlink" href="/connect/instagram">Reconnect / switch account</a>{% endif %}
-      {% if ig.how == 'button' %}<form method="post" action="/connect/instagram/disconnect" onsubmit="return confirm('Disconnect Instagram? ReelBot stops posting until you connect again.')"><button class="ghost danger">Disconnect</button></form>{% endif %}
+      {% if ig.how == 'button' %}<form method="post" action="/connect/instagram/disconnect" onsubmit="return confirm('Disconnect Instagram? Creatr stops posting until you connect again.')"><button class="ghost danger">Disconnect</button></form>{% endif %}
     </div>
   {% else %}
-    <p>Not connected yet: ReelBot can't post or read your results.</p>
+    <p>Not connected yet: Creatr can't post or read your results.</p>
     {% if meta_ready %}<a class="btn" href="/connect/instagram">Connect Instagram ▸</a>
       <p class="meta">You'll log in with Facebook and tick the Page linked to your Instagram. Your Instagram must be a Creator or Business account.</p>{% endif %}
   {% endif %}
@@ -24,12 +24,12 @@
 <div class="cols">
 <div class="card"><div class="body">
   <p class="hook">🤖 Mode</p>
-  <label>How ReelBot works</label>
+  <label>How Creatr works</label>
   <select name="mode"><option value="review" {{ 'selected' if s.mode == 'review' }}>👀 Review: I approve every reel</option>
     <option value="autopilot" {{ 'selected' if s.mode == 'autopilot' }}>🤖 Autopilot: plan, edit, schedule and post by itself</option></select>
   <label>Trial reels per day</label><input name="posts_per_day" id="ppd" type="number" min="1" max="10" value="{{ s.posts_per_day }}">
-  <p class="meta">Both modes. Every morning ReelBot plans tomorrow's reels: autopilot schedules them, review mode lines them up for your OK.</p>
-  <p class="meta s-mid" id="ppdwarn" hidden>⚠️ More than 10 trial reels a day can look spammy to Instagram. ReelBot also keeps each clip to 2 trial reels per 30 days, so you'll need plenty of fresh clips.</p>
+  <p class="meta">Both modes. Every morning Creatr plans tomorrow's reels: autopilot schedules them, review mode lines them up for your OK.</p>
+  <p class="meta s-mid" id="ppdwarn" hidden>⚠️ More than 10 trial reels a day can look spammy to Instagram. Creatr also keeps each clip to 2 trial reels per 30 days, so you'll need plenty of fresh clips.</p>
   <script>(() => { const p = document.getElementById('ppd'), w = document.getElementById('ppdwarn'); const f = () => w.hidden = +p.value <= 10; p.addEventListener('input', f); f(); })();</script>
 
   <label>Posting times</label>
@@ -37,7 +37,7 @@
     <option value="manual" {{ 'selected' if s.times_mode == 'manual' }}>Manual: use the times below</option></select>
   <label>Manual times (UK, comma separated)</label><input name="post_times" value="{{ (s.post_times or [])|join(', ') }}">
   <label>Reuse research for (days)</label><input name="research_refresh_days" type="number" min="1" max="30" value="{{ s.research_refresh_days or 7 }}">
-  <label>Paid research budget ($ a month) <span class="meta">Instagram and TikTok searches through Apify. At the limit ReelBot stops searching and uses saved research. 0 = never pay.</span></label>
+  <label>Paid research budget ($ a month) <span class="meta">Instagram and TikTok searches through Apify. At the limit Creatr stops searching and uses saved research. 0 = never pay.</span></label>
   <input name="research_budget" type="number" min="0" max="500" step="1" value="{{ '%g'|format(s.research_budget if s.research_budget is not none else 5) }}">
   <label>Apify (paid research)</label>
   <select name="apify_mode">
@@ -89,14 +89,14 @@
     <p class="meta" id="g-note"></p>
   </div>
   <label class="opt"><input type="checkbox" name="mix_auto" value="1" {{ 'checked' if s.mix_auto }}> Rebalance automatically from results</label>
-  <p class="meta">Every Monday ReelBot moves up to 10% towards whichever source is getting you the most views. It never drops one below 10%, so it keeps testing.
+  <p class="meta">Every Monday Creatr moves up to 10% towards whichever source is getting you the most views. It never drops one below 10%, so it keeps testing.
   {% if mix_change %}<br>Last change: {{ mix_change.reason }} (+{{ mix_change.points }}% {{ SOURCE_LABELS[mix_change.to] }}).{% endif %}</p>
   <script>
     const sliders = [...document.querySelectorAll('input.mix')], ppd = document.getElementById('ppd');
     const OUT = {{ outlook|tojson }}, LABELS = {{ labels|tojson }}, RISK = {instagram: 0, tiktok: 1, trends: 2, original: 3};
     const k1 = v => v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'K' : String(v);
     const SRC = sliders.map(s => s.dataset.src);
-    function split(n, mix) {  // same rounding as ReelBot: 10 reels at 50/30/20 = 5/3/2
+    function split(n, mix) {  // same rounding as Creatr: 10 reels at 50/30/20 = 5/3/2
       const total = mix.reduce((a, b) => a + b, 0) || 1, q = mix.map(m => n * m / total), c = q.map(Math.floor);
       q.map((x, i) => [x - c[i], -i, i]).sort((a, b) => b[0] - a[0] || b[1] - a[1]).slice(0, n - c.reduce((a, b) => a + b, 0)).forEach(([, , i]) => c[i]++);
       const on = mix.map((m, i) => m > 0 ? i : -1).filter(i => i >= 0);  // every source that's on gets 1+

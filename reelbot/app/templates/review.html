@@ -4,7 +4,7 @@
 <p class="sub">New reels waiting for your OK. Tap Approve, then pick when it goes out (or post it now).</p>
 {% if reels %}<form method="post" action="/reels/remake-all" class="row" style="margin:-8px 0 16px" onsubmit="return confirm('Re-make all reels waiting here? Takes a minute or two each.')">
   <button class="ghost mini">↻ Re-make all with the latest editing</button></form>{% endif %}
-{% if not reels %}<div class="empty">Nothing to review. <a href="/upload">Upload some clips</a> and ReelBot will make reels from them.</div>{% endif %}
+{% if not reels %}<div class="empty">Nothing to review. <a href="/upload">Upload some clips</a> and Creatr will make reels from them.</div>{% endif %}
 <div class="grid">
 {% for r in reels %}
   {% include "_reelcard.html" %}

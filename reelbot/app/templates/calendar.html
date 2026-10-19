@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block main %}
 <h1>Calendar</h1>
-<p class="sub">Every morning at 06:00 ReelBot plans tomorrow's reels{{ ' and schedules them' if mode == 'autopilot' else ' for you to review' }}.
+<p class="sub">Every morning at 06:00 Creatr plans tomorrow's reels{{ ' and schedules them' if mode == 'autopilot' else ' for you to review' }}.
   Posting times: {{ times|join(', ') }} (UK). Tap a reel to see everything about it.</p>
 <div class="row cal-nav">
   <a class="btn ghostlink" href="?m={{ prev }}">←</a>

@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_score.html" import score %}
 {% block main %}
 <h1>Results & learning</h1>
-<p class="sub">Every trial reel ReelBot posted, checked at 24, 48 and 72 hours. After 72 hours ReelBot reviews each one: what worked, what didn't, and one tweak to try. Press <b>Remake</b> to test it.</p>
+<p class="sub">Every trial reel Creatr posted, checked at 24, 48 and 72 hours. After 72 hours Creatr reviews each one: what worked, what didn't, and one tweak to try. Press <b>Remake</b> to test it.</p>
 {% if summary %}<div class="row" style="margin-bottom:16px"><span class="tag">{{ summary.reels }} reel{{ "s" if summary.reels != 1 }} with results</span><span class="tag">median {{ summary.median|num }} views</span><span class="tag ok">best {{ summary.best|num }} views</span>
 </div>{% endif %}
 <div class="card" style="margin-bottom:16px"><div class="body">

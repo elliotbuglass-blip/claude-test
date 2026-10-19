@@ -2,17 +2,17 @@
 {% block main %}
 <h1>Upload</h1>
 <p class="sub">Drop clips in, add a note to each if you like, then press <b>Start</b>. Want one reel from several clips? Tick "Edit these together".</p>
-<label for="desc">What are these clips? <span class="meta">(optional, but it helps: what's in them, what they're for, anything ReelBot can't see)</span></label>
+<label for="desc">What are these clips? <span class="meta">(optional, but it helps: what's in them, what they're for, anything Creatr can't see)</span></label>
 <textarea id="desc" rows="2" placeholder="e.g. My new navy suit from Reiss, outfit check before a wedding. Want to push the tailoring angle."></textarea>
-<label class="opt" style="margin-top:10px"><input type="checkbox" id="keeplook"> Already edited: keep my colours (ReelBot adds text, captions and timing, but no colour grade)</label>
-<p class="meta" style="margin:4px 0 14px">Applies to the clips you upload next. ReelBot still watches every clip itself; your words fill in what it can't see.</p>
+<label class="opt" style="margin-top:10px"><input type="checkbox" id="keeplook"> Already edited: keep my colours (Creatr adds text, captions and timing, but no colour grade)</label>
+<p class="meta" style="margin:4px 0 14px">Applies to the clips you upload next. Creatr still watches every clip itself; your words fill in what it can't see.</p>
 <div class="drops">
   <label class="dropzone" data-kind="main"><input type="file" accept="video/*" multiple hidden>
     <b>🎬 Main clips</b><span>Walk-ups, start-ups, drives, POVs: clips that can be a reel on their own</span><em>Drop here or tap to add</em></label>
   <label class="dropzone" data-kind="broll"><input type="file" accept="video/*" multiple hidden>
     <b>🎞 B-roll</b><span>Short detail shots (door, sill, badge) to cut into reels. Silent unless you say otherwise.</span><em>Drop here or tap to add</em></label>
   <label class="dropzone" data-kind="auto"><input type="file" accept="video/*" multiple hidden>
-    <b>🤔 Not sure</b><span>ReelBot watches each clip and decides: main or b-roll</span><em>Drop here or tap to add</em></label>
+    <b>🤔 Not sure</b><span>Creatr watches each clip and decides: main or b-roll</span><em>Drop here or tap to add</em></label>
   <label class="dropzone small" data-kind="music"><input type="file" accept="audio/*" multiple hidden>
     <b>🎵 Music</b><span>Tracks you have the rights to, for your library</span><em>Drop here</em></label>
 </div>
@@ -48,7 +48,7 @@
 const PICKED = {{ picked|tojson }};
 const tray = document.getElementById('tray'), itemsEl = document.getElementById('items'), list = document.getElementById('uploads');
 let items = [];
-const KINDS = {main: '🎬 Main', broll: '🎞 B-roll', auto: '🤔 Let ReelBot decide'};
+const KINDS = {main: '🎬 Main', broll: '🎞 B-roll', auto: '🤔 Let Creatr decide'};
 function draw() {
   tray.hidden = !items.length;
   itemsEl.innerHTML = '';
