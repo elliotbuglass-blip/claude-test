@@ -70,6 +70,16 @@
   .b3 { width: 70%; height: 60%; left: 15%;  top: 35%; background: var(--g-pink); animation-duration: 26s; animation-delay: -3s; }
   .b4 { width: 60%; height: 55%; left: 25%;  top: 60%; background: var(--g-red);  animation-duration: 22s; animation-delay: -9s; }
   .b5 { width: 40%; height: 40%; right: 5%;  top: 55%; background: var(--g-orange); opacity: .7; animation-duration: 28s; }
+  /* Cursor-following glow: sits above the white wash so it shows anywhere on the page */
+  .glow-follow {
+    position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none;
+    width: 520px; height: 520px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,102,244,.55) 0%, rgba(79,136,255,.45) 40%, rgba(79,136,255,0) 70%);
+    filter: blur(40px); opacity: 0; transition: opacity .8s var(--ease-out);
+    will-change: transform;
+  }
+  .glow-follow.on { opacity: 1; }
+  .aurora { will-change: transform; }
   @keyframes drift {
     0%   { transform: translate3d(0, 0, 0) scale(1); }
     50%  { transform: translate3d(4%, -6%, 0) scale(1.08); }
@@ -158,6 +168,7 @@
     <div class="aurora" aria-hidden="true">
       <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span><span class="blob b5"></span>
     </div>
+    <div class="glow-follow" id="glow" aria-hidden="true"></div>
 
     <div class="hero-inner">
       <h1 class="rise d1">Let’s get <span class="sweep">creative</span></h1>
@@ -235,6 +246,29 @@
   document.querySelectorAll(".chip").forEach(c => c.addEventListener("click", () => {
     typing = false; box.value = c.textContent; box.focus(); box.dispatchEvent(new Event("input"));
   }));
+
+  // Interactive background: a glow eases toward the cursor, and the aurora drifts the
+  // opposite way for parallax. Mouse/trackpad only; off for touch and reduced motion.
+  (() => {
+    if (reduced || !matchMedia("(pointer: fine)").matches) return;
+    const hero = document.querySelector(".hero");
+    const glow = document.getElementById("glow");
+    const aurora = document.querySelector(".aurora");
+    const R = glow.offsetWidth / 2;
+    let tx = innerWidth / 2, ty = innerHeight * .7, x = tx, y = ty;
+    hero.addEventListener("pointermove", e => {
+      const r = hero.getBoundingClientRect();
+      tx = e.clientX - r.left; ty = e.clientY - r.top;
+      glow.classList.add("on");
+    });
+    hero.addEventListener("pointerleave", () => glow.classList.remove("on"));
+    (function tick() {
+      x += (tx - x) * .08; y += (ty - y) * .08;   // easing = the "trailing" feel
+      glow.style.transform = `translate3d(${x - R}px, ${y - R}px, 0)`;
+      aurora.style.transform = `translate3d(${(x / innerWidth - .5) * -40}px, ${(y / innerHeight - .5) * -24}px, 0)`;
+      requestAnimationFrame(tick);
+    })();
+  })();
 
   // Replace this with your real handler (e.g. POST to your API, then route to the chat/workspace view).
   document.getElementById("chat").addEventListener("submit", e => {

@@ -128,6 +128,52 @@ Five large coloured circles, blurred heavily so they melt together, slowly drift
 - Reduced motion: stop the drift (keep the colours, static).
 - Optional upgrade: Lovable uses an animated WebGL `<canvas>` for a smoother, more fluid gradient. A shader library such as `@paper-design/shaders` (mesh gradient) can do this. Only switch if the CSS version isn't smooth enough, and keep the CSS version as the fallback.
 
+### 5.2b Interactive background: follows the mouse
+The background reacts to the cursor in two ways:
+1. **Cursor glow:** a soft pink-to-blue glow (~520px circle, blurred) eases toward the cursor wherever it is on the page, including the white top area. It fades in on first mouse move and fades out when the cursor leaves the page.
+2. **Parallax:** the whole aurora shifts gently *away* from the cursor (up to ~20px horizontally and ~12px vertically), so the background feels layered.
+
+```html
+<!-- inside .hero, directly after .aurora so it paints above the white wash -->
+<div class="glow-follow" id="glow" aria-hidden="true"></div>
+```
+```css
+.glow-follow {
+  position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none;
+  width: 520px; height: 520px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,102,244,.55) 0%, rgba(79,136,255,.45) 40%, rgba(79,136,255,0) 70%);
+  filter: blur(40px); opacity: 0; transition: opacity .8s var(--ease-out); will-change: transform;
+}
+.glow-follow.on { opacity: 1; }
+.aurora { will-change: transform; }
+```
+```js
+(() => {
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduced || !matchMedia("(pointer: fine)").matches) return;   // mouse/trackpad only
+  const hero = document.querySelector(".hero");
+  const glow = document.getElementById("glow");
+  const aurora = document.querySelector(".aurora");
+  const R = glow.offsetWidth / 2;
+  let tx = innerWidth / 2, ty = innerHeight * .7, x = tx, y = ty;
+  hero.addEventListener("pointermove", e => {
+    const r = hero.getBoundingClientRect();
+    tx = e.clientX - r.left; ty = e.clientY - r.top;
+    glow.classList.add("on");
+  });
+  hero.addEventListener("pointerleave", () => glow.classList.remove("on"));
+  (function tick() {
+    x += (tx - x) * .08; y += (ty - y) * .08;          // easing gives the soft "trailing" feel
+    glow.style.transform = `translate3d(${x - R}px, ${y - R}px, 0)`;
+    aurora.style.transform = `translate3d(${(x / innerWidth - .5) * -40}px, ${(y / innerHeight - .5) * -24}px, 0)`;
+    requestAnimationFrame(tick);
+  })();
+})();
+```
+- Animate **only `transform`** (never `left`/`top`) so it stays at 60fps. The easing factor `.08` sets how lazily it trails; raise it toward `.2` for snappier.
+- Off for touch devices and reduced motion. Optional extra: on phones, drive the same parallax from `deviceorientation` (tilt). iOS requires a permission prompt for this, so only add it if wanted.
+- In React, put this logic in a `useEffect` with cleanup (cancel the animation frame, remove listeners), and keep positions in refs rather than state so the page doesn't re-render every frame.
+
 ### 5.3 Headline colour sweep
 The word **"creative"** gets one sweep of the gradient across it on page load, then settles back to the normal text colour.
 ```css
@@ -192,6 +238,7 @@ Optional, below the fold: a "Recent projects" grid of cards (white, radius 16px,
 - [ ] Off-white background (`#FAF9F6`), near-black text, gradient glow rising from the bottom, chat box centred.
 - [ ] H1 reads "Let's get creative" with tight letter spacing, and "creative" gets the colour sweep on load.
 - [ ] The aurora drifts slowly and smoothly, is static under reduced motion, and has no visible banding or jank on a mid-range laptop.
+- [ ] With a mouse, the glow smoothly trails the cursor anywhere on the page and the aurora shifts subtly the other way; it's off for touch and reduced motion, with no dropped frames.
 - [ ] The placeholder types through examples and stops on focus.
 - [ ] Textarea auto-grows; Enter sends and Shift+Enter adds a new line; send is disabled until there's text.
 - [ ] Submitting calls the real backend and routes to the result; loading and error states exist.
