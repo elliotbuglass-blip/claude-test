@@ -49,6 +49,7 @@
   .brand-mark { width: 22px; height: 22px; border-radius: 7px; background: linear-gradient(135deg, var(--g-orange), var(--g-pink) 55%, var(--g-blue)); }
   .nav-right { display: flex; align-items: center; gap: 10px; }
   .btn { border: 0; border-radius: var(--radius-md); padding: 8px 12px; font-size: 14px; font-weight: 500; transition: background .15s; }
+  a.btn { display: inline-block; text-decoration: none; color: inherit; }
   .btn-ghost { background: transparent; border: 1px solid var(--color-border); }
   .btn-ghost:hover { background: rgba(0,0,0,.04); }
   .btn-dark { background: #1C1C1C; color: #fff; box-shadow: var(--shadow-button); }
@@ -158,7 +159,7 @@
   <header class="topbar">
     <a class="brand" href="#"><span class="brand-mark"></span>YourBrand</a>
     <div class="nav-right">
-      <button class="btn btn-ghost nav-hide-sm">My projects</button>
+      <a class="btn btn-ghost nav-hide-sm" href="../dashboard-demo/index.html">Overview</a>
       <button class="btn btn-dark nav-hide-sm">Upgrade</button>
       <button class="avatar" aria-label="Account menu">EB</button>
     </div>

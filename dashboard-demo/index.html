@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet">
+<style>
+  /* Animatable tint colours so the whole panel can fade between project themes */
+  @property --tint-a { syntax: "<color>"; inherits: true; initial-value: #6E2316; }
+  @property --tint-b { syntax: "<color>"; inherits: true; initial-value: #C8653F; }
+
+  :root {
+    /* Shared with the "Let's get creative" home page */
+    --color-bg: #FAF9F6;
+    --color-text-dark: #1C1C1C;
+    --g-blue: #4F88FF; --g-sky: #82BCFF; --g-pink: #FF66F4; --g-red: #FF3029; --g-orange: #FE7B02;
+    --font-display: "Satoshi", "Inter", system-ui, sans-serif;
+    --font-body: "Inter", system-ui, -apple-system, sans-serif;
+    --ease-out: cubic-bezier(.22, 1, .36, 1);
+
+    /* Dashboard: text on the tinted panel */
+    --on-tint: #FFFFFF;
+    --on-tint-muted: rgba(255,255,255,.74);
+    --on-tint-faint: rgba(255,255,255,.52);
+    --cream: #F6E7CF;                         /* active nav + primary button */
+
+    /* Glass cards */
+    --glass-bg: rgba(255,255,255,.10);
+    --glass-bg-hover: rgba(255,255,255,.14);
+    --glass-border: rgba(255,255,255,.22);
+    --glass-inset: inset 0 1px 0 rgba(255,255,255,.18);
+    --radius-card: 18px;
+    --radius-panel: 28px;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { min-height: 100%; }
+  body { background: var(--color-bg); color: var(--on-tint); font-family: var(--font-body); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  a { color: inherit; text-decoration: none; }
+  svg.i { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  /* ---------- Page aurora (same family as home), peeking around the panel ---------- */
+  .aurora { position: fixed; inset: 20% -15% -30% -15%; z-index: -2; filter: blur(80px) saturate(130%); opacity: .8; pointer-events: none; }
+  .blob { position: absolute; border-radius: 50%; animation: drift 22s ease-in-out infinite alternate; }
+  .b1 { width: 55%; height: 70%; left: -5%; top: 0; background: var(--g-blue); }
+  .b2 { width: 60%; height: 60%; left: 25%; top: 40%; background: var(--g-pink); animation-duration: 26s; }
+  .b3 { width: 50%; height: 60%; right: -5%; top: 20%; background: var(--g-orange); animation-duration: 24s; }
+  @keyframes drift { to { transform: translate3d(5%, -6%, 0) scale(1.08); } }
+
+  /* ---------- Panel ---------- */
+  .panel {
+    position: relative; isolation: isolate; overflow: hidden;
+    margin: 16px; min-height: calc(100dvh - 32px);
+    border-radius: var(--radius-panel);
+    background:
+      radial-gradient(80% 60% at 0% 0%, rgba(255,255,255,.14), transparent 60%),
+      linear-gradient(165deg, var(--tint-a) 0%, var(--tint-b) 100%);
+    box-shadow: 0 30px 80px -30px rgba(40,20,60,.45), inset 0 0 0 1px rgba(255,255,255,.18);
+    display: grid; grid-template-columns: 76px 1fr;
+    transition: --tint-a 1.2s var(--ease-out), --tint-b 1.2s var(--ease-out);
+  }
+  /* Soft spotlight that follows the mouse across the panel */
+  .panel::after {
+    content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+    background: radial-gradient(420px circle at var(--mx, 70%) var(--my, 20%), rgba(255,255,255,.12), transparent 70%);
+  }
+
+  /* ---------- Side rail ---------- */
+  .rail { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 22px 0; background: rgba(0,0,0,.10); border-right: 1px solid rgba(255,255,255,.10); }
+  .logo { width: 32px; height: 32px; border-radius: 10px; margin-bottom: 26px; background: linear-gradient(135deg, var(--g-orange), var(--g-pink) 55%, var(--g-blue)); box-shadow: 0 0 0 1px rgba(255,255,255,.35); }
+  .nav-btn { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: var(--on-tint-muted); border: 0; background: transparent; transition: background .15s, color .15s; position: relative; }
+  .nav-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
+  .nav-btn[aria-current="page"] { background: var(--cream); color: var(--color-text-dark); box-shadow: 0 4px 14px -4px rgba(0,0,0,.35); }
+  .nav-btn .tip { position: absolute; left: 52px; white-space: nowrap; font-size: 12px; background: rgba(20,20,20,.85); color: #fff; padding: 4px 8px; border-radius: 6px; opacity: 0; transform: translateX(-4px); transition: .15s; pointer-events: none; }
+  .nav-btn:hover .tip, .nav-btn:focus-visible .tip { opacity: 1; transform: none; }
+  .rail .spacer { flex: 1; }
+  .me { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 600; background: linear-gradient(135deg, #FFD9B8, #F5A3C7); color: var(--color-text-dark); box-shadow: 0 0 0 2px rgba(255,255,255,.4); margin-bottom: 6px; }
+
+  /* ---------- Main ---------- */
+  main { padding: 28px 32px 36px; min-width: 0; }
+  .head { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 26px; }
+  .head h1 { font: 500 34px/1 var(--font-display); letter-spacing: -.03em; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 5px 10px 5px 6px; border-radius: 999px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.16); color: var(--on-tint-muted); }
+  .chip i { width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 10px; background: #fff; color: var(--color-text-dark); }
+  .head-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .search { display: flex; align-items: center; gap: 8px; width: 240px; padding: 8px 12px; border-radius: 999px; background: rgba(0,0,0,.16); border: 1px solid rgba(255,255,255,.12); color: var(--on-tint-muted); }
+  .search input { border: 0; outline: 0; background: transparent; width: 100%; font-size: 13px; color: #fff; }
+  .search input::placeholder { color: var(--on-tint-faint); }
+  .search:focus-within { border-color: rgba(255,255,255,.4); }
+  .ghost-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px; border: 0; background: transparent; font-size: 13px; color: var(--on-tint-muted); transition: background .15s, color .15s; }
+  .ghost-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
+  .cream-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 999px; border: 0; background: var(--cream); color: var(--color-text-dark); font-size: 13px; font-weight: 500; box-shadow: 0 6px 18px -8px rgba(0,0,0,.45); transition: transform .15s, filter .15s; }
+  .cream-btn:hover { filter: brightness(1.04); transform: translateY(-1px); }
+  .glass-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 999px; background: var(--glass-bg); border: 1px solid var(--glass-border); font-size: 13px; color: #fff; transition: background .15s; }
+  .glass-btn:hover { background: var(--glass-bg-hover); }
+  .round-btn { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--glass-bg); border: 1px solid var(--glass-border); transition: background .15s, transform .15s; }
+  .round-btn:hover { background: var(--glass-bg-hover); }
+  .round-btn[aria-pressed="true"] { background: #fff; color: var(--g-red); }
+  .round-btn[aria-pressed="true"] svg { fill: currentColor; }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 22px; }
+  .card {
+    position: relative; border-radius: var(--radius-card); padding: 22px 24px;
+    background: var(--glass-bg); border: 1px solid var(--glass-border); box-shadow: var(--glass-inset);
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .card-head h2 { font: 400 20px/1.2 var(--font-display); letter-spacing: -.01em; display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+  .profile { display: flex; flex-direction: column; }
+  .usage { margin-top: auto; padding-top: 22px; }
+  .usage-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--on-tint-muted); margin-bottom: 8px; }
+  .usage-row b { color: #fff; font-weight: 500; }
+  .bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.18); overflow: hidden; }
+  .bar span { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, #fff, var(--cream)); transition: width 1.2s var(--ease-out) .4s; }
+  .pill { font: 500 13px var(--font-body); padding: 3px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,.35); color: #fff; }
+
+  /* Activity chart */
+  .chart-wrap { position: relative; height: 170px; margin-top: 10px; }
+  .chart-wrap svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .chart-line { fill: none; stroke: rgba(255,255,255,.92); stroke-width: 2; stroke-linecap: round; }
+  .chart-area { fill: url(#areaFill); }
+  .chart-dot { fill: #fff; stroke: var(--tint-a); stroke-width: 2; }
+  .chart-label { fill: var(--on-tint-muted); font: 500 11px var(--font-body); }
+  .chart-x { fill: var(--on-tint-faint); font: 400 11px var(--font-body); }
+  .crosshair { stroke: rgba(255,255,255,.45); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0; transition: opacity .15s; }
+  .tooltip { position: absolute; pointer-events: none; transform: translate(-50%, calc(-100% - 12px)); background: rgba(20,14,14,.82); color: #fff; font-size: 12px; padding: 6px 9px; border-radius: 8px; white-space: nowrap; opacity: 0; transition: opacity .15s; backdrop-filter: blur(6px); }
+  .tooltip b { font-weight: 600; }
+
+  /* Profile card */
+  .profile-top { display: flex; align-items: center; gap: 16px; }
+  .avatar-lg { width: 60px; height: 60px; border-radius: 50%; display: grid; place-items: center; font: 600 20px var(--font-display); color: var(--color-text-dark); background: linear-gradient(135deg, #FFD9B8, #F5A3C7 60%, #A9C4FF); box-shadow: 0 0 0 3px rgba(255,255,255,.35); }
+  .profile-top .who { flex: 1; min-width: 0; }
+  .who b { display: block; font-weight: 500; font-size: 15px; }
+  .who span { font-size: 12px; color: var(--on-tint-muted); }
+  .stats3 { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 26px; }
+  .stats3 > div { text-align: center; padding: 4px 0; }
+  .stats3 > div + div { border-left: 1px solid rgba(255,255,255,.18); }
+  .stats3 small { display: block; font-size: 13px; color: var(--on-tint-muted); margin-bottom: 8px; }
+  .stats3 strong { font: 400 22px var(--font-display); }
+
+  /* Featured project */
+  .feature-media { position: relative; overflow: hidden; border-radius: var(--radius-card); min-height: 330px; border: 1px solid var(--glass-border); box-shadow: 0 20px 50px -24px rgba(0,0,0,.5); }
+  .art { position: absolute; inset: 0; transition: opacity 1s var(--ease-out); }
+  .art:not(.on) { opacity: 0; }
+  .art svg { width: 100%; height: 100%; display: block; }
+  .dots { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; gap: 8px; }
+  .dots button { width: 8px; height: 8px; padding: 0; border-radius: 50%; border: 0; background: rgba(255,255,255,.45); transition: width .3s var(--ease-out), background .3s; }
+  .dots button[aria-selected="true"] { width: 22px; border-radius: 4px; background: #fff; }
+  .feature-info { display: flex; flex-direction: column; padding: 8px 4px; }
+  .feature-info .kicker { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--on-tint-faint); margin-bottom: 8px; }
+  .feature-info h3 { font: 400 clamp(40px, 4.4vw, 60px)/1 var(--font-display); letter-spacing: -.03em; min-height: 2em; }
+  .feature-info hr { border: 0; border-top: 1px solid rgba(255,255,255,.22); margin: 22px 0 18px; }
+  .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .meta small { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--on-tint-muted); margin-bottom: 6px; }
+  .meta small svg { width: 15px; height: 15px; }
+  .meta strong { font: 400 20px var(--font-display); }
+  .feature-info p { font-size: 13px; line-height: 1.55; color: var(--on-tint-muted); margin: 18px 0 22px; max-width: 46ch; }
+  .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: auto; }
+  .swap { transition: opacity .35s, transform .35s var(--ease-out); }
+  .swap.out { opacity: 0; transform: translateY(6px); }
+
+  /* Recent projects */
+  .section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 34px 0 14px; }
+  .section-head h2 { font: 400 20px var(--font-display); }
+  .section-head a { font-size: 13px; color: var(--on-tint-muted); }
+  .section-head a:hover { color: #fff; }
+  .recent { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+  .mini { padding: 10px; transition: background .2s, transform .2s var(--ease-out); }
+  .mini:hover { background: var(--glass-bg-hover); transform: translateY(-2px); }
+  .thumb { aspect-ratio: 16 / 10; border-radius: 12px; margin-bottom: 10px; }
+  .mini b { display: block; font-weight: 500; font-size: 14px; padding: 0 4px; }
+  .mini span { font-size: 12px; color: var(--on-tint-muted); padding: 0 4px; }
+
+  /* Entrance */
+  .rise { opacity: 0; transform: translateY(14px); animation: rise .8s var(--ease-out) forwards; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 1100px) {
+    .grid { grid-template-columns: 1fr; }
+    .recent { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .search { width: 180px; }
+  }
+  @media (max-width: 760px) {
+    .panel { margin: 8px; min-height: calc(100dvh - 16px); grid-template-columns: 1fr; border-radius: 22px; }
+    .rail { flex-direction: row; justify-content: space-between; padding: 10px 14px; border-right: 0; border-bottom: 1px solid rgba(255,255,255,.10); overflow-x: auto; }
+    .logo { margin: 0 6px 0 0; }
+    .rail .spacer, .rail .logout { display: none; }
+    .me { margin: 0; }
+    .nav-btn .tip { display: none; }
+    main { padding: 20px 16px 28px; }
+    .head h1 { font-size: 28px; }
+    .card { padding: 18px; }
+    .card-head h2 { font-size: 16px; gap: 6px; }
+    .head-actions { margin-left: 0; width: 100%; }
+    .search { flex: 1; width: auto; }
+    .head-actions .ghost-btn span { display: none; }
+    .feature-media { min-height: 230px; }
+    .recent { gap: 10px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .blob, .rise { animation: none; }
+    .rise { opacity: 1; transform: none; }
+    .panel, .art, .swap { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="aurora" aria-hidden="true"><span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span></div>
+
+  <div class="panel" id="panel">
+    <!-- ========== Side rail ========== -->
+    <nav class="rail" aria-label="Main">
+      <a class="logo" href="../home-demo/index.html" aria-label="YourBrand home"></a>
+      <a class="nav-btn" href="../home-demo/index.html" aria-label="Create">
+        <svg class="i" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span class="tip">Create</span>
+      </a>
+      <a class="nav-btn" href="#" aria-current="page" aria-label="Overview">
+        <svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg><span class="tip">Overview</span>
+      </a>
+      <a class="nav-btn" href="#" aria-label="Projects">
+        <svg class="i" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="tip">Projects</span>
+      </a>
+      <a class="nav-btn" href="#" aria-label="Library">
+        <svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg><span class="tip">Library</span>
+      </a>
+      <a class="nav-btn" href="#" aria-label="Templates">
+        <svg class="i" viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5M3 17l9 5 9-5"/></svg><span class="tip">Templates</span>
+      </a>
+      <a class="nav-btn" href="#" aria-label="Settings">
+        <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span class="tip">Settings</span>
+      </a>
+      <div class="spacer"></div>
+      <button class="me" aria-label="Account menu">EB</button>
+      <a class="nav-btn logout" href="#" aria-label="Log out">
+        <svg class="i" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg><span class="tip">Log out</span>
+      </a>
+    </nav>
+
+    <!-- ========== Main ========== -->
+    <main>
+      <header class="head rise">
+        <h1>Overview</h1>
+        <div class="chips">
+          <span class="chip"><i>🔥</i>7-day streak</span>
+          <span class="chip"><i>✓</i>12 projects this month</span>
+          <span class="chip"><i>★</i>Pro plan</span>
+        </div>
+        <div class="head-actions">
+          <label class="search">
+            <svg class="i" viewBox="0 0 24 24" style="width:15px;height:15px"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input type="search" placeholder="Search projects" aria-label="Search projects">
+          </label>
+          <button class="ghost-btn" aria-label="Notifications"><svg class="i" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span>Alerts</span></button>
+          <a class="cream-btn" href="../home-demo/index.html"><svg class="i" viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M12 5v14M5 12h14"/></svg>New</a>
+        </div>
+      </header>
+
+      <!-- Row 1: activity + profile -->
+      <section class="grid">
+        <article class="card rise" style="animation-delay:.08s">
+          <div class="card-head">
+            <h2>Creations <span class="pill" id="totalPill">0</span></h2>
+            <h2>Time saved <span class="pill">8hr</span></h2>
+          </div>
+          <div class="chart-wrap" id="chart" role="img" aria-label="Creations per day this week">
+            <div class="tooltip" id="tip"></div>
+          </div>
+        </article>
+
+        <article class="card profile rise" style="animation-delay:.16s">
+          <div class="profile-top">
+            <div class="avatar-lg">EB</div>
+            <div class="who"><b>Elliot Buglass</b><span>@elliot · Creator</span></div>
+            <button class="round-btn" aria-label="Share profile"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg></button>
+          </div>
+          <div class="stats3">
+            <div><small>Projects</small><strong data-count="80">0</strong></div>
+            <div><small>Credits</small><strong data-count="200">0</strong></div>
+            <div><small>Shares</small><strong data-count="110">0</strong></div>
+          </div>
+          <div class="usage">
+            <div class="usage-row"><span>Monthly credits</span><span><b>124</b> / 200 used</span></div>
+            <div class="bar" role="progressbar" aria-valuenow="62" aria-valuemin="0" aria-valuemax="100" aria-label="Monthly credits used"><span id="usageBar"></span></div>
+          </div>
+        </article>
+
+        <!-- Row 2: featured project carousel -->
+        <div class="feature-media rise" style="animation-delay:.24s" id="media" aria-roledescription="carousel" aria-label="Featured projects">
+          <div class="dots" role="tablist" id="dots"></div>
+        </div>
+
+        <div class="feature-info rise" style="animation-delay:.32s">
+          <div class="swap" id="info">
+            <div class="kicker" id="fKicker"></div>
+            <h3 id="fTitle"></h3>
+            <hr>
+            <div class="meta">
+              <div><small><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m21 15-5-5L5 21"/></svg>Assets</small><strong id="fAssets"></strong></div>
+              <div><small><svg class="i" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>Views</small><strong id="fViews"></strong></div>
+              <div><small><svg class="i" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Edits</small><strong id="fEdits"></strong></div>
+            </div>
+            <p id="fDesc"></p>
+          </div>
+          <div class="actions">
+            <a class="cream-btn" href="#">Open project</a>
+            <button class="glass-btn">Share preview</button>
+            <button class="round-btn" id="fav" aria-pressed="false" aria-label="Favourite"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Row 3: recent projects -->
+      <div class="section-head rise" style="animation-delay:.4s"><h2>Recent projects</h2><a href="#">See all →</a></div>
+      <section class="recent" id="recent"></section>
+    </main>
+  </div>
+
+<script>
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ================= Data (replace with your API) ================= */
+  const WEEK = [
+    { day: "Mon", v: 4 }, { day: "Tue", v: 7 }, { day: "Wed", v: 5 }, { day: "Thu", v: 12 },
+    { day: "Fri", v: 9 }, { day: "Sat", v: 6 }, { day: "Sun", v: 14 },
+  ];
+  // Each featured project carries its own panel tint (dark → light) and artwork colours.
+  const FEATURED = [
+    { kicker: "Featured project", title: "Summer Campaign", assets: "48", views: "12.4k", edits: "36",
+      desc: "A warm, sun-soaked launch for the new collection: hero banners, social posts and a short promo video, all generated from one brief.",
+      tint: ["#6E2316", "#C8653F"], sky: ["#2B1B2E", "#E8784A", "#F7C08A"], hill: "#3A1F1E" },
+    { kicker: "Featured project", title: "Coffee Rebrand", assets: "31", views: "8.9k", edits: "52",
+      desc: "Moodboards, a refreshed logo direction and packaging mock-ups for a neighbourhood roastery's new identity.",
+      tint: ["#16295E", "#4F7FE0"], sky: ["#0E1838", "#3E6FD8", "#A9C8FF"], hill: "#14204A" },
+    { kicker: "Featured project", title: "Product Launch", assets: "64", views: "21.1k", edits: "18",
+      desc: "Landing page, announcement email and a week of social content for the app's biggest release yet.",
+      tint: ["#4A1752", "#C04FA0"], sky: ["#22102A", "#B24A9E", "#FFB3D9"], hill: "#2A1030" },
+  ];
+  const RECENT = [
+    { title: "Spring lookbook", time: "Edited 2h ago", g: ["#FFB37A", "#FF66F4"] },
+    { title: "Podcast cover art", time: "Edited yesterday", g: ["#82BCFF", "#4F88FF"] },
+    { title: "Newsletter #14", time: "Edited 3 days ago", g: ["#FF8A7A", "#FE7B02"] },
+    { title: "Brand guidelines", time: "Edited last week", g: ["#C9B6FF", "#FF66F4"] },
+  ];
+
+  /* ================= Activity chart ================= */
+  const chartEl = document.getElementById("chart"), tip = document.getElementById("tip");
+  const NS = "http://www.w3.org/2000/svg";
+  const total = WEEK.reduce((s, d) => s + d.v, 0);
+
+  function smoothPath(pts) { // Catmull-Rom → cubic Bézier
+    let d = `M${pts[0][0]},${pts[0][1]}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+      const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+      const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+      d += ` C${c1},${c2},${p2}`;
+    }
+    return d;
+  }
+
+  function drawChart(animate) {
+    chartEl.querySelector("svg")?.remove();
+    const W = chartEl.clientWidth, H = chartEl.clientHeight, padX = 18, top = 26, bottom = 26;
+    const max = Math.max(...WEEK.map(d => d.v));
+    const pts = WEEK.map((d, i) => [
+      +(padX + i * (W - padX * 2) / (WEEK.length - 1)).toFixed(1),
+      +(top + (1 - d.v / max) * (H - top - bottom)).toFixed(1),
+    ]);
+    const svg = document.createElementNS(NS, "svg");
+    const line = smoothPath(pts);
+    svg.innerHTML = `
+      <defs><linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+      </linearGradient></defs>
+      <path class="chart-area" d="${line} L${pts.at(-1)[0]},${H - bottom} L${pts[0][0]},${H - bottom} Z"/>
+      <path class="chart-line" d="${line}"/>
+      <line class="crosshair" y1="${top - 10}" y2="${H - bottom}"/>`;
+    // Dots, direct labels on the peak + latest point only, and day labels
+    const maxI = WEEK.findIndex(d => d.v === max);
+    pts.forEach(([x, y], i) => {
+      svg.insertAdjacentHTML("beforeend", `<circle class="chart-dot" cx="${x}" cy="${y}" r="5"/>`);
+      if (i === maxI || i === WEEK.length - 1 || i === 3) svg.insertAdjacentHTML("beforeend", `<text class="chart-label" x="${x}" y="${y - 12}" text-anchor="middle">${WEEK[i].v}</text>`);
+      svg.insertAdjacentHTML("beforeend", `<text class="chart-x" x="${x}" y="${H - 6}" text-anchor="middle">${WEEK[i].day}</text>`);
+    });
+    chartEl.prepend(svg);
+
+    if (animate && !reduced) {
+      const path = svg.querySelector(".chart-line"), len = path.getTotalLength();
+      path.style.strokeDasharray = len; path.style.strokeDashoffset = len;
+      path.getBoundingClientRect();
+      path.style.transition = "stroke-dashoffset 1.4s cubic-bezier(.22,1,.36,1) .3s";
+      path.style.strokeDashoffset = 0;
+    }
+
+    // Hover: nearest day → crosshair + tooltip
+    const cross = svg.querySelector(".crosshair");
+    chartEl.onpointermove = e => {
+      const x = e.clientX - chartEl.getBoundingClientRect().left;
+      let i = 0; pts.forEach((p, j) => { if (Math.abs(p[0] - x) < Math.abs(pts[i][0] - x)) i = j; });
+      cross.setAttribute("x1", pts[i][0]); cross.setAttribute("x2", pts[i][0]); cross.style.opacity = 1;
+      tip.innerHTML = `${WEEK[i].day} · <b>${WEEK[i].v}</b> creations`;
+      tip.style.left = pts[i][0] + "px"; tip.style.top = pts[i][1] + "px"; tip.style.opacity = 1;
+    };
+    chartEl.onpointerleave = () => { cross.style.opacity = 0; tip.style.opacity = 0; };
+  }
+  drawChart(true);
+  let rT; addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(() => drawChart(false), 120); });
+
+  /* ================= Count-up numbers ================= */
+  function countUp(el, to) {
+    if (reduced) { el.textContent = to; return; }
+    const t0 = performance.now(), dur = 1200;
+    (function f(t) { const p = Math.min(1, (t - t0) / dur); el.textContent = Math.round(to * (1 - Math.pow(1 - p, 3))); if (p < 1) requestAnimationFrame(f); })(t0);
+  }
+  document.querySelectorAll("[data-count]").forEach(el => countUp(el, +el.dataset.count));
+  countUp(document.getElementById("totalPill"), total);
+  requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById("usageBar").style.width = "62%"));
+
+  /* ================= Featured carousel ================= */
+  const media = document.getElementById("media"), dots = document.getElementById("dots"), panel = document.getElementById("panel");
+  const info = document.getElementById("info");
+  const artSVG = f => `
+    <svg viewBox="0 0 800 450" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <defs>
+        <linearGradient id="s${f.title.length}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="${f.sky[0]}"/><stop offset=".55" stop-color="${f.sky[1]}"/><stop offset=".72" stop-color="${f.sky[2]}"/>
+        </linearGradient>
+        <radialGradient id="sun${f.title.length}" cx=".62" cy=".6" r=".35"><stop offset="0" stop-color="#fff" stop-opacity=".75"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+        <linearGradient id="w${f.title.length}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${f.sky[2]}" stop-opacity=".9"/><stop offset="1" stop-color="${f.hill}"/></linearGradient>
+      </defs>
+      <rect width="800" height="450" fill="url(#s${f.title.length})"/>
+      <rect width="800" height="450" fill="url(#sun${f.title.length})"/>
+      <path d="M0 300 L140 250 L230 200 L300 150 L360 175 L420 120 L480 160 L560 210 L660 240 L800 270 L800 320 L0 320Z" fill="${f.hill}" opacity=".95"/>
+      <path d="M0 320 L800 320 L800 450 L0 450Z" fill="url(#w${f.title.length})"/>
+      <path d="M0 320 C200 360 420 300 800 350 L800 450 L0 450Z" fill="${f.hill}" opacity=".55"/>
+    </svg>`;
+  FEATURED.forEach((f, i) => {
+    media.insertAdjacentHTML("afterbegin", `<div class="art" data-i="${i}">${artSVG(f)}</div>`);
+    const b = document.createElement("button");
+    b.setAttribute("role", "tab"); b.setAttribute("aria-label", f.title);
+    b.onclick = () => { show(i); stopAuto(); };
+    dots.append(b);
+  });
+
+  let current = -1, auto;
+  function show(i) {
+    if (i === current) return;
+    current = i;
+    const f = FEATURED[i];
+    media.querySelectorAll(".art").forEach(a => a.classList.toggle("on", +a.dataset.i === i));
+    [...dots.children].forEach((b, j) => b.setAttribute("aria-selected", j === i));
+    panel.style.setProperty("--tint-a", f.tint[0]);
+    panel.style.setProperty("--tint-b", f.tint[1]);
+    info.classList.add("out");
+    setTimeout(() => {
+      fKicker.textContent = f.kicker; fTitle.textContent = f.title;
+      fAssets.textContent = f.assets; fViews.textContent = f.views; fEdits.textContent = f.edits; fDesc.textContent = f.desc;
+      info.classList.remove("out");
+    }, reduced ? 0 : 300);
+  }
+  const startAuto = () => { if (!reduced) auto = setInterval(() => show((current + 1) % FEATURED.length), 7000); };
+  const stopAuto = () => clearInterval(auto);
+  media.addEventListener("pointerenter", stopAuto);
+  media.addEventListener("pointerleave", () => { stopAuto(); startAuto(); });
+  show(0); startAuto();
+
+  document.getElementById("fav").onclick = e => {
+    const b = e.currentTarget; b.setAttribute("aria-pressed", b.getAttribute("aria-pressed") !== "true");
+  };
+
+  /* ================= Recent projects ================= */
+  document.getElementById("recent").innerHTML = RECENT.map((p, i) => `
+    <a class="card mini rise" href="#" style="animation-delay:${.45 + i * .06}s">
+      <div class="thumb" style="background: radial-gradient(70% 70% at 30% 30%, rgba(255,255,255,.55), transparent 60%), linear-gradient(135deg, ${p.g[0]}, ${p.g[1]})"></div>
+      <b>${p.title}</b><span>${p.time}</span>
+    </a>`).join("");
+
+  /* ================= Mouse spotlight on the panel ================= */
+  if (!reduced && matchMedia("(pointer: fine)").matches) {
+    let raf;
+    panel.addEventListener("pointermove", e => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const r = panel.getBoundingClientRect();
+        panel.style.setProperty("--mx", e.clientX - r.left + "px");
+        panel.style.setProperty("--my", e.clientY - r.top + "px");
+      });
+    });
+  }
+</script>
+</body>
+</html>
