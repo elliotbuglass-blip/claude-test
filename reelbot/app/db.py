@@ -63,7 +63,7 @@ NEW_COLUMNS = {
     "reels": {"positives": "TEXT", "negatives": "TEXT", "sound_reason": "TEXT", "trend": "TEXT",
               "cut_reason": "TEXT", "text_reason": "TEXT", "research": "TEXT", "text_spots": "TEXT", "risky": "INTEGER", "source": "TEXT", "series": "TEXT",
               "adjust": "TEXT", "chat": "TEXT", "text_layout": "TEXT", "text_scale": "REAL", "motion": "TEXT",
-              "inspirations": "TEXT", "keywords": "TEXT", "lesson": "TEXT", "parent": "TEXT"},
+              "inspirations": "TEXT", "keywords": "TEXT", "lesson": "TEXT", "parent": "TEXT", "favourite": "INTEGER"},
 }
 
 _lock = threading.Lock()

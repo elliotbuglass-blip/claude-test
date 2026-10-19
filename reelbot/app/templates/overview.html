@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview · Creatr</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/rail.css">
+<style>
+  /* Animatable tint colours so the whole panel can fade between reels' themes */
+  @property --tint-a { syntax: "<color>"; inherits: true; initial-value: #4A1752; }
+  @property --tint-b { syntax: "<color>"; inherits: true; initial-value: #9C3D84; }
+  :root {
+    --color-bg: #FAF9F6; --color-text-dark: #1C1C1C;
+    --g-blue: #4F88FF; --g-sky: #82BCFF; --g-pink: #FF66F4; --g-red: #FF3029; --g-orange: #FE7B02;
+    --font-display: "Satoshi", "Inter", system-ui, sans-serif;
+    --font-body: "Inter", system-ui, -apple-system, sans-serif;
+    --ease-out: cubic-bezier(.22, 1, .36, 1);
+    --on-tint: #FFFFFF; --on-tint-muted: rgba(255,255,255,.80); --on-tint-faint: rgba(255,255,255,.62);
+    --cream: #F6E7CF;
+    --glass-bg: rgba(255,255,255,.10); --glass-bg-hover: rgba(255,255,255,.15); --glass-border: rgba(255,255,255,.22);
+    --glass-inset: inset 0 1px 0 rgba(255,255,255,.18);
+    --radius-card: 18px; --radius-panel: 28px;
+    --focus: 0 0 0 3px rgba(255,255,255,.7);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { min-height: 100%; }
+  body { background: var(--color-bg); color: var(--on-tint); font-family: var(--font-body); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  a { color: inherit; text-decoration: none; }
+  :focus-visible { outline: none; box-shadow: var(--focus); }
+  svg.i { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  .aurora { position: fixed; inset: 20% -15% -30% -15%; z-index: -2; filter: blur(80px) saturate(130%); opacity: .8; pointer-events: none; }
+  .blob { position: absolute; border-radius: 50%; animation: drift 22s ease-in-out infinite alternate; }
+  .b1 { width: 55%; height: 70%; left: -5%; top: 0; background: var(--g-blue); }
+  .b2 { width: 60%; height: 60%; left: 25%; top: 40%; background: var(--g-pink); animation-duration: 26s; }
+  .b3 { width: 50%; height: 60%; right: -5%; top: 20%; background: var(--g-orange); animation-duration: 24s; }
+  @keyframes drift { to { transform: translate3d(5%, -6%, 0) scale(1.08); } }
+
+  .panel { position: relative; isolation: isolate; overflow: clip; margin: 16px; min-height: calc(100vh - 32px); min-height: calc(100dvh - 32px);
+    border-radius: var(--radius-panel);
+    background: linear-gradient(to right, rgba(0,0,0,.10) var(--rail-w), rgba(255,255,255,.10) var(--rail-w), transparent calc(var(--rail-w) + 1px)),
+                radial-gradient(80% 60% at 0% 0%, rgba(255,255,255,.14), transparent 60%), linear-gradient(165deg, var(--tint-a) 0%, var(--tint-b) 100%);
+    box-shadow: 0 30px 80px -30px rgba(40,20,60,.45), inset 0 0 0 1px rgba(255,255,255,.18);
+    display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr);
+    transition: --tint-a 1.2s var(--ease-out), --tint-b 1.2s var(--ease-out); }
+  .panel::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+    background: radial-gradient(420px circle at var(--mx, 70%) var(--my, 20%), rgba(255,255,255,.12), transparent 70%); }
+  .panel .rail { height: calc(100dvh - 32px); }
+
+  main { padding: 28px 32px 36px; min-width: 0; }
+  .head { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 26px; }
+  .head h1 { font: 500 34px/1 var(--font-display); letter-spacing: -.03em; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 5px 10px 5px 6px; border-radius: 999px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.16); color: var(--on-tint-muted); }
+  .chip i { width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 10px; background: #fff; color: var(--color-text-dark); }
+  .head-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; position: relative; }
+  .search { display: flex; align-items: center; gap: 8px; width: 240px; padding: 8px 12px; border-radius: 999px; background: rgba(0,0,0,.16); border: 1px solid rgba(255,255,255,.12); color: var(--on-tint-muted); }
+  .search input { border: 0; outline: 0; background: transparent; width: 100%; font-size: 13px; color: #fff; }
+  .search input::placeholder { color: var(--on-tint-faint); }
+  .search:focus-within { border-color: rgba(255,255,255,.5); }
+  .ghost-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px; border: 0; background: transparent; font-size: 13px; color: var(--on-tint-muted); transition: background .15s, color .15s; }
+  .ghost-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
+  .cream-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 999px; border: 0; background: var(--cream); color: var(--color-text-dark); font-size: 13px; font-weight: 500; box-shadow: 0 6px 18px -8px rgba(0,0,0,.45); transition: transform .15s, filter .15s; }
+  .cream-btn:hover { filter: brightness(1.04); transform: translateY(-1px); }
+  .glass-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 999px; background: var(--glass-bg); border: 1px solid var(--glass-border); font-size: 13px; color: #fff; transition: background .15s; }
+  .glass-btn:hover { background: var(--glass-bg-hover); }
+  .round-btn { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--glass-bg); border: 1px solid var(--glass-border); transition: background .15s; }
+  .round-btn:hover { background: var(--glass-bg-hover); }
+  .round-btn[aria-pressed="true"] { background: #fff; color: var(--g-red); }
+  .round-btn[aria-pressed="true"] svg { fill: currentColor; }
+  .alerts { position: absolute; right: 0; top: 46px; z-index: 10; width: min(360px, 86vw); background: rgba(20,14,20,.92); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border); border-radius: 14px; padding: 8px; display: none; }
+  .alerts.open { display: block; }
+  .alerts div { font-size: 12px; padding: 8px; color: var(--on-tint-muted); border-bottom: 1px solid rgba(255,255,255,.08); }
+  .alerts div:last-child { border-bottom: 0; }
+  .alerts b { color: #fff; font-weight: 500; display: block; font-size: 11px; opacity: .7; }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 22px; }
+  .card { position: relative; border-radius: var(--radius-card); padding: 22px 24px; background: var(--glass-bg); border: 1px solid var(--glass-border); box-shadow: var(--glass-inset);
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .card-head h2 { font: 400 20px/1.2 var(--font-display); letter-spacing: -.01em; display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+  .profile { display: flex; flex-direction: column; }
+  .usage { margin-top: auto; padding-top: 22px; }
+  .usage-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--on-tint-muted); margin-bottom: 8px; }
+  .usage-row b { color: #fff; font-weight: 500; }
+  .bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.18); overflow: hidden; }
+  .bar span { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, #fff, var(--cream)); transition: width 1.2s var(--ease-out) .4s; }
+  .pill { font: 500 13px var(--font-body); padding: 3px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,.35); color: #fff; }
+
+  .chart-wrap { position: relative; height: 170px; margin-top: 10px; }
+  .chart-wrap svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .chart-line { fill: none; stroke: rgba(255,255,255,.92); stroke-width: 2; stroke-linecap: round; }
+  .chart-area { fill: url(#areaFill); }
+  .chart-dot { fill: #fff; stroke: var(--tint-a); stroke-width: 2; }
+  .chart-label { fill: var(--on-tint-muted); font: 500 11px var(--font-body); }
+  .chart-x { fill: var(--on-tint-faint); font: 400 11px var(--font-body); }
+  .crosshair { stroke: rgba(255,255,255,.45); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0; transition: opacity .15s; }
+  .tooltip { position: absolute; pointer-events: none; transform: translate(-50%, calc(-100% - 12px)); background: rgba(20,14,14,.85); color: #fff; font-size: 12px; padding: 6px 9px; border-radius: 8px; white-space: nowrap; opacity: 0; transition: opacity .15s; }
+  .tooltip b { font-weight: 600; }
+
+  .profile-top { display: flex; align-items: center; gap: 16px; }
+  .avatar-lg { width: 60px; height: 60px; border-radius: 50%; display: grid; place-items: center; font: 600 20px var(--font-display); color: var(--color-text-dark); background: linear-gradient(135deg, #FFD9B8, #F5A3C7 60%, #A9C4FF); box-shadow: 0 0 0 3px rgba(255,255,255,.35); flex: none; }
+  .profile-top .who { flex: 1; min-width: 0; }
+  .who b { display: block; font-weight: 500; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .who span { font-size: 12px; color: var(--on-tint-muted); }
+  .stats3 { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 26px; }
+  .stats3 > div { text-align: center; padding: 4px 0; }
+  .stats3 > div + div { border-left: 1px solid rgba(255,255,255,.18); }
+  .stats3 small { display: block; font-size: 13px; color: var(--on-tint-muted); margin-bottom: 8px; }
+  .stats3 strong { font: 400 22px var(--font-display); }
+
+  .feature-media { position: relative; overflow: hidden; border-radius: var(--radius-card); min-height: 330px; border: 1px solid var(--glass-border); box-shadow: 0 20px 50px -24px rgba(0,0,0,.5); background: rgba(0,0,0,.2); }
+  .art { position: absolute; inset: 0; transition: opacity 1s var(--ease-out); }
+  .art:not(.on) { opacity: 0; }
+  .art .bg { position: absolute; inset: -20px; background-size: cover; background-position: center; filter: blur(22px) saturate(120%); opacity: .75; }
+  .art img { position: absolute; left: 50%; top: 50%; height: 88%; aspect-ratio: 9/16; object-fit: cover; transform: translate(-50%, -50%); border-radius: 14px; box-shadow: 0 18px 40px -12px rgba(0,0,0,.55); }
+  .dots { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; gap: 8px; z-index: 2; }
+  .dots button { width: 8px; height: 8px; padding: 0; border-radius: 50%; border: 0; background: rgba(255,255,255,.5); transition: width .3s var(--ease-out), background .3s; }
+  .dots button[aria-selected="true"] { width: 22px; border-radius: 4px; background: #fff; }
+  .feature-info { display: flex; flex-direction: column; padding: 8px 4px; }
+  .kicker { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--on-tint-faint); margin-bottom: 8px; }
+  .feature-info h3 { font: 400 clamp(32px, 3.6vw, 52px)/1.05 var(--font-display); letter-spacing: -.03em; min-height: 2.1em; overflow-wrap: anywhere; }
+  .feature-info hr { border: 0; border-top: 1px solid rgba(255,255,255,.22); margin: 22px 0 18px; }
+  .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .meta small { display: block; font-size: 13px; color: var(--on-tint-muted); margin-bottom: 6px; }
+  .meta strong { font: 400 20px var(--font-display); }
+  .feature-info p { font-size: 13px; line-height: 1.55; color: var(--on-tint-muted); margin: 18px 0 22px; max-width: 46ch; }
+  .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: auto; }
+  .swap { transition: opacity .35s, transform .35s var(--ease-out); }
+  .swap.out { opacity: 0; transform: translateY(6px); }
+
+  .section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 34px 0 14px; }
+  .section-head h2 { font: 400 20px var(--font-display); }
+  .section-head a { font-size: 13px; color: var(--on-tint-muted); }
+  .section-head a:hover { color: #fff; }
+  .recent { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+  .mini { padding: 10px; transition: background .2s, transform .2s var(--ease-out); }
+  .mini:hover { background: var(--glass-bg-hover); transform: translateY(-2px); }
+  .thumb { aspect-ratio: 16 / 10; border-radius: 12px; margin-bottom: 10px; overflow: hidden; background: rgba(0,0,0,.2); }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .mini b { display: block; font-weight: 500; font-size: 14px; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mini span { font-size: 12px; color: var(--on-tint-muted); padding: 0 4px; }
+  .empty { padding: 28px; text-align: center; color: var(--on-tint-muted); }
+  .empty a { color: #fff; text-decoration: underline; }
+
+  .rise { opacity: 0; transform: translateY(14px); animation: rise .8s var(--ease-out) forwards; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+
+  @media (max-width: 1100px) {
+    .grid { grid-template-columns: 1fr; }
+    .recent { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .search { width: 180px; }
+  }
+  @media (max-width: 760px) {
+    .panel { margin: 8px; min-height: calc(100dvh - 16px); grid-template-columns: 1fr; border-radius: 22px;
+      background: radial-gradient(80% 60% at 0% 0%, rgba(255,255,255,.14), transparent 60%), linear-gradient(165deg, var(--tint-a) 0%, var(--tint-b) 100%); }
+    .panel .rail { height: auto; }
+    main { padding: 20px 16px 28px; }
+    .head h1 { font-size: 28px; }
+    .card { padding: 18px; }
+    .card-head h2 { font-size: 16px; gap: 6px; }
+    .head-actions { margin-left: 0; width: 100%; }
+    .search { flex: 1; width: auto; }
+    .head-actions .ghost-btn span { display: none; }
+    .feature-media { min-height: 260px; }
+    .recent { gap: 10px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .blob, .rise { animation: none; }
+    .rise { opacity: 1; transform: none; }
+    .panel, .art, .swap, .bar span { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="aurora" aria-hidden="true"><span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span></div>
+
+  <div class="panel" id="panel">
+    {% with rail_class = "glass" %}{% include "_rail.html" %}{% endwith %}
+
+    <main>
+      <header class="head rise">
+        <h1>Overview</h1>
+        <div class="chips">
+          <span class="chip"><i aria-hidden="true">🔥</i>{{ streak }}-day posting streak</span>
+          <span class="chip"><i aria-hidden="true">✓</i>{{ month }} reel{{ 's' if month != 1 }} this month</span>
+          <span class="chip"><i aria-hidden="true">{{ '🤖' if mode == 'autopilot' else '👀' }}</i>{{ 'Autopilot' if mode == 'autopilot' else 'Review mode' }}</span>
+        </div>
+        <div class="head-actions">
+          <form class="search" method="get" action="/overview" role="search">
+            <svg class="i" viewBox="0 0 24 24" style="width:15px;height:15px" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input type="search" name="q" value="{{ q }}" placeholder="Search your reels" aria-label="Search your reels">
+          </form>
+          <button class="ghost-btn" id="alertsBtn" aria-expanded="false" aria-controls="alerts"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span>Alerts</span></button>
+          <div class="alerts" id="alerts" role="region" aria-label="Latest activity">
+            {% for e in alerts %}<div><b>{{ e.created_at[5:16].replace('T', ' ') }}</b>{{ e.message }}</div>{% else %}<div>Nothing yet.</div>{% endfor %}
+          </div>
+          <a class="cream-btn" href="/"><svg class="i" viewBox="0 0 24 24" style="width:15px;height:15px" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New</a>
+        </div>
+      </header>
+
+      <section class="grid">
+        <article class="card rise" style="animation-delay:.08s">
+          <div class="card-head">
+            <h2>Reels made <span class="pill" id="totalPill">0</span></h2>
+            <h2>Views this week <span class="pill">{{ '{:,}'.format(views_week) }}</span></h2>
+          </div>
+          <div class="chart-wrap" id="chart" role="img" aria-label="Reels made per day this week: {% for d in week %}{{ d.day }} {{ d.v }}{{ ', ' if not loop.last }}{% endfor %}">
+            <div class="tooltip" id="tip"></div>
+          </div>
+        </article>
+
+        <article class="card profile rise" style="animation-delay:.16s">
+          <div class="profile-top">
+            <div class="avatar-lg" aria-hidden="true">{{ initials }}</div>
+            <div class="who"><b>{{ '@' ~ profile.handle if profile.handle else profile.name }}</b><span>{{ 'Instagram connected' if profile.handle else 'Instagram not connected' }} · Creator</span></div>
+            {% if profile.handle %}<a class="round-btn" href="https://www.instagram.com/{{ profile.handle }}/" target="_blank" rel="noopener" aria-label="Open your Instagram"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M7 17 17 7M8 7h9v9"/></svg></a>
+            {% else %}<a class="round-btn" href="/settings#instagram" aria-label="Connect Instagram"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M12 5v14M5 12h14"/></svg></a>{% endif %}
+          </div>
+          <div class="stats3">
+            <div><small>Reels made</small><strong data-count="{{ profile.made }}">0</strong></div>
+            <div><small>Posted</small><strong data-count="{{ profile.posted }}">0</strong></div>
+            <div><small>Typical views</small><strong data-count="{{ profile.median }}">0</strong></div>
+          </div>
+          {% set used = ((spend.usd / budget * 100) if budget else 0)|round|int %}
+          <div class="usage">
+            <div class="usage-row"><span>Research spend this month</span><span><b>${{ '%.2f'|format(spend.usd) }}</b> / ${{ '%g'|format(budget) }}</span></div>
+            <div class="bar" role="progressbar" aria-valuenow="{{ [used, 100]|min }}" aria-valuemin="0" aria-valuemax="100" aria-label="Research budget used"><span id="usageBar" data-w="{{ [used, 100]|min }}"></span></div>
+          </div>
+        </article>
+
+        {% if featured %}
+        <div class="feature-media rise" style="animation-delay:.24s" id="media" aria-roledescription="carousel" aria-label="Your best reels">
+          {% for f in featured %}<a class="art" data-i="{{ loop.index0 }}" href="/reel/{{ f.id }}" tabindex="-1" aria-hidden="true">
+            <div class="bg" style="background-image:url('/thumb/{{ f.id }}.jpg')"></div><img src="/thumb/{{ f.id }}.jpg" alt="" loading="lazy"></a>{% endfor %}
+          <div class="dots" role="tablist" id="dots"></div>
+        </div>
+        <div class="feature-info rise" style="animation-delay:.32s">
+          <div class="swap" id="info" aria-live="polite">
+            <div class="kicker" id="fKicker"></div>
+            <h3 id="fTitle"></h3>
+            <hr>
+            <div class="meta">{% for _ in range(3) %}<div><small id="fL{{ loop.index0 }}"></small><strong id="fV{{ loop.index0 }}"></strong></div>{% endfor %}</div>
+            <p id="fDesc"></p>
+          </div>
+          <div class="actions">
+            <a class="cream-btn" id="fOpen" href="#">Open reel</a>
+            <a class="glass-btn" id="fShare" href="#" target="_blank" rel="noopener">View on Instagram</a>
+            <button class="round-btn" id="fav" aria-pressed="false" aria-label="Favourite"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg></button>
+          </div>
+        </div>
+        {% else %}
+        <div class="card empty rise" style="grid-column: 1 / -1">No reels yet. <a href="/">Let's get creative →</a></div>
+        {% endif %}
+      </section>
+
+      <div class="section-head rise" style="animation-delay:.4s"><h2>{{ 'Results for “' ~ q ~ '”' if q else 'Recent reels' }}</h2><a href="{{ '/overview' if q else '/calendar' }}">{{ 'Clear search' if q else 'See all →' }}</a></div>
+      {% if recent %}
+      <section class="recent">
+        {% for r in recent %}<a class="card mini rise" href="/reel/{{ r.id }}" style="animation-delay:{{ 0.45 + loop.index0 * 0.06 }}s">
+          <div class="thumb"><img src="/thumb/{{ r.id }}.jpg" alt="" loading="lazy"></div><b>“{{ r.title }}”</b><span>{{ r.when }}</span></a>{% endfor %}
+      </section>
+      {% else %}<div class="card empty">{{ 'No reels match that.' if q else 'No reels yet.' }} <a href="/">Let's get creative →</a></div>{% endif %}
+    </main>
+  </div>
+
+<script>
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const WEEK = {{ week|tojson }};
+  const FEATURED = {{ featured|tojson }};
+  const $ = id => document.getElementById(id);
+
+  /* Activity chart */
+  const chartEl = $("chart"), tip = $("tip");
+  const NS = "http://www.w3.org/2000/svg";
+  function smoothPath(pts) {
+    let d = `M${pts[0][0]},${pts[0][1]}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+      const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+      const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+      d += ` C${c1},${c2},${p2}`;
+    }
+    return d;
+  }
+  function drawChart(animate) {
+    chartEl.querySelector("svg")?.remove();
+    const W = chartEl.clientWidth, H = chartEl.clientHeight, padX = 18, top = 26, bottom = 26;
+    const max = Math.max(1, ...WEEK.map(d => d.v));
+    const pts = WEEK.map((d, i) => [+(padX + i * (W - padX * 2) / (WEEK.length - 1)).toFixed(1), +(top + (1 - d.v / max) * (H - top - bottom)).toFixed(1)]);
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("aria-hidden", "true");
+    const line = smoothPath(pts);
+    svg.innerHTML = `<defs><linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
+      <path class="chart-area" d="${line} L${pts.at(-1)[0]},${H - bottom} L${pts[0][0]},${H - bottom} Z"/>
+      <path class="chart-line" d="${line}"/><line class="crosshair" y1="${top - 10}" y2="${H - bottom}"/>`;
+    const peak = WEEK.findIndex(d => d.v === Math.max(...WEEK.map(x => x.v)));
+    pts.forEach(([x, y], i) => {
+      svg.insertAdjacentHTML("beforeend", `<circle class="chart-dot" cx="${x}" cy="${y}" r="5"/>`);
+      if (i === peak || i === WEEK.length - 1) svg.insertAdjacentHTML("beforeend", `<text class="chart-label" x="${x}" y="${y - 12}" text-anchor="middle">${WEEK[i].v}</text>`);
+      svg.insertAdjacentHTML("beforeend", `<text class="chart-x" x="${x}" y="${H - 6}" text-anchor="middle">${WEEK[i].day}</text>`);
+    });
+    chartEl.prepend(svg);
+    if (animate && !reduced) {
+      const path = svg.querySelector(".chart-line"), len = path.getTotalLength();
+      path.style.strokeDasharray = len; path.style.strokeDashoffset = len; path.getBoundingClientRect();
+      path.style.transition = "stroke-dashoffset 1.4s cubic-bezier(.22,1,.36,1) .3s"; path.style.strokeDashoffset = 0;
+    }
+    const cross = svg.querySelector(".crosshair");
+    chartEl.onpointermove = e => {
+      const x = e.clientX - chartEl.getBoundingClientRect().left;
+      let i = 0; pts.forEach((p, j) => { if (Math.abs(p[0] - x) < Math.abs(pts[i][0] - x)) i = j; });
+      cross.setAttribute("x1", pts[i][0]); cross.setAttribute("x2", pts[i][0]); cross.style.opacity = 1;
+      tip.innerHTML = `${WEEK[i].day} · <b>${WEEK[i].v}</b> reel${WEEK[i].v === 1 ? "" : "s"}`;
+      tip.style.left = pts[i][0] + "px"; tip.style.top = pts[i][1] + "px"; tip.style.opacity = 1;
+    };
+    chartEl.onpointerleave = () => { cross.style.opacity = 0; tip.style.opacity = 0; };
+  }
+  drawChart(true);
+  let rT; addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(() => drawChart(false), 120); });
+
+  /* Count-up numbers and the budget bar */
+  function countUp(el, to) {
+    if (reduced) { el.textContent = to.toLocaleString(); return; }
+    const t0 = performance.now(), dur = 1200;
+    (function f(t) { const p = Math.min(1, (t - t0) / dur); el.textContent = Math.round(to * (1 - Math.pow(1 - p, 3))).toLocaleString(); if (p < 1) requestAnimationFrame(f); })(t0);
+  }
+  document.querySelectorAll("[data-count]").forEach(el => countUp(el, +el.dataset.count));
+  countUp($("totalPill"), WEEK.reduce((s, d) => s + d.v, 0));
+  const bar = $("usageBar"); requestAnimationFrame(() => requestAnimationFrame(() => bar.style.width = bar.dataset.w + "%"));
+
+  /* Featured carousel: the whole panel takes each reel's colour */
+  if (FEATURED.length) {
+    const media = $("media"), dots = $("dots"), panel = $("panel"), info = $("info"), fav = $("fav");
+    FEATURED.forEach((f, i) => {
+      const b = document.createElement("button");
+      b.setAttribute("role", "tab"); b.setAttribute("aria-label", `Show “${f.title}”`);
+      b.onclick = () => { show(i); stopAuto(); };
+      dots.append(b);
+    });
+    let current = -1, auto;
+    function show(i) {
+      if (i === current) return;
+      current = i;
+      const f = FEATURED[i];
+      media.querySelectorAll(".art").forEach(a => { const on = +a.dataset.i === i; a.classList.toggle("on", on); a.tabIndex = on ? 0 : -1; a.setAttribute("aria-hidden", String(!on)); });
+      [...dots.children].forEach((b, j) => b.setAttribute("aria-selected", String(j === i)));
+      panel.style.setProperty("--tint-a", f.tint[0]); panel.style.setProperty("--tint-b", f.tint[1]);
+      info.classList.add("out");
+      setTimeout(() => {
+        $("fKicker").textContent = f.kicker; $("fTitle").textContent = `“${f.title}”`;
+        f.stats.forEach(([l, v], k) => { $("fL" + k).textContent = l; $("fV" + k).textContent = v; });
+        $("fDesc").textContent = f.desc;
+        $("fOpen").href = `/reel/${f.id}`;
+        const share = $("fShare"); share.href = f.share; share.hidden = !f.share.startsWith("http");
+        fav.setAttribute("aria-pressed", String(f.fav));
+        info.classList.remove("out");
+      }, reduced ? 0 : 300);
+    }
+    const startAuto = () => { if (!reduced && FEATURED.length > 1) auto = setInterval(() => show((current + 1) % FEATURED.length), 7000); };
+    const stopAuto = () => clearInterval(auto);
+    media.addEventListener("pointerenter", stopAuto);
+    media.addEventListener("pointerleave", () => { stopAuto(); startAuto(); });
+    media.addEventListener("focusin", stopAuto);
+    show(0); startAuto();
+    fav.onclick = async () => {
+      const f = FEATURED[current];
+      const r = await fetch(`/reels/${f.id}/favourite`, {method: "POST"});
+      if (r.ok) { f.fav = (await r.json()).favourite; fav.setAttribute("aria-pressed", String(f.fav)); }
+    };
+  }
+
+  /* Alerts */
+  const ab = $("alertsBtn"), al = $("alerts");
+  ab.onclick = () => { const o = !al.classList.contains("open"); al.classList.toggle("open", o); ab.setAttribute("aria-expanded", String(o)); };
+  document.addEventListener("click", e => { if (!al.contains(e.target) && !ab.contains(e.target)) { al.classList.remove("open"); ab.setAttribute("aria-expanded", "false"); } });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") { al.classList.remove("open"); ab.setAttribute("aria-expanded", "false"); } });
+
+  /* Mouse spotlight on the panel */
+  if (!reduced && matchMedia("(pointer: fine)").matches) {
+    const panel = $("panel"); let raf;
+    panel.addEventListener("pointermove", e => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => { const r = panel.getBoundingClientRect(); panel.style.setProperty("--mx", e.clientX - r.left + "px"); panel.style.setProperty("--my", e.clientY - r.top + "px"); });
+    });
+  }
+</script>
+</body>
+</html>

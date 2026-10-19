@@ -8,26 +8,26 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link href="https://api.fontshare.com/v2/css?f[]=satoshi@500,600,700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/rail.css">
   {% if busy and nav != '/upload' %}<meta http-equiv="refresh" content="20">{% endif %}
 </head>
 <body>
 <div class="page-glow" aria-hidden="true"><span></span><span></span><span></span></div>
-<header><div class="bar">
-  <a class="logo" href="/"><span class="brand-mark" aria-hidden="true"></span>Creatr</a>
-  <nav aria-label="Main">
-    {% for path, label in [("/upload","Upload"),("/review","Review"),("/calendar","Calendar"),("/results","Results"),("/research","Research"),("/clips","Clips"),("/settings","Settings")] %}
-      <a href="{{ path }}" class="{{ 'on' if nav.startswith(path) }}"{{ ' aria-current="page"'|safe if nav.startswith(path) }}>{{ label }}</a>
-    {% endfor %}
-  </nav>
-  <span class="pill {{ 'auto' if mode == 'autopilot' }}">{{ '🤖 Autopilot' if mode == 'autopilot' else '👀 Review mode' }}</span>
-  {% if busy %}<span class="pill busy">⏳ working on {{ busy }} job{{ 's' if busy > 1 }}…</span>{% endif %}
-</div></header>
-<main>
-{% if paused %}<div class="paused">⚠️ <b>Posting is paused.</b> {{ paused }}. Delete it from your grid in the Instagram app if you don't want it there, and tell Claude so it can be fixed.
-  <form method="post" action="/posting/resume" style="display:inline"><button class="mini ghost">Resume posting</button></form></div>{% endif %}
-{% block main %}{% endblock %}</main>
-<footer>
-  {% for e in events %}<div>{{ e.created_at[5:16].replace('T', ' ') }} · {{ e.message }}</div>{% endfor %}
-</footer>
+<div class="app">
+  {% include "_rail.html" %}
+  <div class="app-main">
+    <div class="app-top">
+      <span class="pill {{ 'auto' if mode == 'autopilot' }}">{{ '🤖 Autopilot' if mode == 'autopilot' else '👀 Review mode' }}</span>
+      {% if busy %}<span class="pill busy">⏳ working on {{ busy }} job{{ 's' if busy > 1 }}…</span>{% endif %}
+    </div>
+    <main>
+    {% if paused %}<div class="paused">⚠️ <b>Posting is paused.</b> {{ paused }}. Delete it from your grid in the Instagram app if you don't want it there, and tell Claude so it can be fixed.
+      <form method="post" action="/posting/resume" style="display:inline"><button class="mini ghost">Resume posting</button></form></div>{% endif %}
+    {% block main %}{% endblock %}</main>
+    <footer>
+      {% for e in events %}<div>{{ e.created_at[5:16].replace('T', ' ') }} · {{ e.message }}</div>{% endfor %}
+    </footer>
+  </div>
+</div>
 </body>
 </html>

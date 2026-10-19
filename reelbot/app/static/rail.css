@@ -1,0 +1,31 @@
+/* Side rail shared by every signed-in page. On the Overview's tinted panel it's glass; on the other pages it's ink. */
+:root { --cream: #F6E7CF; --rail-w: 76px; }
+/* On wide screens the rail's colour is a stripe painted by the panel behind it (so it runs the full height of long
+   pages) and the rail itself sticks to the top of the screen. */
+.rail { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 22px 0; position: sticky; top: 0; min-height: 0; }
+.rail-logo { width: 32px; height: 32px; border-radius: 10px; margin-bottom: 22px; flex: none;
+  background: linear-gradient(135deg, #FE7B02, #FF66F4 55%, #4F88FF); box-shadow: 0 0 0 1px rgba(255,255,255,.35); }
+.rail-btn { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; flex: none; position: relative;
+  color: rgba(255,255,255,.74); background: transparent; transition: background .15s, color .15s; text-decoration: none; }
+.rail-btn:hover { background: rgba(255,255,255,.12); color: #fff; text-decoration: none; }
+.rail-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(130,188,255,.7); }
+.rail-btn[aria-current="page"] { background: var(--cream); color: #1C1C1C; box-shadow: 0 4px 14px -4px rgba(0,0,0,.35); }
+.rail-i { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.rail-tip { position: absolute; left: 52px; z-index: 20; white-space: nowrap; font: 500 12px "Inter", system-ui, sans-serif; background: rgba(20,20,20,.9);
+  color: #fff; padding: 4px 8px; border-radius: 6px; opacity: 0; transform: translateX(-4px); transition: .15s; pointer-events: none; }
+.rail-btn:hover .rail-tip, .rail-btn:focus-visible .rail-tip { opacity: 1; transform: none; }
+.rail-spacer { flex: 1; }
+.rail-me { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: none; margin-bottom: 6px; text-decoration: none;
+  font: 600 13px "Inter", system-ui, sans-serif; color: #1C1C1C; background: linear-gradient(135deg, #FFD9B8, #F5A3C7); box-shadow: 0 0 0 2px rgba(255,255,255,.4); }
+.rail-me:hover { text-decoration: none; }
+.rail-me:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(130,188,255,.7); }
+@media (max-width: 760px) {
+  .rail { flex-direction: row; justify-content: flex-start; gap: 4px; padding: 10px 12px; height: auto; position: static; background: #1C1C1C;
+    border-bottom: 1px solid rgba(255,255,255,.10); overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .rail.glass { background: rgba(0,0,0,.10); }
+  .rail-logo { margin: 0 6px 0 0; }
+  .rail-spacer, .rail-logout { display: none; }
+  .rail-me { margin: 0 0 0 auto; }
+  .rail-tip { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .rail-btn, .rail-tip { transition: none; } }

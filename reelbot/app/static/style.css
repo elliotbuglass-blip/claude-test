@@ -25,29 +25,27 @@ a:hover { text-decoration: underline; }
 :focus-visible { outline: none; box-shadow: var(--focus); border-radius: 8px; }
 
 /* Soft brand glow along the bottom of every page (the home page's aurora, toned down) */
-.page-glow { position: fixed; inset: auto -20% -38vh -20%; height: 60vh; z-index: -1; pointer-events: none; filter: blur(80px); opacity: .22; }
+.page-glow { position: fixed; inset: auto -20% -38vh -20%; height: 75vh; z-index: -1; pointer-events: none; filter: blur(80px); opacity: .55; }
 .page-glow span { position: absolute; border-radius: 50%; animation: drift 24s ease-in-out infinite alternate; }
 .page-glow span:nth-child(1) { width: 45%; height: 80%; left: 0; background: var(--g-blue); }
 .page-glow span:nth-child(2) { width: 45%; height: 80%; left: 30%; background: var(--g-pink); animation-delay: -8s; }
 .page-glow span:nth-child(3) { width: 40%; height: 70%; right: 0; background: var(--g-orange); animation-delay: -4s; }
 @keyframes drift { 0% { transform: translate3d(0,0,0) scale(1); } 50% { transform: translate3d(4%,-6%,0) scale(1.08); } 100% { transform: translate3d(-5%,3%,0) scale(.96); } }
 
-/* Top bar */
-header { position: sticky; top: 0; z-index: 5; background: rgba(250,249,246,.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
-.bar { max-width: 1200px; margin: 0 auto; padding: 12px 16px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.logo { display: flex; align-items: center; gap: 10px; font: 700 18px var(--font-display); letter-spacing: -.02em; color: var(--text); }
-.logo:hover { text-decoration: none; }
-.brand-mark { width: 22px; height: 22px; border-radius: 7px; background: linear-gradient(135deg, var(--g-orange), var(--g-pink) 55%, var(--g-blue)); flex: none; }
-nav { display: flex; gap: 2px; flex-wrap: wrap; flex: 1; }
-nav a { color: var(--muted); padding: 6px 12px; border-radius: 8px; font-size: 14px; font-weight: 500; }
-nav a:hover { color: var(--text); background: rgba(0,0,0,.04); text-decoration: none; }
-nav a.on { color: var(--text); background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+/* App frame: one big rounded panel floating on the page, with the side rail (see rail.css) */
+.app { display: grid; grid-template-columns: var(--rail-w, 76px) minmax(0, 1fr); margin: 16px; min-height: calc(100vh - 32px); min-height: calc(100dvh - 32px);
+  border-radius: 28px; overflow: clip; background: linear-gradient(to right, #1C1C1C var(--rail-w, 76px), rgba(255,255,255,.72) var(--rail-w, 76px)); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  box-shadow: 0 30px 80px -30px rgba(40,20,60,.25), inset 0 0 0 1px rgba(28,28,28,.06); }
+.app .rail { height: calc(100dvh - 32px); }
+.app-main { min-width: 0; display: flex; flex-direction: column; }
+.app-top { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 24px 0; flex-wrap: wrap; }
 .pill { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--panel); }
 .pill.auto { color: var(--good); border-color: currentColor; }
 .pill.busy { color: var(--warn); border-color: currentColor; }
+.brand-mark { width: 22px; height: 22px; border-radius: 7px; background: linear-gradient(135deg, var(--g-orange), var(--g-pink) 55%, var(--g-blue)); flex: none; }
 
 /* Page */
-main { max-width: 1200px; margin: 0 auto; padding: 28px 16px 60px; }
+main { width: 100%; max-width: 1200px; margin: 0 auto; padding: 8px 24px 48px; flex: 1; }
 h1 { font: 700 clamp(28px, 4vw, 36px)/1.1 var(--font-display); letter-spacing: -.035em; margin: 4px 0 8px; }
 .sub { color: var(--muted); margin: 0 0 24px; font-size: 16px; }
 .h2 { font: 700 21px/1.2 var(--font-display); letter-spacing: -.02em; margin: 32px 0 12px; }
@@ -57,7 +55,7 @@ h1 { font: 700 clamp(28px, 4vw, 36px)/1.1 var(--font-display); letter-spacing: -
 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
 .row.tight { gap: 4px; margin-top: 6px; } .row.tight form { margin: 0; }
-footer { max-width: 1200px; margin: 0 auto; padding: 0 16px 30px; color: var(--muted); font-size: 12px; }
+footer { width: 100%; max-width: 1200px; margin: 0 auto; padding: 0 24px 24px; color: var(--muted); font-size: 12px; }
 
 /* Surfaces */
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
@@ -249,13 +247,19 @@ tr:last-child td { border-bottom: 0; }
 .lessons { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin-bottom: 16px; }
 
 /* Sign-in page */
-.auth { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; position: relative; isolation: isolate; overflow: hidden; }
+.auth { max-width: none; min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; position: relative; isolation: isolate; overflow: hidden; }
 .auth .page-glow { position: absolute; inset: 45% -20% -30% -20%; height: auto; opacity: .55; filter: blur(70px) saturate(130%); }
 .auth .card { width: min(380px, 100%); box-shadow: var(--shadow-lift); }
 .auth .card .body { padding: 28px 24px; }
 .auth h1 { display: flex; align-items: center; gap: 10px; font-size: 28px; }
 
 /* Small screens */
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; margin: 8px; border-radius: 22px; min-height: calc(100dvh - 16px); background: rgba(255,255,255,.72); }
+  .app .rail { height: auto; position: sticky; top: 0; z-index: 6; }
+  .app-top { padding: 12px 16px 0; }
+  main { padding: 8px 16px 40px; } footer { padding: 0 16px 20px; }
+}
 @media (max-width: 900px) {
   .drops { grid-template-columns: 1fr 1fr; }
   .cal { grid-template-columns: 1fr; } .day { min-height: 0; }
@@ -264,9 +268,6 @@ tr:last-child td { border-bottom: 0; }
 }
 @media (max-width: 700px) {
   .cols { grid-template-columns: 1fr; }
-  .bar { gap: 10px; }
-  nav { order: 3; flex: 0 0 100%; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  nav a { white-space: nowrap; }
   .month { gap: 3px; } .mday { min-height: 70px; padding: 3px; } .mth { width: 22px; height: 40px; border-width: 1.5px; } .mth i { display: none; }
   .dow { font-size: 10px; } .reelpage { grid-template-columns: 1fr; }
 }

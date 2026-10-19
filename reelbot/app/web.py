@@ -9,7 +9,7 @@ import os
 import shutil
 import statistics
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -44,7 +44,13 @@ templates.globals["SOURCE_LABELS"] = jobs.SOURCE_LABELS
 templates.filters["fromjson"] = lambda v: json.loads(v) if v else None
 
 
+def initials():
+    name = connect.status().get("username") or ""
+    return name.replace(".", " ").replace("_", " ").title().replace(" ", "")[:2] or "Me"
+
+
 def page(name, request, **ctx):
+    ctx.setdefault("initials", initials())
     ctx.update(request=request, nav=request.url.path, busy=jobs.busy(), mode=jobs.setting("mode"),
                paused=db.get_setting("posting_paused"),
                events=db.q("SELECT * FROM events ORDER BY id DESC LIMIT 6"))
@@ -483,8 +489,92 @@ async def home(request: Request):
     """The signed-in home page: "Let's get creative", with a chat box to make reels or ask a question."""
     recent = db.q("""SELECT r.id, r.on_screen_text, r.status, r.post_at, r.recommended_time FROM reels r
                      WHERE r.status IN ('draft', 'scheduled', 'posted') ORDER BY r.created_at DESC LIMIT 6""")
-    name = connect.status().get("username") or ""
-    return page("home.html", request, recent=recent, initials=(name.replace(".", " ").replace("_", " ").title().replace(" ", "")[:2] or "Me"))
+    return page("home.html", request, recent=recent)
+
+
+TINTS = {"instagram": ["#4A1752", "#9C3D84"], "tiktok": ["#16295E", "#3A62B8"],  # dark → light; white text passes AA
+         "trends": ["#6E2316", "#A84C2A"], "original": ["#3A2A08", "#7E5814"]}
+
+
+def _ago(iso):
+    try:
+        then = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return ""
+    secs = (datetime.now(timezone.utc) - (then if then.tzinfo else then.replace(tzinfo=timezone.utc))).total_seconds()
+    for unit, size in (("d", 86400), ("h", 3600), ("m", 60)):
+        if secs >= size:
+            return f"{int(secs // size)}{unit} ago"
+    return "just now"
+
+
+async def overview(request: Request):
+    """The dashboard: this week's reels, your numbers, your best reels and the latest ones."""
+    now = jobs.local_now()
+    latest = {}
+    for snap in db.q("SELECT * FROM snapshots ORDER BY hours"):
+        latest[snap["reel_id"]] = snap
+    reels = db.q("SELECT r.*, c.duration AS clip_seconds FROM reels r LEFT JOIN clips c ON c.id = r.clip_id "
+                 "WHERE r.status != 'rejected' ORDER BY r.created_at DESC")
+    local_day = lambda iso: (datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone(jobs.tz()).date() if iso else None)
+    week = []
+    for back in range(6, -1, -1):
+        day = (now - timedelta(days=back)).date()
+        week.append({"day": day.strftime("%a"), "v": sum(1 for r in reels if local_day(r["created_at"]) == day)})
+    posted = [r for r in reels if r["status"] == "posted"]
+    posted_days = {(r["posted_at"] or "")[:10] for r in posted}
+    streak, day = 0, now.date()
+    if str(day) not in posted_days:
+        day -= timedelta(days=1)
+    while str(day) in posted_days:
+        streak += 1
+        day -= timedelta(days=1)
+    views_week = sum((latest.get(r["id"]) or {}).get("views") or 0 for r in posted
+                     if r["posted_at"] and r["posted_at"][:10] >= str((now - timedelta(days=7)).date()))
+    with_views = [(latest[r["id"]]["views"] or 0) for r in posted if r["id"] in latest]
+    spend, budget = jobs.apify_spend(), float(jobs.setting("research_budget") or 0)
+
+    def feature(r):
+        snap = latest.get(r["id"]) or {}
+        lesson = json.loads(r["lesson"]) if r["lesson"] else None
+        src = r["source"] or ("trends" if r["risky"] else "instagram")
+        if snap:
+            stats = [("Views", f"{snap.get('views') or 0:,}"), ("Shares", f"{snap.get('shares') or 0:,}"), ("Saves", f"{snap.get('saved') or 0:,}")]
+        else:
+            stats = [("Score", f"{r['virality_score'] or 0}/100"), ("Source", jobs.SOURCE_LABELS[src].split(" ", 1)[1]),
+                     ("Status", {"draft": "Review", "scheduled": "Scheduled", "rendering": "Making"}.get(r["status"], r["status"].title()))]
+        return {"id": r["id"], "title": r["on_screen_text"], "kicker": "Top reel" if snap else "Up next", "stats": stats,
+                "desc": (lesson or {}).get("headline") or r["score_reason"] or r["angle"] or "",
+                "tint": TINTS.get(src, TINTS["trends"]), "share": r["permalink"] or f"/reel/{r['id']}", "fav": bool(r["favourite"])}
+    top = sorted((r for r in posted if r["id"] in latest), key=lambda r: (-(r["favourite"] or 0), -(latest[r["id"]]["views"] or 0)))[:5]
+    if len(top) < 3:
+        top += sorted((r for r in reels if r["status"] in ("draft", "scheduled")), key=lambda r: -(r["virality_score"] or 0))[:3 - len(top)]
+    q = request.query_params.get("q", "").strip()
+    recent = [r for r in reels if r["status"] != "rendering" and (not q or q.lower() in f"{r['on_screen_text']} {r['post_caption']}".lower())][:4 if not q else 12]
+    status_word = {"draft": "Waiting for review", "scheduled": "Scheduled", "posted": "Posted", "failed": "Failed"}
+    conn = connect.status()
+    return page("overview.html", request, week=week, total=sum(d["v"] for d in week), views_week=views_week, streak=streak,
+                month=sum(1 for r in reels if (r["created_at"] or "")[:7] == f"{now:%Y-%m}"),
+                profile={"name": conn.get("username") or "Your account", "handle": conn.get("username"),
+                         "made": len(reels), "posted": len(posted),
+                         "median": int(statistics.median(with_views)) if with_views else 0},
+                spend=spend, budget=budget, featured=[feature(r) for r in top], q=q,
+                recent=[{"id": r["id"], "title": r["on_screen_text"], "when": f"{status_word.get(r['status'], r['status'])} · {_ago(r['created_at'])}"}
+                        for r in recent], alerts=db.q("SELECT * FROM events ORDER BY id DESC LIMIT 8"))
+
+
+async def favourite(request: Request):
+    reel = db.one("SELECT favourite FROM reels WHERE id = ?", request.path_params["id"])
+    if not reel:
+        return JSONResponse({"error": "not found"}, 404)
+    db.update("reels", request.path_params["id"], favourite=0 if reel["favourite"] else 1)
+    return JSONResponse({"favourite": not reel["favourite"]})
+
+
+async def logout(request: Request):
+    resp = RedirectResponse("/login", 303)
+    resp.delete_cookie("rb")
+    return resp
 
 
 async def ask(request: Request):
@@ -511,7 +601,8 @@ async def health(request: Request):
 
 
 routes = [
-    Route("/", home), Route("/health", health), Route("/ask", ask, methods=["POST"]),
+    Route("/", home), Route("/health", health), Route("/ask", ask, methods=["POST"]), Route("/overview", overview),
+    Route("/logout", logout), Route("/reels/{id}/favourite", favourite, methods=["POST"]),
     Route("/login", login, methods=["GET", "POST"]),
     Route("/review", review),
     Route("/reels/remake-all", rerender_all, methods=["POST"]),
