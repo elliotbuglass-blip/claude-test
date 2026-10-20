@@ -4,7 +4,7 @@
 <h1>“{{ r.on_screen_text }}”</h1>
 <p class="sub">
   {% if r.status == 'scheduled' %}⏰ Scheduled for <b>{{ r.post_at|when }}</b>
-  {% elif r.status == 'posting' %}🚀 Posting now…
+  {% elif r.status == 'posting' %}🚀 Posting now… started {{ r.stage_at|ago }}. Instagram usually takes 1–5 minutes
   {% elif r.status == 'posted' %}✅ Posted {{ r.posted_at|when }}{% if r.permalink %} · <a href="{{ r.permalink }}" target="_blank">open on Instagram ↗</a>{% endif %}
   {% elif r.status == 'draft' %}👀 Waiting for your review · suggested {{ r.recommended_time|when }}
   {% elif r.status == 'failed' %}✗ Failed: {{ r.error }}

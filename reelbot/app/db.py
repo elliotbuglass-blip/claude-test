@@ -120,8 +120,8 @@ def run(sql, *args):
         c.commit()
 
 
-TIMED = {"clips": ("analysing", "making"), "reels": ("rendering",)}  # stages the pipeline shows a progress wheel for
-DEFAULT_SECONDS = {"clips:analysing": 90, "clips:making": 300, "reels:rendering": 150}
+TIMED = {"clips": ("analysing", "making"), "reels": ("rendering", "posting")}  # stages with a progress wheel
+DEFAULT_SECONDS = {"clips:analysing": 90, "clips:making": 300, "reels:rendering": 150, "reels:posting": 120}
 
 
 def stage_seconds(table, status):

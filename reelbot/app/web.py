@@ -633,6 +633,9 @@ def _ago(iso):
     return "just now"
 
 
+templates.filters["ago"] = _ago
+
+
 async def overview(request: Request):
     """The dashboard: this week's reels, your numbers, your best reels and the latest ones."""
     now = jobs.local_now()

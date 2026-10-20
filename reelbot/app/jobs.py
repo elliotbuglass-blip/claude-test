@@ -138,7 +138,8 @@ JOB_LABELS = {"make_reels": ("Making reels", ("clips", "making")), "analyse_clip
               "rerender_all": ("Re-making all drafts", None), "make_combo": ("Editing clips together", None),
               "fetch_saved": ("Fetching saved reels", None), "run_radar": ("Checking competitors", None),
               "refresh_history": ("Refreshing your history", None), "google_trends": ("Checking Google trends", None),
-              "rebalance_mix": ("Rebalancing the research mix", None), "autopilot_daily": ("Planning tomorrow's reels", None)}
+              "rebalance_mix": ("Rebalancing the research mix", None), "autopilot_daily": ("Planning tomorrow's reels", None),
+              "post_due": ("Posting to Instagram", None), "rescue_posting": ("Checking interrupted posts", None)}
 
 
 def _describe(task):
@@ -1711,7 +1712,58 @@ def post_now(reel_id):
     submit("post now", post_due)
 
 
+_post_lock = threading.Lock()  # the clock and "Post now" both post: never let them post the same reel twice
+
+
 def post_due():
+    if not _post_lock.acquire(blocking=False):
+        return  # already posting; the next minute's check picks up anything left
+    try:
+        _post_due()
+    finally:
+        _post_lock.release()
+
+
+def find_on_instagram(reel, since_minutes=180):
+    """Look for a reel we may have posted (e.g. the site restarted mid-post) among the account's recent posts."""
+    graph = f"https://graph.facebook.com/{cfg()['posting']['graph_api_version']}"
+    r = requests.get(f"{graph}/{env('IG_USER_ID', required=False)}/media",
+                     params={"fields": "id,caption,timestamp,permalink", "limit": 25, **_ig_auth()}, timeout=30)
+    if not r.ok:
+        return None
+    want = (reel["post_caption"] or reel["on_screen_text"] or "").strip()[:60]
+    cutoff = datetime.now(ZoneInfo("UTC")) - timedelta(minutes=since_minutes)
+    for m in r.json().get("data", []):
+        when = datetime.fromisoformat(m["timestamp"].replace("+0000", "+00:00")) if m.get("timestamp") else None
+        if want and (m.get("caption") or "").strip().startswith(want) and (not when or when >= cutoff):
+            return m
+    return None
+
+
+def rescue_posting():
+    """Reels left on "posting" (the site restarted mid-post, or Instagram never answered): find out what happened."""
+    if not _post_lock.acquire(blocking=False):
+        return  # a post is going right now; check again later
+    try:
+        for reel in db.q("SELECT * FROM reels WHERE status = 'posting'"):
+            try:
+                found = find_on_instagram(reel)
+            except Exception:
+                found = None
+            if found:
+                db.update("reels", reel["id"], status="posted", media_id=found["id"], permalink=found.get("permalink"),
+                          posted_at=local_now().isoformat(timespec="minutes"))
+                db.log(f"Found “{reel['on_screen_text']}” on Instagram: marked as posted")
+            else:
+                db.update("reels", reel["id"], status="failed",
+                          error="Posting was interrupted (the site restarted or Instagram didn't answer), and it isn't among "
+                                "your recent posts. Check Instagram's trial reels first; if it's not there, press Post now again.")
+                db.log(f"✗ Posting was interrupted for “{reel['on_screen_text']}”: press Post now to try again")
+    finally:
+        _post_lock.release()
+
+
+def _post_due():
     from ..publisher import post_reel
     c = cfg()
     if db.get_setting("posting_paused"):
@@ -1735,7 +1787,7 @@ def post_due():
                 db.log("⚠️ Posting paused: Instagram posted a reel to your grid instead of as a trial reel")
                 return
         except Exception as e:
-            db.update("reels", reel["id"], status="failed", error=str(e)[:400])
+            db.update("reels", reel["id"], status="failed", error=f"Posting failed: {e}"[:400])
             db.log(f"✗ Posting failed for “{reel['on_screen_text']}”: {e}")
 
 
@@ -1910,6 +1962,7 @@ def _clock():
             post_due()
             if tick % 15 == 0:
                 snapshots_due()
+                rescue_posting()
             if _due_daily("autopilot", 6, 0):
                 submit("autopilot daily plan", autopilot_daily)
             if _due_daily("history", 5, 0, weekday=0) or (tick == 0 and not db.latest_research("best_times")):
@@ -1934,6 +1987,7 @@ def _resume():
         submit(f"make reels for {c['filename']}", make_reels, c["id"], int(db.get_setting(f"queued:{c['id']}") or 2))
     for r in db.q("SELECT id FROM reels WHERE status = 'rendering'"):
         submit("re-render", render_reel, r["id"])
+    submit("check interrupted posts", rescue_posting)  # anything left on "posting" was cut off by the restart
 
 
 def start():
