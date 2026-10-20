@@ -482,7 +482,23 @@ async def results(request: Request):
 
     every = db.q("SELECT * FROM reels WHERE status != 'rejected' ORDER BY created_at DESC")
     latest = {snap["reel_id"]: snap for snap in db.q("SELECT * FROM snapshots ORDER BY hours")}
-    return page("results.html", request, reels=reels, summary=summary, journeys=remake_journeys(every, latest, 6), by_source=jobs.source_results(days=3650),
+    by_id = {r["id"]: r for r in every}
+
+    def root(r):
+        seen = 0
+        while r["parent"] in by_id and seen < 10:
+            r, seen = by_id[r["parent"]], seen + 1
+        return r["id"], seen + 1
+    points = []
+    for r in every:
+        snap = latest.get(r["id"])
+        if r["status"] == "posted" and r["posted_at"] and snap and snap["views"] is not None:
+            chain, n = root(r)
+            points.append({"id": r["id"], "hook": r["on_screen_text"], "t": _epoch(r["posted_at"]), "views": snap["views"],
+                           "hours": snap["hours"], "chain": chain, "n": n, "day": _day(r["posted_at"])})
+    points.sort(key=lambda p: p["t"])
+    return page("results.html", request, reels=reels, summary=summary, journeys=remake_journeys(every, latest, 6),
+                points=points, usual=usual, by_source=jobs.source_results(days=3650),
                 recent=jobs.source_results(), mix=jobs.research_mix(), mix_change=db.latest_research("mix_change"),
                 auto=jobs.setting("mix_auto"))
 

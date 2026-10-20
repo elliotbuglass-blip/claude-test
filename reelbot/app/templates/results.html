@@ -12,9 +12,24 @@
 </div>
 {% endif %}
 
-{% if journeys %}<h2 class="h2" style="margin-top:8px">🔁 Remake journeys</h2>
-<p class="meta" style="margin:-6px 0 12px">Each reel's versions over time: the views it had when Creatr remade it, and the views each new version got.</p>
-<div class="journeys" style="margin-bottom:22px">{% include "_journeys.html" %}</div>{% endif %}
+<div class="card" style="margin-bottom:22px"><div class="body">
+  <p class="hook">📈 Your reels over time</p>
+  <p class="meta" style="margin-top:-2px">Every posted trial reel by the day it went out and its views. Versions of the same reel are joined by a line, so you can see each remake climb. The dashed line is your usual.</p>
+  {% if points %}
+  <div class="otchart" id="otChart" role="img" aria-label="Views of each posted reel over time">
+    <svg></svg><div class="ot-tip" id="otTip"></div>
+  </div>
+  <div class="ot-key"><span class="k1">A reel</span><span class="k2">A remade reel's versions</span><span class="k3">Your usual ({{ usual|num }})</span></div>
+  {% else %}<p class="meta">Appears once your first trial reel has results (24 hours after it posts).</p>{% endif %}
+</div></div>
+
+<h2 class="h2" style="margin-top:8px">🔁 Remake journeys</h2>
+{% if journeys %}
+<p class="meta" style="margin:-6px 0 12px">Each reel's versions: the views it had when Creatr remade it, and the views each new version got.</p>
+<div class="journeys" style="margin-bottom:22px">{% include "_journeys.html" %}</div>
+{% else %}
+<div class="empty" style="margin-bottom:22px">No remakes yet. Open a reel below, press <b>🔁 Remake with this tweak</b>, and once the new version is posted its journey (v1 → v2 → v3…) is graphed here.</div>
+{% endif %}
 {% if not reels %}<div class="empty">No posted reels yet. Results appear 24 hours after a reel goes out.</div>{% else %}
 <div class="rlist">
   {% for r in reels %}{% set lesson = r.lesson|fromjson %}{% set src = r.source or ('trends' if r.risky else 'instagram') %}
@@ -65,6 +80,44 @@
   </div>
 </details>
 <script>
+  // Reels over time: x = day posted, y = views; versions of the same reel joined up.
+  (function () {
+    const box = document.getElementById("otChart"); if (!box) return;
+    const P = {{ points|tojson }}, usual = {{ usual or 0 }}, svg = box.querySelector("svg"), tip = document.getElementById("otTip");
+    function draw() {
+      const W = box.clientWidth, H = 240, l = 46, r = 16, t = 20, b = 30;
+      const t0 = Math.min(...P.map(p => p.t)), t1 = Math.max(...P.map(p => p.t)), span = Math.max(t1 - t0, 86400);
+      const max = Math.max(usual, ...P.map(p => p.views)) * 1.12 || 1;
+      const x = v => l + (v - t0) / span * (W - l - r), y = v => t + (1 - v / max) * (H - t - b);
+      const fmt = v => v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? Math.round(v / 1e3) + "K" : v;
+      let g = "";
+      for (let i = 0; i <= 3; i++) { const v = max / 1.12 * i / 3; g += `<line class="ot-grid" x1="${l}" x2="${W - r}" y1="${y(v)}" y2="${y(v)}"/><text class="ot-ax" x="${l - 8}" y="${y(v) + 4}" text-anchor="end">${fmt(Math.round(v))}</text>`; }
+      const days = [...new Map(P.map(p => [p.day, p.t])).entries()];
+      const step = Math.max(1, Math.ceil(days.length / Math.max(2, Math.floor((W - l - r) / 90))));
+      days.forEach(([d, tt], i) => { if (i % step === 0) g += `<text class="ot-ax" x="${x(tt)}" y="${H - 8}" text-anchor="middle">${d}</text>`; });
+      if (usual) g += `<line class="ot-usual" x1="${l}" x2="${W - r}" y1="${y(usual)}" y2="${y(usual)}"/>`;
+      const chains = {};
+      P.forEach(p => (chains[p.chain] = chains[p.chain] || []).push(p));
+      Object.values(chains).filter(c => c.length > 1).forEach(c => {
+        g += `<path class="ot-chain" d="${c.map((p, i) => (i ? "L" : "M") + x(p.t) + "," + y(p.views)).join(" ")}"/>`;
+      });
+      P.forEach((p, i) => {
+        const remade = chains[p.chain].length > 1;
+        g += `<circle class="ot-dot${remade ? " chain" : ""}" data-i="${i}" cx="${x(p.t)}" cy="${y(p.views)}" r="${remade ? 7 : 5}" tabindex="0"><title>${p.hook.replace(/</g, "&lt;")}: ${p.views.toLocaleString()} views</title></circle>`;
+        if (remade) g += `<text class="ot-v" x="${x(p.t)}" y="${y(p.views) - 12}" text-anchor="middle">v${p.n}</text>`;
+      });
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.innerHTML = g;
+      svg.querySelectorAll(".ot-dot").forEach(d => {
+        const show = () => { const p = P[d.dataset.i];
+          tip.innerHTML = `<b>“${p.hook.replace(/</g, "&lt;")}”</b>${chains[p.chain].length > 1 ? ` · v${p.n}` : ""}<br>${p.views.toLocaleString()} views at ${p.hours}h · ${p.day}`;
+          tip.style.left = d.getAttribute("cx") + "px"; tip.style.top = d.getAttribute("cy") + "px"; tip.style.opacity = 1; };
+        d.addEventListener("mouseenter", show); d.addEventListener("focus", show);
+        d.addEventListener("mouseleave", () => tip.style.opacity = 0); d.addEventListener("blur", () => tip.style.opacity = 0);
+        d.addEventListener("click", () => location.href = "/reel/" + P[d.dataset.i].id);
+      });
+    }
+    draw(); addEventListener("resize", () => { clearTimeout(window.otT); window.otT = setTimeout(draw, 150); });
+  })();
   // Open the reel you just acted on (e.g. after pressing Remake), and keep checking while a remake runs.
   const target = location.hash && document.querySelector(location.hash);
   if (target && target.tagName === "DETAILS") { target.open = true; target.scrollIntoView({block: "center"}); }
