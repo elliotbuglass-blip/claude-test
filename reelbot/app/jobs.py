@@ -972,8 +972,8 @@ def learnings():
         lines.append(f"- {src}-led reels: {len(v)}, median {int(statistics.median(v)):,} views")
     best = sorted(rows, key=lambda r: -(r["views"] or 0))[:5]
     worst = sorted(rows, key=lambda r: r["views"] or 0)[:5]
-    lines.append("Best: " + " | ".join(f'"{r["on_screen_text"]}" {r["views"]:,} (predicted {r["virality_score"]})' for r in best))
-    lines.append("Worst: " + " | ".join(f'"{r["on_screen_text"]}" {r["views"]:,} (predicted {r["virality_score"]})' for r in worst))
+    lines.append("Best: " + " | ".join(f'"{r["on_screen_text"]}" {(r["views"] or 0):,} (predicted {r["virality_score"]})' for r in best))
+    lines.append("Worst: " + " | ".join(f'"{r["on_screen_text"]}" {(r["views"] or 0):,} (predicted {r["virality_score"]})' for r in worst))
     return "\n".join(lines)
 
 
@@ -990,12 +990,12 @@ def build_context(topic, tiktok=None, keywords=None, hunt=None):
     mine = db.latest_research("my_reels")
     if mine and mine["reels"]:
         ranked = sorted(mine["reels"], key=lambda r: -(r["views"] or 0))
-        med = int(statistics.median(r["views"] for r in ranked))
+        med = int(statistics.median(r["views"] or 0 for r in ranked))
         def fmt(r):
             hook = (r["caption"] or "").splitlines()[0][:80] if r["caption"] else ""
             tag = ref("M", {"platform": "you", "account": "you", "url": r.get("permalink") or r.get("url"),
                             "views": r["views"], "text": hook})
-            return f'- {tag} "{hook}" → {r["views"]:,} views'
+            return f'- {tag} "{hook}" → {(r["views"] or 0):,} views'
         parts.append(f"MY RECENT REELS (median {med:,} views). Captions usually match the on-screen hook.\n"
                      "Best:\n" + "\n".join(fmt(r) for r in ranked[:12]) + "\nWorst:\n" + "\n".join(fmt(r) for r in ranked[-8:]))
     parts.append("MY REELBOT TRIAL RESULTS:\n" + learnings())
@@ -1017,7 +1017,7 @@ def build_context(topic, tiktok=None, keywords=None, hunt=None):
             f'- {ref("I", {"platform": "instagram", "account": w["account"], "url": w["url"], "views": w["views"], "metric": w.get("metric", "views"), "text": w["on_screen_text"] or (w.get("post_caption") or "")[:90], "music": w.get("music")})}'
             f' @{w["account"] or "?"}: ' + (f'caption "{(w["post_caption"] or "")[:90]}" (found on the web, no numbers)' if w.get("via") == "web"
             else (f'on-screen "{w["on_screen_text"]}"' if w["on_screen_text"] else f'caption "{(w.get("post_caption") or "")[:90]}"')
-                 + f' → {w["views"]:,} {w.get("metric", "views")}, sound: {w["music"] or "?"}')
+                 + f' → {(w["views"] or 0):,} {w.get("metric", "views")}, sound: {w["music"] or "?"}')
             for w in topic["winners"]) or "(none on topic: don't cite topic winners or formats)"))
         parts.append(f"Trending sounds on these reels: {', '.join(f'{s} ({n})' for s, n in topic['trending_sounds']) or 'none'}."
                      + (f" Share using original audio: {int(topic['original_audio_share'] * 100)}%." if topic.get("original_audio_share") is not None else ""))
@@ -1028,7 +1028,7 @@ def build_context(topic, tiktok=None, keywords=None, hunt=None):
         parts.append(f"TIKTOK RESEARCH (#{' #'.join(tiktok['hashtags'])}, last 30 days — TikTok is usually 1–2 weeks ahead of Instagram):\n"
                      + "\n".join(f'- {ref("T", {"platform": "tiktok", "account": w["account"], "url": w["url"], "views": w["views"], "text": w["on_screen_text"] or (w["post_caption"] or "")[:80], "music": w.get("music")})}'
                                   f' @{w["account"]}: on-screen "{w["on_screen_text"] or "(not read)"}", caption "{(w["post_caption"] or "")[:80]}" '
-                                  f'→ {w["views"]:,} views, {w["shares"]:,} shares, sound: {w["music"]}' for w in tiktok["winners"]))
+                                  f'→ {(w["views"] or 0):,} views, {(w["shares"] or 0):,} shares, sound: {w["music"]}' for w in tiktok["winners"]))
         if tiktok.get("sounds_7d"):
             parts.append("Sounds RISING on TikTok (used on these hashtags in the last 7 days): "
                          + ", ".join(f"{s} ({n} videos)" for s, n in tiktok["sounds_7d"]))
@@ -1053,7 +1053,7 @@ def build_context(topic, tiktok=None, keywords=None, hunt=None):
         metric = radar.get("metric", "views")
         parts.append(f"COMPETITOR OUTLIERS (beat their own median {metric}):\n" + "\n".join(
             f'- {ref("C", {"platform": "instagram", "account": o["account"], "url": o.get("url"), "views": o["views"], "metric": metric, "ratio": o["ratio"], "text": o.get("on_screen_text") or o.get("post_caption", "")[:60]})}'
-            f' @{o["account"]}: "{o.get("on_screen_text") or o.get("post_caption", "")[:60]}" {o["ratio"]}x, {o["views"]:,} {metric}'
+            f' @{o["account"]}: "{o.get("on_screen_text") or o.get("post_caption", "")[:60]}" {o["ratio"]}x, {(o["views"] or 0):,} {metric}'
             for o in radar["outliers"][:12]))
     saved = db.q("SELECT * FROM library WHERE source = 'saved' ORDER BY last_seen DESC LIMIT 15")
     if saved:
@@ -1065,7 +1065,7 @@ def build_context(topic, tiktok=None, keywords=None, hunt=None):
     series = series_to_continue()
     if series:
         parts.append("SERIES TO CONTINUE (your Original reels that beat your usual views; make the next part in the same format):\n"
-                     + "\n".join(f'- series "{s["series"]}": part {s["next_part"]} next. Best so far: "{s["hook"]}" → {s["views"]:,} views ({s["angle"]})'
+                     + "\n".join(f'- series "{s["series"]}": part {s["next_part"]} next. Best so far: "{s["hook"]}" → {(s["views"] or 0):,} views ({s["angle"]})'
                                   for s in series))
     used = [r["on_screen_text"] for r in db.q("SELECT on_screen_text FROM reels WHERE status != 'rejected'")]
     if used:
@@ -1683,7 +1683,7 @@ def snapshots_due():
             if h not in have and local_now() >= posted + timedelta(hours=h):
                 stats = fetch_insights(reel["media_id"])
                 db.insert("snapshots", {"reel_id": reel["id"], "hours": h, "taken_at": db.now(), **stats})
-                db.log(f"{h}h results for “{reel['on_screen_text']}”: {stats.get('views', 0):,} views")
+                db.log(f"{h}h results for “{reel['on_screen_text']}”: {(stats.get('views') or 0):,} views")
                 if h == 72:
                     submit("learn from results", review_reel, reel["id"])
                 break  # one per reel per pass is plenty
@@ -1707,11 +1707,11 @@ def review_reel(reel_id):
     info["inspired_by"] = [f"{x.get('account') or x.get('text')} ({x['took']})" for x in json.loads(reel["inspirations"] or "[]")]
     others = [r for r in _result_rows(90) if r["id"] != reel_id]
     peers = ("Other ReelBot trial reels for comparison: " + "; ".join(
-        f'"{r["on_screen_text"]}" ({r["source"]}) {r["views"]:,} views' for r in others[:10])) if others else ""
+        f'"{r["on_screen_text"]}" ({r["source"]}) {(r["views"] or 0):,} views' for r in others[:10])) if others else ""
     mine = (db.latest_research("my_reels") or {}).get("reels") or []
     best = sorted(mine, key=lambda m: -(m.get("views") or 0))[:10]
     winners = ("THE CREATOR'S BEST REELS (caption → views), to compare against:\n" + "\n".join(
-        f'- "{(m.get("caption") or "").splitlines()[0][:100] if m.get("caption") else "(no caption)"}" → {m["views"]:,}' for m in best)) if best else ""
+        f'- "{(m.get("caption") or "").splitlines()[0][:100] if m.get("caption") else "(no caption)"}" → {(m["views"] or 0):,}' for m in best)) if best else ""
     lesson = brain.review_result(info, results, usual_views(), reel["clip_seconds"] or reel["seconds"] or 8, peers, winners)
     lesson["new_start"] = max(0.0, min(lesson["new_start"], (reel["clip_seconds"] or 0) - 1))
     lesson["new_length"] = max(3.0, min(lesson["new_length"] or reel["seconds"] or 8, 180))
