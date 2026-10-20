@@ -25,7 +25,7 @@
         {% if hashtags %}<p class="meta">+ added to every post: {{ hashtags }}</p>{% endif %}
         <div class="row tight"><button class="mini ghost">Save caption</button></div>
       </form>
-      <p class="meta">🎵 Use: <b>{{ r.sound_suggestion or 'original audio' }}</b>{% if r.track %} · mixed in: {{ r.track }}{% endif %}</p>
+      <p class="meta">🎵 Use: <b>{{ r.sound_suggestion or 'original audio' }}</b>{% if r.sound_moment %} · {{ r.sound_moment }}{% endif %}{% if r.track %} · mixed in: {{ r.track }}{% endif %}</p>
 
       <details class="why">
         <summary>🔍 Why this reel</summary>
@@ -77,8 +77,10 @@
         <summary class="btn">Approve ▸</summary>
         <form method="post" action="/reels/{{ r.id }}/approve" class="when">
           <p class="meta">When should it go out?</p>
+          {% set needs_song = r.sound_suggestion and not r.sound_suggestion.lower().startswith('original') %}
+          <label class="opt"><input type="radio" name="post_at" value="handoff" {{ 'checked' if needs_song }}> 🎵 I'll add the song in Edits or Instagram{% if needs_song %} <span class="tag ok">needs {{ r.sound_suggestion.split(' — ')[0].split(' (')[0] }}</span>{% endif %}</label>
           {% for t in ([r.recommended_time] + times)|unique %}
-            <label class="opt"><input type="radio" name="post_at" value="{{ t }}" {{ 'checked' if loop.first }}> {{ t|when }}{% if loop.first %} <span class="tag ok">⭐ best time</span>{% endif %}</label>
+            <label class="opt"><input type="radio" name="post_at" value="{{ t }}" {{ 'checked' if loop.first and not needs_song }}> {{ t|when }}{% if loop.first %} <span class="tag ok">⭐ best time</span>{% endif %}</label>
           {% endfor %}
           <label class="opt"><input type="radio" name="post_at" value="custom"> Pick a time <input type="datetime-local" name="custom_at" class="dt"></label>
           <label class="opt now"><input type="radio" name="post_at" value="now"> 🚀 Post now as a trial reel</label>

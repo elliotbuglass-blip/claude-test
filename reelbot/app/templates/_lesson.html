@@ -10,7 +10,8 @@
     {% if lesson.ignored %}<p class="meta">🚫 You marked this lesson as wrong, so Creatr doesn't use it.</p>{% endif %}
     {% if r.remake_note == 'working' %}<p class="remaking">⏳ <b>Remaking now.</b> The new draft appears in <a href="/review">Review</a> in about 2 minutes.</p>
     {% elif r.remake_note and r.remake_note.startswith('failed') %}<p class="s-low">✗ Couldn't remake it: {{ r.remake_note[8:] }}</p>{% endif %}
-    {% if r.remake %}<p>🔁 Remade as <a href="/reel/{{ r.remake.id }}">“{{ r.remake.on_screen_text }}”</a> ({{ r.remake.status }})</p>
+    {% if r.remake %}<p>🔁 Remade as <a href="/reel/{{ r.remake.id }}">“{{ r.remake.on_screen_text }}”</a> ({{ {'handoff': 'needs a song', 'draft': 'in Review'}.get(r.remake.status, r.remake.status) }})</p>
+      {% from "_retry.html" import retry %}{{ retry(r.remake) }}
     {% elif r.chain_len and r.chain_len >= 5 %}<p class="meta">This is version {{ r.chain_len }}, the most a reel can have. Upload fresh clips for this idea.</p>
     {% elif r.remake_note != 'working' %}<form method="post" action="/reels/{{ r.id }}/remake" class="row"><button>🔁 Remake with this tweak</button></form>
       <p class="meta">Makes version {{ (r.chain_len or 1) + 1 }} of this reel as a draft in Review: a new hook and a different part of the clip (or a slow push-in), on a different day. A remake can be remade again, up to 5 versions.</p>{% endif %}

@@ -1,0 +1,108 @@
+<!doctype html>
+{# Phone page for a reel that needs a song: hand the video to Edits or Instagram, copy the caption, then tell Creatr
+   it's posted. Opened from a signed link (QR code on the reel page), so it works without logging in. #}
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Add the song · Creatr</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; font: 16px/1.5 "Inter", system-ui, sans-serif; color: #fff;
+      background: radial-gradient(120% 70% at 20% 0%, #9C3D84 0%, transparent 60%), radial-gradient(100% 60% at 100% 100%, #3A62B8 0%, transparent 60%), #1A1322; }
+    main { max-width: 480px; margin: 0 auto; padding: 20px 16px 48px; }
+    .brand { font-weight: 600; letter-spacing: .02em; opacity: .8; margin: 0 0 14px; }
+    h1 { font-size: 22px; line-height: 1.25; margin: 0 0 14px; }
+    video { width: 100%; max-height: 52vh; border-radius: 18px; background: #000; display: block; }
+    .card { margin-top: 14px; padding: 16px; border-radius: 18px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.09); }
+    .label { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: rgba(255,255,255,.65); margin: 0 0 4px; }
+    .song { font-size: 18px; font-weight: 600; margin: 0; }
+    .meta { font-size: 14px; color: rgba(255,255,255,.75); margin: 4px 0 0; }
+    .caption { white-space: pre-wrap; font-size: 14px; margin: 0 0 10px; color: rgba(255,255,255,.9); }
+    button, .btn { display: flex; width: 100%; align-items: center; justify-content: center; gap: 8px; min-height: 52px; padding: 12px 16px;
+      border-radius: 14px; border: 0; font: 600 16px "Inter", sans-serif; cursor: pointer; text-decoration: none; }
+    .primary { background: #F6E7CF; color: #1C1C1C; }
+    .ghost { background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.22); }
+    .stack > * + * { margin-top: 10px; }
+    button:focus-visible, .btn:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+    ol { padding-left: 20px; margin: 8px 0 0; } li + li { margin-top: 6px; }
+    .note { font-size: 14px; color: #FFD48A; margin: 10px 0 0; min-height: 1em; }
+    .done { background: rgba(80,200,120,.18); border-color: rgba(120,230,160,.4); }
+  </style>
+</head>
+<body>
+<main>
+  <p class="brand">Creatr</p>
+  <h1>“{{ r.on_screen_text }}”</h1>
+  {% if r.status == 'posted' %}
+  <div class="card done"><p class="song">✅ Posted and linked</p>
+    <p class="meta">Creatr found it on your Instagram and is tracking its results.{% if r.permalink %} <a href="{{ r.permalink }}" style="color:#fff">Open it ↗</a>{% endif %}</p></div>
+  {% else %}
+  <video src="/public/{{ r.id }}.mp4?e={{ e }}&s={{ s }}" controls playsinline preload="metadata"></video>
+
+  <div class="card">
+    <p class="label">🎵 Song to add</p>
+    <p class="song">{{ r.sound_suggestion or 'Original audio' }}</p>
+    {% if r.sound_moment %}<p class="meta">Use: {{ r.sound_moment }}</p>{% endif %}
+    {% if r.sound_reason %}<p class="meta">{{ r.sound_reason }}</p>{% endif %}
+  </div>
+
+  <div class="card stack">
+    <p class="label">1 · Send the video</p>
+    <button type="button" class="primary" id="share" disabled>Loading the video…</button>
+    <a class="btn ghost" href="/public/{{ r.id }}.mp4?e={{ e }}&s={{ s }}" download="creatr-{{ r.id }}.mp4">⬇️ Save video to my phone</a>
+    <p class="meta">Pick <b>Edits</b> or <b>Instagram</b> from the share menu. Not there? Save the video, open Edits, and import it from your camera roll.</p>
+    <p class="note" id="shareNote" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="card">
+    <p class="label">2 · Copy the caption</p>
+    <p class="caption" id="caption">{{ caption }}</p>
+    <button type="button" class="ghost" id="copy">📋 Copy caption</button>
+  </div>
+
+  <div class="card">
+    <p class="label">3 · In Edits or Instagram</p>
+    <ol>
+      <li>Add <b>{{ r.sound_suggestion or 'the song' }}</b>{% if r.sound_moment %} ({{ r.sound_moment }}){% endif %}.</li>
+      <li>Paste the caption. Keep the start of it the same, so Creatr can recognise your post.</li>
+      <li>Post it as a trial reel, or save it as a draft for later.</li>
+    </ol>
+  </div>
+
+  <form method="post" action="/finish/{{ r.id }}/done?e={{ e }}&s={{ s }}" class="card stack">
+    <p class="label">4 · Posted it?</p>
+    <button class="primary">✅ I've posted it</button>
+    <p class="meta">{% if checked %}Looking for it now. It can take a few minutes to show up: refresh this page in a minute.{% else %}Creatr also checks by itself every few minutes, then tracks its views, likes and saves.{% endif %}</p>
+  </form>
+  {% endif %}
+</main>
+<script>
+(function () {
+  const share = document.getElementById("share"), note = document.getElementById("shareNote");
+  if (!share) return;
+  const src = "/public/{{ r.id }}.mp4?e={{ e }}&s={{ s }}";
+  let file = null;
+  // Fetch the video first: phones only open the share menu straight from a tap.
+  fetch(src).then(r => r.ok ? r.blob() : Promise.reject(r.status)).then(b => {
+    file = new File([b], "creatr-{{ r.id }}.mp4", {type: "video/mp4"});
+    if (navigator.canShare && navigator.canShare({files: [file]})) {
+      share.disabled = false; share.textContent = "📲 Send to Edits or Instagram";
+    } else {
+      share.textContent = "Sharing isn't available here: save the video instead";
+    }
+  }).catch(() => { share.textContent = "Couldn't load the video: save it instead"; });
+  share.addEventListener("click", async () => {
+    try { await navigator.share({files: [file]}); note.textContent = "Sent. Now add the song and paste the caption."; }
+    catch (e) { if (e.name !== "AbortError") note.textContent = "Couldn't open the share menu: save the video instead."; }
+  });
+  document.getElementById("copy").addEventListener("click", async e => {
+    try { await navigator.clipboard.writeText(document.getElementById("caption").textContent); e.target.textContent = "✓ Copied"; }
+    catch (err) { e.target.textContent = "Press and hold the caption to copy it"; }
+  });
+})();
+</script>
+</body>
+</html>

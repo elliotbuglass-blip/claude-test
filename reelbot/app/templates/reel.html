@@ -6,6 +6,7 @@
   {% if r.status == 'scheduled' %}⏰ Scheduled for <b>{{ r.post_at|when }}</b>
   {% elif r.status == 'posting' %}🚀 Posting now… started {{ r.stage_at|ago }}. Instagram usually takes 1–5 minutes
   {% elif r.status == 'posted' %}✅ Posted {{ r.posted_at|when }}{% if r.permalink %} · <a href="{{ r.permalink }}" target="_blank">open on Instagram ↗</a>{% endif %}
+  {% elif r.status == 'handoff' %}🎵 Needs a song: add it in Edits or Instagram, then post it. Creatr spots the post and tracks it
   {% elif r.status == 'draft' %}👀 Waiting for your review · suggested {{ r.recommended_time|when }}
   {% elif r.status == 'failed' %}✗ Failed: {{ r.error }}
   {% else %}{{ r.status }}{% endif %}
@@ -25,7 +26,45 @@
         <form method="post" action="/reels/{{ r.id }}/postnow" onsubmit="return confirm('Post this trial reel now?')"><button>🚀 Post now</button></form>
         <form method="post" action="/reels/{{ r.id }}/unschedule"><button class="ghost">Unschedule</button></form>
       </div>
+      <form method="post" action="/reels/{{ r.id }}/handoff" class="row"><button class="ghost">🎵 Add a song myself instead</button></form>
     </div></div>
+    {% endif %}
+    {% if r.status == 'handoff' %}
+    <div class="card handoff"><div class="body">
+      <p class="hook">🎵 Add the song on your phone</p>
+      <p class="meta">Song: <b>{{ r.sound_suggestion or 'your pick' }}</b>{% if r.sound_moment %} · {{ r.sound_moment }}{% endif %}</p>
+      <div class="qr-row">
+        <div id="qr" class="qr" role="img" aria-label="QR code that opens this reel on your phone"></div>
+        <ol class="meta">
+          <li>Point your phone's camera at the code.</li>
+          <li>Tap <b>Send to Edits or Instagram</b>.</li>
+          <li>Add the song, paste the caption, post.</li>
+        </ol>
+      </div>
+      <div class="row">
+        <a class="btn" href="{{ finish }}">📲 On your phone? Open it here</a>
+        <button type="button" class="ghost" id="copyFinish">🔗 Copy the phone link</button>
+      </div>
+      <p class="meta" style="margin-top:14px">Posted it already? Creatr checks every few minutes, matching by the caption.</p>
+      <div class="row">
+        <form method="post" action="/reels/{{ r.id }}/findpost"><button class="ghost mini">🔎 Look for it now</button></form>
+        <a class="btn ghost mini" href="/reels/{{ r.id }}/pick">Pick it from my posts</a>
+        <form method="post" action="/reels/{{ r.id }}/unschedule"><button class="ghost mini">Back to Review</button></form>
+      </div>
+    </div></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script>
+      try { new QRCode(document.getElementById("qr"), {text: {{ finish|tojson }}, width: 148, height: 148, colorDark: "#1C1C1C", colorLight: "#ffffff"}); }
+      catch (e) { document.getElementById("qr").hidden = true; }
+      document.getElementById("copyFinish").addEventListener("click", async e => {
+        try { await navigator.clipboard.writeText({{ finish|tojson }}); e.target.textContent = "✓ Copied: send it to your phone"; } catch (err) {}
+      });
+    </script>
+    <style>
+      .qr-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
+      .qr { padding: 8px; background: #fff; border-radius: 12px; line-height: 0; }
+      .qr-row ol { margin: 0; padding-left: 18px; flex: 1; min-width: 160px; }
+    </style>
     {% endif %}
     {% if snaps %}
     <div class="card"><div class="body">

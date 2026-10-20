@@ -12,8 +12,9 @@
   <ol class="jy-cols" style="--cols: {{ j.versions|length }}">
     {% for v in j.versions %}
     <li class="jy-col">
-      <b>v{{ v.n }}</b><small>{{ ('live ' ~ v.live) if v.live else {'draft': 'in Review', 'scheduled': 'scheduled', 'rendering': 'being made'}.get(v.status, v.status) }}</small>
+      <b>v{{ v.n }}</b><small>{{ ('live ' ~ v.live) if v.live else {'draft': 'in Review', 'scheduled': 'scheduled', 'rendering': 'being made', 'handoff': 'needs a song'}.get(v.status, v.status) }}</small>
       <a href="/reel/{{ v.id }}">“{{ v.hook }}”</a>
+      {% from "_retry.html" import retry %}{{ retry(v) }}
       {% if not loop.last and v.learned %}<span class="jy-learn"><i>Learned</i> {{ v.learned }}{% if v.tweak %} <i>→ Changed</i> {{ v.tweak }}{% endif %}</span>{% endif %}
     </li>
     {% endfor %}

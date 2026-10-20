@@ -25,11 +25,12 @@
           {% else %}<form method="post" action="/clips/{{ it.id }}/make" class="row tight"><input type="hidden" name="n" value="2"><button class="mini ghost">Try again</button></form>{% endif %}
           {% if it.subject %}<div class="meta">{{ it.subject }}</div>{% elif it.description %}<div class="meta">“{{ it.description[:80] }}”</div>{% endif %}</div>
       {% else %}
-        <a class="chip" href="{{ '/review' if key == 'review' else '/calendar' if key == 'scheduled' else '/results' if key in ('posted','done') else '#' }}">
+        <a class="chip" href="{{ '/reel/' ~ it.id if it.status in ('handoff', 'failed') else '/review' if key == 'review' else '/calendar' if key == 'scheduled' else '/results' if key in ('posted','done') else '#' }}">
           {% if it.status not in ('rendering',) and it.video_path %}<img src="/thumb/{{ it.id }}.jpg" alt="" loading="lazy">{% endif %}
           <div><div class="chip-t">“{{ it.on_screen_text }}”</div>
           <div class="meta">
             {% if it.status == 'rendering' %}editing the reel…{% elif it.status == 'failed' %}<span class="s-low">✗ failed</span>
+            {% elif it.status == 'handoff' %}🎵 needs a song: open it to send to your phone
             {% elif key == 'scheduled' %}⏰ {{ it.post_at|when }}{% if it.status == 'posting' %} · posting…{% endif %}
             {% elif key in ('posted','done') %}{{ it.posted_at|when }}{% if it.snap %} · {{ it.snap.views|num }} views ({{ it.snap.hours }}h){% endif %}
             {% else %}{{ it.virality_score }}/100 · {{ it.angle }}{% endif %}

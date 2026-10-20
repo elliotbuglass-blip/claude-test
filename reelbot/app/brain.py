@@ -115,6 +115,7 @@ PLAN_SCHEMA = {
             "sound_suggestion": {"type": "string"},
             "track": {"type": "string"},
             "sound_reason": {"type": "string"},
+            "sound_moment": {"type": "string"},
             "virality_score": {"type": "integer"},
             "score_reason": {"type": "string"},
             "positives": {"type": "array", "items": {"type": "string"}},
@@ -129,7 +130,7 @@ PLAN_SCHEMA = {
                 "type": "object", "properties": {"word": {"type": "string"}, "ref": {"type": "string"}, "why": {"type": "string"}},
                 "required": ["word", "ref", "why"], "additionalProperties": False}},
         },
-        "required": ["on_screen_text", "post_caption", "angle", "inspired_by", "sound_suggestion", "sound_reason",
+        "required": ["on_screen_text", "post_caption", "angle", "inspired_by", "sound_suggestion", "sound_reason", "sound_moment",
                      "track", "virality_score", "score_reason", "positives", "negatives", "trend", "source", "series",
                      "inspirations", "keywords"],
         "additionalProperties": False}}},
@@ -179,6 +180,9 @@ post_caption: the text under the reel. It complements the hook instead of repeat
 creator's voice that add context (a detail viewers can't see, the spec, the moment), matching the caption style of the
 creator's own best reels. Don't force a question or call to action: only use one when their winners do. Under 150 characters, at most one emoji, then 3-5 specific hashtags for this clip's topic on a new line.
 sound_suggestion: the best-fitting trending Instagram sound from the research (name — artist), or "original audio (engine)" when the clip's own sound is the point (start-ups, revs). Most winning car reels use original audio.
+sound_moment: for a song, the part to use so its best moment lands on the clip's best moment (e.g. "start at the drop,
+  0:42", "the chorus"), from TRENDING SONGS when it says; "" for original audio. The creator adds songs in the Instagram
+  or Edits app, so any song in TRENDING SONGS can be used even though it isn't in the clip.
 sound_reason: one line on why this sound (cite the research, e.g. "9 of the top 12 reels for this topic use their own sound").
 track: a filename from the creator's own music library that fits the mood, or "" to keep the clip's own sound. Only use a library track when the clip's sound isn't the point.
 
@@ -397,6 +401,53 @@ def web_news(max_uses=4):
 games and consoles, music, sport, celebrity moments, product launches, viral memes, seasonal moments (holidays, events).
 Search a few different ways (e.g. "trending this week UK", "biggest releases this week", "viral this week").
 Then list the 15 most talked-about topics, one per line.""", None, max_uses)
+
+
+SONGS_SCHEMA = {
+    "type": "object",
+    "properties": {"songs": {"type": "array", "items": {
+        "type": "object",
+        "properties": {
+            "song": {"type": "string"}, "artist": {"type": "string"}, "where": {"type": "string"},
+            "mood": {"type": "string"}, "moment": {"type": "string"}, "why": {"type": "string"},
+        },
+        "required": ["song", "artist", "where", "mood", "moment", "why"], "additionalProperties": False}}},
+    "required": ["songs"],
+    "additionalProperties": False,
+}
+
+
+def trending_songs(niche, max_uses=4):
+    """Songs trending on Instagram Reels and TikTok this week (the Instagram API can't list them): Claude searches the
+    web, then the findings are tidied into a list. About 3p a run; Creatr runs it once a week."""
+    if not claude_key():
+        raise RuntimeError("Claude isn't connected")
+    response = claude().beta.messages.create(
+        model=MODEL,
+        max_tokens=6000,
+        betas=["server-side-fallback-2026-07-01"],
+        fallbacks="default",
+        output_config={"effort": "low"},
+        tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": max_uses,
+                "user_location": {"type": "approximate", "country": "GB"}}],
+        messages=[{"role": "user", "content": """Which songs and sounds are trending on Instagram Reels and TikTok THIS WEEK
+(UK first, then worldwide)? Search a few ways, e.g. "trending Instagram reels audio this week", "trending TikTok songs this
+week", "TikTok Creative Center top songs UK". Songs rising on TikTok usually trend on Reels 1-2 weeks later, so include them.
+List up to 20: song — artist, where it's trending (Reels, TikTok or both), what kind of video uses it, and the part of
+the song people use (e.g. "the drop at 0:42", "the chorus") if a source says so."""}],
+    )
+    notes = "\n".join(b.text for b in response.content if b.type == "text").strip()
+    if not notes:
+        raise RuntimeError("the web search found nothing")
+    return _ask(f"""Notes from a web search on trending songs this week:
+
+{notes}
+
+Turn them into a list of songs (only real songs or sounds named in the notes, never invented). The creator's account: {niche}
+For each: song, artist ("" for an original sound), where ("reels", "tiktok" or "both"), mood (a few words, e.g. "slow,
+moody, luxurious"), moment (the part people use, e.g. "the drop at 0:42", or "" if the notes don't say), why (a few
+words on how it's being used). Put the songs that would suit this creator's videos first.""",
+                SONGS_SCHEMA, effort="low", max_tokens=6000)["songs"]
 
 
 IDEAS_SCHEMA = {

@@ -29,3 +29,11 @@ def valid(reel_id, expires, signature):
         return int(expires) > time.time() and hmac.compare_digest(sign(reel_id, int(expires)), signature or "")
     except ValueError:
         return False
+
+
+def finish_url(reel_id, fallback_host, days=7):
+    """A link that opens one reel's "add the song and post it" page on your phone without logging in (7 days)."""
+    host = os.environ.get("PUBLIC_URL") or os.environ.get("RAILWAY_PUBLIC_DOMAIN") or fallback_host
+    host = host if host.startswith("http") else f"https://{host}"
+    expires = int(time.time()) + days * 86400
+    return f"{host.rstrip('/')}/finish/{reel_id}?e={expires}&s={sign(reel_id, expires)}"

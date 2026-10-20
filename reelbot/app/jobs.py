@@ -139,7 +139,8 @@ JOB_LABELS = {"make_reels": ("Making reels", ("clips", "making")), "analyse_clip
               "fetch_saved": ("Fetching saved reels", None), "run_radar": ("Checking competitors", None),
               "refresh_history": ("Refreshing your history", None), "google_trends": ("Checking Google trends", None),
               "rebalance_mix": ("Rebalancing the research mix", None), "autopilot_daily": ("Planning tomorrow's reels", None),
-              "post_due": ("Posting to Instagram", None), "rescue_posting": ("Checking interrupted posts", None)}
+              "post_due": ("Posting to Instagram", None), "songs_or_none": ("Checking trending songs", None),
+              "match_handoffs": ("Looking for your post on Instagram", None), "rescue_posting": ("Checking interrupted posts", None)}
 
 
 def _describe(task):
@@ -702,6 +703,30 @@ def google_trends(max_age_hours=6):
     return result
 
 
+def trending_songs(max_age_days=7):
+    """Songs trending on Reels and TikTok this week, from Claude's web search (Instagram's API can't list them).
+    Checked once a week; each reel's song pick comes from this list."""
+    cached = db.latest_research("songs")
+    if cached and datetime.fromisoformat(cached["checked_at"]) > local_now() - timedelta(days=max_age_days):
+        return cached
+    _count("web_searches")
+    songs = brain.trending_songs(cfg()["niche"])
+    if not songs:
+        return cached
+    result = {"checked_at": local_now().isoformat(), "songs": songs[:20]}
+    db.save_research("songs", result)
+    db.log(f"Trending songs: {len(result['songs'])} songs trending on Reels and TikTok this week")
+    return result
+
+
+def songs_or_none():
+    try:
+        return trending_songs()
+    except Exception as e:
+        db.log(f"Trending songs skipped: {e}")
+        return db.latest_research("songs")
+
+
 def trend_news(max_age_hours=6):
     """What the UK is talking about this week, from Claude's web search (news, films, games, launches, memes)."""
     cached = db.latest_research("news")
@@ -1122,6 +1147,13 @@ def build_context(topic, tiktok=None, keywords=None, hunt=None):
         parts.append("TRENDING NOW on Google (search term · searches · headline):\n" + "\n".join(
             f'- {ref("G", {"platform": "google", "text": t["term"], "searches": t["searches"], "headline": t["headline"], "url": t["url"], "geo": t["geo"]})}'
             f' {t["term"]} · {t["searches"]} · {t["headline"][:90]}' for t in trends["items"][:30]))
+    songs = db.latest_research("songs")
+    if songs and songs.get("songs"):
+        parts.append(f"TRENDING SONGS THIS WEEK (web search, {songs['checked_at'][:10]}; the creator adds the song in the "
+                     "Instagram or Edits app, so any of these can be used. Pick one whose mood fits the clip, or original "
+                     "audio when the clip's own sound is the point):\n" + "\n".join(
+            f'- {x["song"]}{" — " + x["artist"] if x["artist"] else ""} ({x["where"]}; {x["mood"]}; {x["why"]}'
+            f'{"; use " + x["moment"] if x["moment"] else ""})' for x in songs["songs"]))
     if hunt and hunt.get("ideas"):
         parts.append(f"TREND TIE-INS (Creatr's trend hunt: ways to link what's trending right now to THIS clip; Trends slider "
                      f"{hunt['share']}%, so lean into these for trends reels, strongest first):\n" + "\n".join(
@@ -1324,7 +1356,8 @@ def gather_research(clip, sources, trend_share=0):
     terms = json.loads(clip["search_terms"] or "[]") or [" ".join((clip["subject"] or "").split()[:4])]
 
     doing = {"Google trends": "checking Google trends", "Instagram": "researching Instagram", "TikTok": "researching TikTok",
-             "Trend hunt": "hunting for trends to tie in", "Google searches": "checking what people search on Google"}
+             "Trend hunt": "hunting for trends to tie in", "Google searches": "checking what people search on Google",
+             "Trending songs": "checking which songs are trending"}
 
     def attempt(name, fn, *args):
         step(clip["id"], doing.get(name, name))
@@ -1361,6 +1394,10 @@ def gather_research(clip, sources, trend_share=0):
     elif hunt:
         status.append({"source": "Trend hunt", "ok": True, "text": f"light (Trends slider {trend_share}%): Google's trending searches only. "
                                                                     "Turn Trends up to 25%+ for trend tie-in ideas, 50%+ to search this week's news too"})
+    songs = attempt("Trending songs", trending_songs)
+    if songs:
+        status.append({"source": "Trending songs", "ok": True, "text": f"{len(songs['songs'])} songs trending on Reels and TikTok "
+                                                                       f"(checked {songs['checked_at'][:10]}, once a week)"})
     keywords = attempt("Google searches", google_keywords, terms)
     if keywords:
         status.append({"source": "Google searches", "ok": True,
@@ -1724,20 +1761,58 @@ def post_due():
         _post_lock.release()
 
 
-def find_on_instagram(reel, since_minutes=180):
-    """Look for a reel we may have posted (e.g. the site restarted mid-post) among the account's recent posts."""
+def recent_media(limit=25):
+    """Your latest Instagram posts: [{id, caption, timestamp, permalink, thumbnail_url, media_url, media_product_type}]."""
     graph = f"https://graph.facebook.com/{cfg()['posting']['graph_api_version']}"
     r = requests.get(f"{graph}/{env('IG_USER_ID', required=False)}/media",
-                     params={"fields": "id,caption,timestamp,permalink", "limit": 25, **_ig_auth()}, timeout=30)
-    if not r.ok:
-        return None
-    want = (reel["post_caption"] or reel["on_screen_text"] or "").strip()[:60]
-    cutoff = datetime.now(ZoneInfo("UTC")) - timedelta(minutes=since_minutes)
-    for m in r.json().get("data", []):
-        when = datetime.fromisoformat(m["timestamp"].replace("+0000", "+00:00")) if m.get("timestamp") else None
-        if want and (m.get("caption") or "").strip().startswith(want) and (not when or when >= cutoff):
+                     params={"fields": "id,caption,timestamp,permalink,thumbnail_url,media_url,media_product_type",
+                             "limit": limit, **_ig_auth()}, timeout=30)
+    r.raise_for_status()
+    return r.json().get("data", [])
+
+
+def _ig_time(media):
+    return datetime.fromisoformat(media["timestamp"].replace("+0000", "+00:00")) if media.get("timestamp") else None
+
+
+def find_on_instagram(reel, since=None):
+    """Find a reel among the account's recent posts by its caption (e.g. the site restarted mid-post, or you posted it
+    yourself from Edits or Instagram after adding a song)."""
+    want = " ".join((reel["post_caption"] or reel["on_screen_text"] or "").split())[:60].lower()
+    since = since or datetime.now(ZoneInfo("UTC")) - timedelta(hours=3)
+    for m in recent_media():
+        when = _ig_time(m)
+        if want and " ".join((m.get("caption") or "").split()).lower().startswith(want) and (not when or when >= since) \
+                and not db.one("SELECT id FROM reels WHERE media_id = ?", m["id"]):
             return m
     return None
+
+
+def link_media(reel_id, media, how):
+    """This reel is that Instagram post: mark it posted so its results are tracked like any other reel."""
+    when = _ig_time(media)
+    db.update("reels", reel_id, status="posted", media_id=media["id"], permalink=media.get("permalink"), error=None,
+              posted_at=(when.astimezone(tz()).replace(tzinfo=None) if when else local_now()).isoformat(timespec="minutes"))
+    reel = db.one("SELECT on_screen_text FROM reels WHERE id = ?", reel_id)
+    db.log(f"Found “{reel['on_screen_text']}” on Instagram ({how}): tracking its results")
+
+
+def match_handoffs():
+    """Reels waiting for you to add a song and post them yourself: spot them on Instagram once they're up."""
+    for reel in db.q("SELECT * FROM reels WHERE status = 'handoff'"):
+        since = datetime.fromisoformat(reel["handoff_at"]) - timedelta(minutes=10) if reel["handoff_at"] else None
+        try:
+            found = find_on_instagram(reel, since)
+        except Exception as e:
+            db.log(f"✗ Couldn't check Instagram for “{reel['on_screen_text']}”: {e}")
+            return
+        if found:
+            link_media(reel["id"], found, "matched by its caption")
+
+
+def hand_off(reel_id):
+    """You'll add the song in Edits or Instagram and post it yourself; Creatr watches for it and tracks it after."""
+    db.update("reels", reel_id, status="handoff", post_at=None, handoff_at=db.now(), error=None)
 
 
 def rescue_posting():
@@ -1751,9 +1826,7 @@ def rescue_posting():
             except Exception:
                 found = None
             if found:
-                db.update("reels", reel["id"], status="posted", media_id=found["id"], permalink=found.get("permalink"),
-                          posted_at=local_now().isoformat(timespec="minutes"))
-                db.log(f"Found “{reel['on_screen_text']}” on Instagram: marked as posted")
+                link_media(reel["id"], found, "its post had been interrupted")
             else:
                 db.update("reels", reel["id"], status="failed",
                           error="Posting was interrupted (the site restarted or Instagram didn't answer), and it isn't among "
@@ -1963,10 +2036,14 @@ def _clock():
             if tick % 15 == 0:
                 snapshots_due()
                 rescue_posting()
+            if tick % 5 == 0 and db.one("SELECT id FROM reels WHERE status = 'handoff'"):
+                match_handoffs()
             if _due_daily("autopilot", 6, 0):
                 submit("autopilot daily plan", autopilot_daily)
             if _due_daily("history", 5, 0, weekday=0) or (tick == 0 and not db.latest_research("best_times")):
                 submit("refresh history", refresh_history)
+            if _due_daily("songs", 5, 15, weekday=0):
+                submit("trending songs", songs_or_none)
             if _due_daily("rebalance", 5, 45, weekday=0):
                 submit("rebalance research mix", rebalance_mix)
             if _due_daily("radar", 5, 30, weekday=0) and (cfg()["radar"].get("source") != "apify" or env("APIFY_TOKEN", required=False)):

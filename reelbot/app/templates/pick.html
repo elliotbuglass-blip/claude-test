@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{# "Which one is it?": link a reel you posted yourself (from Edits or Instagram) to its Instagram post. #}
+{% block main %}
+<p><a href="/reel/{{ r.id }}">← Back to the reel</a></p>
+<h1>Which post is “{{ r.on_screen_text }}”?</h1>
+<p class="sub">Tap the post you made from this reel. Creatr then tracks its results like any other reel.</p>
+{% if error %}<p class="s-low">✗ Couldn't load your posts: {{ error }}</p>{% endif %}
+<div class="pick-grid">
+  {% for m in media %}
+  <form method="post" action="/reels/{{ r.id }}/link">
+    <input type="hidden" name="media_id" value="{{ m.id }}">
+    <button class="pick-item" aria-label="This one: {{ (m.caption or 'no caption')[:80] }}">
+      {% if m.thumbnail_url or m.media_url %}<img src="{{ m.thumbnail_url or m.media_url }}" alt="" loading="lazy">{% else %}<span class="pick-blank">🎬</span>{% endif %}
+      <span>{{ (m.caption or 'No caption')[:70] }}</span>
+      <small>{{ m.timestamp[:16].replace('T', ' ') if m.timestamp }}</small>
+    </button>
+  </form>
+  {% else %}
+  {% if not error %}<p class="meta">None of your latest posts are free to link.</p>{% endif %}
+  {% endfor %}
+</div>
+<div class="card" style="margin-top:20px"><div class="body">
+  <p class="hook">Not in the list?</p>
+  <p class="meta">Trial reels may not show up for apps until they're shared to your followers. Paste the reel's link instead (Share → Copy link in Instagram).</p>
+  <form method="post" action="/reels/{{ r.id }}/link" class="row">
+    <input name="url" placeholder="https://www.instagram.com/reel/…" style="flex:1;min-width:200px" aria-label="Instagram reel link">
+    <button>Link it</button>
+  </form>
+</div></div>
+<style>
+  .pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 16px; }
+  .pick-item { display: flex; flex-direction: column; gap: 6px; width: 100%; height: 100%; padding: 8px; text-align: left; border-radius: 16px;
+    border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); color: inherit; cursor: pointer; font: inherit; box-shadow: none; }
+  .pick-item:hover, .pick-item:focus-visible { background: rgba(255,255,255,.16); }
+  .pick-item img, .pick-blank { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 10px; display: grid; place-items: center; background: rgba(0,0,0,.25); }
+  .pick-item span { font-size: 13px; line-height: 1.35; }
+  .pick-item small { font-size: 12px; opacity: .7; }
+</style>
+{% endblock %}

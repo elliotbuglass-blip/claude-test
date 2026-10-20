@@ -1,0 +1,12 @@
+{# A failed reel's way out: what went wrong and one button to try again (posting, or making it). Needs x: id, status, error. #}
+{% macro retry(x) %}{% if x.status == 'failed' %}
+<div class="retry-box">
+  <span class="s-low">✗ {{ x.error or 'Something went wrong' }}</span>
+  {% if (x.error or '').startswith('Posting') %}
+  <form method="post" action="/reels/{{ x.id }}/postnow" onsubmit="return confirm('Checked your trial reels on Instagram and it isn\'t there? Post it now?')"><button class="mini">🚀 Try posting again</button></form>
+  <form method="post" action="/reels/{{ x.id }}/handoff"><button class="ghost mini">🎵 Add a song and post it myself</button></form>
+  {% else %}
+  <form method="post" action="/reels/{{ x.id }}/retry"><button class="mini">↻ Make it again</button></form>
+  {% endif %}
+</div>
+{% endif %}{% endmacro %}

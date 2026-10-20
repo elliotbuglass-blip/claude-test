@@ -72,7 +72,7 @@ def _token():
 
 class Auth(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        open_paths = ("/login", "/static", "/health", "/public/")  # /public/ links are signed and expire
+        open_paths = ("/login", "/static", "/health", "/public/", "/finish/")  # /public/ and /finish/ links are signed and expire
         if os.environ.get("APP_PASSWORD") and not request.url.path.startswith(open_paths):
             if not hmac.compare_digest(request.cookies.get("rb", ""), _token()):
                 return RedirectResponse("/login", 303)
@@ -128,6 +128,9 @@ def action_message(action, reel, form):
     return {
         "approve": "🚀 Posting now as a trial reel" if form.get("post_at") == "now" else f"✓ {hook} is scheduled",
         "postnow": "🚀 Posting now as a trial reel",
+        "handoff": f"🎵 {hook} is ready for its song: open it on your phone and send it to Edits or Instagram",
+        "findpost": f"🔎 Looking for {hook} on your Instagram. Refresh in a minute",
+        "link": f"✓ Linked {hook} to your Instagram post: Creatr tracks its results from now",
         "spot": f"✓ Added to the queue: moving the text on {hook}. Ready in {render}",
         "retry": f"✓ Added to the queue: re-making {hook}. Ready in {render}",
         "colour": f"✓ Added to the queue: new colour for {hook}. Ready in {render}",
@@ -149,6 +152,8 @@ async def reel_action(request: Request):
         flash(f"✗ Couldn't remake it: {reel['remake_note'][8:]}")
     elif action == "forget_lesson" and reel:
         flash("✓ Creatr won't use that lesson any more" if json.loads(reel["lesson"] or "{}").get("ignored") else "✓ Creatr will use that lesson again")
+    elif action == "link" and reel and reel["status"] != "posted":
+        flash("✗ " + (db.get_setting("link_error") or "Couldn't find that post"))
     elif action_message(action, reel, await request.form()):
         flash(action_message(action, reel, await request.form()))
     return resp
@@ -162,6 +167,8 @@ async def _reel_action(request: Request):
         when = form.get("post_at") or reel["recommended_time"]
         if when == "now":
             jobs.post_now(reel_id)
+        elif when == "handoff":
+            jobs.hand_off(reel_id)
         else:
             jobs.approve(reel_id, form.get("custom_at") if when == "custom" and form.get("custom_at") else when)
     elif action == "spot":
@@ -171,6 +178,12 @@ async def _reel_action(request: Request):
         jobs.submit("re-render", jobs.render_reel, reel_id)
     elif action == "postnow":
         jobs.post_now(reel_id)
+    elif action == "handoff":
+        jobs.hand_off(reel_id)
+    elif action == "findpost":
+        jobs.submit("find my post", jobs.match_handoffs)
+    elif action == "link":
+        return await _link_post(request, reel, form)
     elif action in ("reject", "remove"):
         db.update("reels", reel_id, status="rejected", post_at=None)
         if action == "remove":
@@ -272,6 +285,69 @@ async def video(request: Request):
     return FileResponse(reel["video_path"], media_type="video/mp4")
 
 
+# --------------------------------------------------------------------------- adding the song yourself (Edits / Instagram)
+# Instagram's API can't add its music or save drafts, so reels that need a song go to your phone: the /finish page hands
+# the video to Edits or Instagram, you add the song and post, and Creatr spots the post and tracks it like any other.
+
+def _signed(request):
+    reel_id = request.path_params["id"]
+    e, s = request.query_params.get("e"), request.query_params.get("s")
+    return reel_id, e, s, links.valid(reel_id, e, s)
+
+
+async def finish_page(request: Request):
+    reel_id, e, s, ok = _signed(request)
+    if not ok:
+        return HTMLResponse("This link has expired: open the reel in Creatr for a new one.", 403)
+    r = db.one("SELECT * FROM reels WHERE id = ?", reel_id)
+    if not r:
+        return HTMLResponse("Not found", 404)
+    caption = " ".join(x for x in (r["post_caption"] or r["on_screen_text"], jobs.cfg()["posting"].get("hashtags", "")) if x)
+    return HTMLResponse(templates.get_template("finish.html").render(
+        r=r, e=e, s=s, caption=caption, checked=request.query_params.get("checked")))
+
+
+async def finish_done(request: Request):
+    reel_id, e, s, ok = _signed(request)
+    if not ok:
+        return HTMLResponse("This link has expired", 403)
+    jobs.submit("find my post", jobs.match_handoffs)
+    return RedirectResponse(f"/finish/{reel_id}?e={e}&s={s}&checked=1", 303)
+
+
+async def pick_post(request: Request):
+    """"Which one is it?": your latest Instagram posts, to link a reel you posted yourself."""
+    r = db.one("SELECT * FROM reels WHERE id = ?", request.path_params["id"])
+    if not r:
+        return RedirectResponse("/calendar", 303)
+    try:
+        media, error = jobs.recent_media(25), None
+    except Exception as e:
+        media, error = [], str(e)[:200]
+    linked = {x["media_id"] for x in db.q("SELECT media_id FROM reels WHERE media_id IS NOT NULL")}
+    return page("pick.html", request, r=r, media=[m for m in media if m["id"] not in linked], error=error)
+
+
+async def _link_post(request, reel, form):
+    """Link a reel to a post you picked from the list, or whose link you pasted."""
+    db.set_setting("link_error", None)
+    back = RedirectResponse(f"/reel/{reel['id']}", 303)
+    want, url = form.get("media_id"), (form.get("url") or "").strip()
+    code = url.split("/reel/")[-1].split("/p/")[-1].split("/")[0].split("?")[0] if url else None
+    try:
+        media = jobs.recent_media(50)
+    except Exception as e:
+        db.set_setting("link_error", f"Couldn't reach Instagram: {str(e)[:150]}")
+        return back
+    found = next((m for m in media if (want and m["id"] == want) or (code and code in (m.get("permalink") or ""))), None)
+    if not found:
+        db.set_setting("link_error", "That post isn't among your latest 50. If it's a trial reel, Instagram may not "
+                                     "share trial reels with apps until they're shared to your followers")
+        return back
+    jobs.link_media(reel["id"], found, "you linked it")
+    return back
+
+
 # --------------------------------------------------------------------------- clips
 
 async def clips_page(request: Request):
@@ -319,7 +395,7 @@ def pipeline():
     snaps = {s["reel_id"]: s for s in db.q("SELECT * FROM snapshots ORDER BY hours")}
     for r in db.q("""SELECT r.*, c.filename FROM reels r JOIN clips c ON c.id = r.clip_id
                      WHERE r.status != 'rejected' ORDER BY COALESCE(r.post_at, r.created_at) DESC LIMIT 200"""):
-        stage = {"rendering": "making", "draft": "review", "failed": "review", "scheduled": "scheduled",
+        stage = {"rendering": "making", "draft": "review", "failed": "review", "scheduled": "scheduled", "handoff": "scheduled",
                  "posting": "scheduled", "posted": "done" if r["id"] in done else "posted"}[r["status"]]
         cols[stage].append({"type": "reel", "snap": snaps.get(r["id"]), "prog": progress("reels", r) if stage != "done" else None, **r})
     brolls = db.q("SELECT * FROM clips WHERE kind = 'broll' ORDER BY created_at DESC")
@@ -450,9 +526,10 @@ async def reel_page(request: Request):
     r["look_note"] = look_note(r["grade"], db.latest_research("look"))
     snaps = db.q("SELECT * FROM snapshots WHERE reel_id = ? ORDER BY hours", r["id"])
     brolls = db.q("SELECT * FROM clips WHERE kind = 'broll' ORDER BY created_at DESC")
-    r["remake"] = db.one("SELECT id, on_screen_text, status FROM reels WHERE parent = ? AND status != 'rejected'", r["id"])
+    r["remake"] = db.one("SELECT id, on_screen_text, status, error FROM reels WHERE parent = ? AND status != 'rejected'", r["id"])
     r["chain_len"] = len(jobs.versions(r["id"]))
-    return page("reel.html", request, r=r, snaps=snaps, brolls=brolls, times=jobs.next_free_slots(6),
+    finish = links.finish_url(r["id"], request.url.netloc) if r["status"] == "handoff" else None
+    return page("reel.html", request, r=r, finish=finish, snaps=snaps, brolls=brolls, times=jobs.next_free_slots(6),
                 hashtags=jobs.cfg()["posting"].get("hashtags", ""))
 
 
@@ -466,7 +543,7 @@ async def results(request: Request):
         r["snaps"] = snaps.get(r["id"], {})
         latest = r["snaps"].get(72) or r["snaps"].get(48) or r["snaps"].get(24)
         r["latest"] = latest
-        r["remake"] = db.one("SELECT id, on_screen_text, status FROM reels WHERE parent = ? AND status != 'rejected'", r["id"])
+        r["remake"] = db.one("SELECT id, on_screen_text, status, error FROM reels WHERE parent = ? AND status != 'rejected'", r["id"])
         r["chain_len"] = len(jobs.versions(r["id"]))
         final = r["snaps"].get(72) or r["snaps"].get(48)
         r["actual"] = jobs.actual_score(final["views"], usual) if final else None
@@ -679,7 +756,7 @@ async def overview(request: Request):
         top += sorted((r for r in reels if r["status"] in ("draft", "scheduled")), key=lambda r: -(r["virality_score"] or 0))[:3 - len(top)]
     q = request.query_params.get("q", "").strip()
     recent = [r for r in reels if r["status"] != "rendering" and (not q or q.lower() in f"{r['on_screen_text']} {r['post_caption']}".lower())][:4 if not q else 12]
-    status_word = {"draft": "Waiting for review", "scheduled": "Scheduled", "posted": "Posted", "failed": "Failed"}
+    status_word = {"draft": "Waiting for review", "scheduled": "Scheduled", "handoff": "Needs a song", "posted": "Posted", "failed": "Failed"}
     conn = connect.status()
     journeys = remake_journeys(reels, latest)
     return page("overview.html", request, week=week, total=sum(d["v"] for d in week), views_week=views_week, streak=streak,
@@ -718,7 +795,7 @@ def remake_journeys(reels, latest, limit=4):
         while r and len(chain) < 10:
             lesson = json.loads(r["lesson"]) if r["lesson"] else {}
             snap = latest.get(r["id"]) or {}
-            chain.append({"id": r["id"], "n": len(chain) + 1, "hook": r["on_screen_text"], "status": r["status"],
+            chain.append({"id": r["id"], "n": len(chain) + 1, "hook": r["on_screen_text"], "status": r["status"], "error": r["error"],
                           "live": _day(r["posted_at"]) if r["posted_at"] else None, "made": _day(r["created_at"]),
                           "views": snap.get("views"), "hours": snap.get("hours"),
                           "learned": lesson.get("headline"), "tweak": lesson.get("tweak"), "verdict": lesson.get("verdict")})
@@ -788,7 +865,8 @@ routes = [
     Route("/review", review),
     Route("/reels/remake-all", rerender_all, methods=["POST"]),
     Route("/posting/resume", resume_posting, methods=["POST"]),
-    Route("/reels/{id}/{action}", reel_action, methods=["POST"]),
+    Route("/reels/{id}/pick", pick_post), Route("/reels/{id}/{action}", reel_action, methods=["POST"]),
+    Route("/finish/{id}", finish_page), Route("/finish/{id}/done", finish_done, methods=["POST"]),
     Route("/video/{id}.mp4", video), Route("/public/{id}.mp4", public_video), Route("/thumb/{id}.jpg", thumb), Route("/spots/{id}.jpg", thumb_spots), Route("/clipthumb/{id}.jpg", clip_thumb),
     Route("/clips", clips_page), Route("/upload", upload_page), Route("/upload", upload, methods=["POST"]),
     Route("/pipeline", pipeline_part), Route("/reel/{id}", reel_page), Route("/upload/start", upload_start, methods=["POST"]), Route("/calendar", calendar),

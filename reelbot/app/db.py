@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS reels (
     text_style TEXT, grade TEXT, text_position REAL,
     virality_score INTEGER, score_reason TEXT,
     recommended_time TEXT, post_at TEXT,
-    status TEXT DEFAULT 'rendering',     -- rendering | draft | scheduled | posting | posted | failed | rejected
+    status TEXT DEFAULT 'rendering',     -- rendering | draft | scheduled | handoff (needs a song, you post it) | posting | posted | failed | rejected
     mode TEXT, video_path TEXT, media_id TEXT, permalink TEXT, posted_at TEXT, error TEXT,
     created_at TEXT
 );
@@ -64,7 +64,8 @@ NEW_COLUMNS = {
               "cut_reason": "TEXT", "text_reason": "TEXT", "research": "TEXT", "text_spots": "TEXT", "risky": "INTEGER", "source": "TEXT", "series": "TEXT",
               "adjust": "TEXT", "chat": "TEXT", "text_layout": "TEXT", "text_scale": "REAL", "motion": "TEXT",
               "inspirations": "TEXT", "keywords": "TEXT", "lesson": "TEXT", "parent": "TEXT", "favourite": "INTEGER",
-              "stage_at": "TEXT", "remake_note": "TEXT"},
+              "stage_at": "TEXT", "remake_note": "TEXT",
+              "sound_moment": "TEXT", "handoff_at": "TEXT"},
 }
 
 _lock = threading.Lock()
