@@ -1,0 +1,108 @@
+{# Queue panel, bottom right on every page: what's running now and what's waiting (removable). Polls /queue. #}
+<style>
+  .q-wrap { position: fixed; right: 20px; bottom: 20px; z-index: 60; font-family: "Inter", system-ui, sans-serif; color: #fff; }
+  .q-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px 10px 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,.22);
+    background: rgba(24,16,30,.86); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); color: #fff; font: 500 14px "Inter", sans-serif;
+    box-shadow: 0 14px 34px -12px rgba(0,0,0,.55); cursor: pointer; float: right; }
+  .q-btn:hover { background: rgba(36,24,44,.92); }
+  .q-btn:focus-visible, .q-panel button:focus-visible, .q-panel a:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(255,255,255,.7); }
+  .q-btn .q-count { min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #F6E7CF; color: #1C1C1C; font-size: 12px; font-weight: 600; display: grid; place-items: center; }
+  .q-btn.idle .q-count { background: rgba(255,255,255,.18); color: #fff; }
+  .q-spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.3); border-top-color: #FFB020; animation: q-rot .9s linear infinite; }
+  .q-btn.idle .q-spin { animation: none; border-color: rgba(255,255,255,.35); }
+  @keyframes q-rot { to { transform: rotate(360deg); } }
+  .q-panel { clear: both; width: min(380px, calc(100vw - 24px)); max-height: min(70vh, 560px); overflow: auto; margin-bottom: 10px; padding: 14px;
+    border-radius: 20px; border: 1px solid rgba(255,255,255,.2); background: rgba(24,16,30,.92); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+    box-shadow: 0 24px 60px -18px rgba(0,0,0,.6); }
+  .q-panel[hidden] { display: none; }
+  .q-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .q-head b { font: 600 16px "Satoshi", "Inter", sans-serif; }
+  .q-head button { width: 28px; height: 28px; border-radius: 50%; border: 0; background: rgba(255,255,255,.1); color: #fff; cursor: pointer; box-shadow: none; padding: 0; }
+  .q-sec { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: rgba(255,255,255,.6); margin: 12px 0 6px; }
+  .q-item { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px; border-radius: 12px; background: rgba(255,255,255,.07); }
+  .q-item + .q-item { margin-top: 6px; }
+  .q-item b { display: block; font-size: 13px; font-weight: 600; }
+  .q-item div > span, .q-item div > a { display: block; font-size: 12px; color: rgba(255,255,255,.75); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none; }
+  .q-item a:hover { text-decoration: underline; }
+  .q-item small { font-size: 11px; color: rgba(255,255,255,.6); }
+  .q-pos { width: 26px; height: 26px; border-radius: 50%; background: rgba(255,255,255,.12); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+  .q-ring { width: 26px; height: 26px; transform: rotate(-90deg); }
+  .q-ring circle { fill: none; stroke-width: 4; }
+  .q-ring .t { stroke: rgba(255,255,255,.18); } .q-ring .f { stroke: #FFB020; stroke-linecap: round; transition: stroke-dashoffset 1s linear; }
+  .q-x { width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(255,255,255,.2); background: transparent; color: #fff; cursor: pointer; font-size: 13px; box-shadow: none; padding: 0; }
+  .q-x:hover { background: rgba(255,120,110,.25); }
+  .q-empty { font-size: 13px; color: rgba(255,255,255,.7); padding: 6px 2px; }
+  .q-msg { font-size: 12px; color: #FFD48A; margin-top: 8px; min-height: 0; }
+  @media (max-width: 640px) { .q-wrap { right: 12px; bottom: 12px; left: auto; } }
+  @media (prefers-reduced-motion: reduce) { .q-spin { animation: none; } .q-ring .f { transition: none; } }
+</style>
+<div class="q-wrap" id="qWrap">
+  <div class="q-panel" id="qPanel" role="region" aria-label="Queue" hidden>
+    <div class="q-head"><b>Queue</b><button type="button" id="qClose" aria-label="Close the queue">✕</button></div>
+    <div id="qBody"><p class="q-empty">Loading…</p></div>
+    <p class="q-msg" id="qMsg" role="status" aria-live="polite"></p>
+  </div>
+  <button type="button" class="q-btn idle" id="qBtn" aria-expanded="false" aria-controls="qPanel">
+    <span class="q-spin" aria-hidden="true"></span><span>Queue</span><span class="q-count" id="qCount">0</span>
+  </button>
+</div>
+<script>
+(function () {
+  const btn = document.getElementById("qBtn"), panel = document.getElementById("qPanel"), body = document.getElementById("qBody"),
+        count = document.getElementById("qCount"), msg = document.getElementById("qMsg");
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+  const fmt = s => s < 60 ? `${Math.max(1, Math.round(s))}s` : `${Math.round(s / 60)} min`;
+  let open = false, timer, data = null, skew = 0;
+  try { open = sessionStorage.getItem("qOpen") === "1"; } catch (e) {}
+
+  function row(t, i, running) {
+    const subject = t.subject ? (t.link ? `<a href="${esc(t.link)}">${esc(t.subject)}</a>` : `<span>${esc(t.subject)}</span>`) : "";
+    if (running) {
+      const el = Date.now() / 1000 + skew - t.started, f = t.estimate ? Math.min(el / t.estimate, .97) : null;
+      const left = t.estimate ? t.estimate - el : null;
+      const ring = f == null ? `<span class="q-spin" aria-hidden="true" style="margin:5px"></span>`
+        : `<svg class="q-ring" viewBox="0 0 36 36" role="img" aria-label="${Math.floor(f * 100)}% done"><circle class="t" cx="18" cy="18" r="15"/><circle class="f" cx="18" cy="18" r="15" stroke-dasharray="94.2" stroke-dashoffset="${(94.2 * (1 - f)).toFixed(1)}"/></svg>`;
+      const when = left == null ? `running for ${fmt(el)}` : left > 0 ? `${Math.floor(f * 100)}% · about ${fmt(left)} left` : `taking longer than usual · ${fmt(el)}`;
+      return `<div class="q-item">${ring}<div><b>${esc(t.label)}</b>${subject}<small>${when}</small></div><span></span></div>`;
+    }
+    return `<div class="q-item"><span class="q-pos" aria-hidden="true">${i + 1}</span><div><b>${esc(t.label)}</b>${subject}<small>waiting · ${i ? `${i} ahead of it` : "next up"}</small></div>
+      <button type="button" class="q-x" data-id="${t.id}" aria-label="Remove ${esc(t.label)} ${esc(t.subject)} from the queue">✕</button></div>`;
+  }
+  function draw() {
+    if (!data) return;
+    const n = data.running.length + data.waiting.length;
+    count.textContent = n; btn.classList.toggle("idle", !n);
+    btn.setAttribute("aria-label", n ? `Queue: ${data.running.length} running, ${data.waiting.length} waiting` : "Queue: empty");
+    if (!open) return;
+    body.innerHTML = !n ? `<p class="q-empty">Nothing in the queue. Everything's done ✓</p>`
+      : (data.running.length ? `<p class="q-sec">Working on now</p>${data.running.map((t, i) => row(t, i, true)).join("")}` : "")
+      + (data.waiting.length ? `<p class="q-sec">Waiting (${data.waiting.length})</p>${data.waiting.map((t, i) => row(t, i, false)).join("")}` : "");
+  }
+  async function load() {
+    try {
+      const r = await fetch("/queue", {headers: {"Accept": "application/json"}});
+      if (!r.ok) return;
+      data = await r.json(); skew = data.now - Date.now() / 1000; draw();
+    } catch (e) {}
+    clearTimeout(timer); timer = setTimeout(load, open ? 4000 : 12000);
+  }
+  function setOpen(v) {
+    open = v; panel.hidden = !v; btn.setAttribute("aria-expanded", String(v));
+    try { sessionStorage.setItem("qOpen", v ? "1" : "0"); } catch (e) {}
+    if (v) { draw(); load(); }
+  }
+  btn.addEventListener("click", () => setOpen(!open));
+  document.getElementById("qClose").addEventListener("click", () => { setOpen(false); btn.focus(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && open) { setOpen(false); btn.focus(); } });
+  body.addEventListener("click", async e => {
+    const x = e.target.closest(".q-x"); if (!x) return;
+    x.disabled = true; msg.textContent = "Removing…";
+    const r = await fetch(`/queue/${x.dataset.id}/remove`, {method: "POST"});
+    const out = await r.json().catch(() => ({}));
+    msg.textContent = r.ok ? `Removed: ${out.removed.label} ${out.removed.subject}`.trim() : (out.error || "Couldn't remove it.");
+    load();
+  });
+  setInterval(() => { if (open && data && data.running.length) draw(); }, 1000);
+  setOpen(open); load();
+})();
+</script>

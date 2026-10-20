@@ -8,7 +8,6 @@ import copy
 import json
 import math
 import os
-import queue
 import re
 import statistics
 import threading
@@ -95,25 +94,105 @@ def local_now():
 
 # --------------------------------------------------------------------------- worker
 
-_tasks = queue.Queue()
+# The queue is a plain list (not queue.Queue) so the app can show what's waiting and let you remove things.
+_pending = []          # [{"id", "name", "fn", "args", "added"}], oldest first
+_running = {}          # worker thread id → the task it's doing (+ "started")
+_cv = threading.Condition()
+_ids = iter(range(1, 10 ** 9))
 
 
 def submit(name, fn, *args):
-    _tasks.put((name, fn, args))
+    with _cv:
+        _pending.append({"id": next(_ids), "name": name, "fn": fn, "args": args, "added": time.time()})
+        _cv.notify()
 
 
 def _worker():
+    me = threading.get_ident()
     while True:
-        name, fn, args = _tasks.get()
+        with _cv:
+            while not _pending:
+                _cv.wait()
+            task = _pending.pop(0)
+            _running[me] = task | {"started": time.time()}
         try:
-            fn(*args)
+            task["fn"](*task["args"])
         except Exception as e:  # keep the worker alive; show the problem in the app
-            db.log(f"✗ {name} failed: {e}")
+            db.log(f"✗ {task['name']} failed: {e}")
             traceback.print_exc()
+        finally:
+            with _cv:
+                _running.pop(me, None)
 
 
 def busy():
-    return _tasks.qsize()
+    with _cv:
+        return len(_pending) + len(_running)
+
+
+# What each kind of job is called in the queue panel, and the pipeline stage whose timing estimates it.
+JOB_LABELS = {"make_reels": ("Making reels", ("clips", "making")), "analyse_clip": ("Watching the clip", ("clips", "analysing")),
+              "render_reel": ("Editing", ("reels", "rendering")), "chat_edit": ("Making your changes", ("reels", "rendering")),
+              "trim": ("Re-cutting", ("reels", "rendering")), "pick_text_spot": ("Moving the text", ("reels", "rendering")),
+              "remake": ("Remaking", None), "review_reel": ("Learning from results", None),
+              "rerender_all": ("Re-making all drafts", None), "make_combo": ("Editing clips together", None),
+              "fetch_saved": ("Fetching saved reels", None), "run_radar": ("Checking competitors", None),
+              "refresh_history": ("Refreshing your history", None), "google_trends": ("Checking Google trends", None),
+              "rebalance_mix": ("Rebalancing the research mix", None), "autopilot_daily": ("Planning tomorrow's reels", None)}
+
+
+def _describe(task):
+    fn = task["fn"].__name__
+    label, timing = JOB_LABELS.get(fn, (task["name"].capitalize(), None))
+    subject, link = "", None
+    arg = task["args"][0] if task["args"] else None
+    if isinstance(arg, str):
+        reel = db.one("SELECT on_screen_text FROM reels WHERE id = ?", arg)
+        clip = None if reel else db.one("SELECT filename FROM clips WHERE id = ?", arg)
+        if reel:
+            subject, link = f"“{reel['on_screen_text']}”", f"/reel/{arg}"
+        elif clip:
+            subject, link = clip["filename"], "/clips"
+    out = {"id": task["id"], "label": label, "subject": subject, "link": link,
+           "estimate": db.stage_seconds(*timing) if timing else None}
+    if "started" in task:
+        out["started"] = task["started"]
+    return out
+
+
+def queue_view():
+    """For the queue panel: what's running now and what's waiting, in order."""
+    with _cv:
+        running, pending = list(_running.values()), list(_pending)
+    return {"running": [_describe(t) for t in running], "waiting": [_describe(t) for t in pending], "now": time.time()}
+
+
+def cancel(task_id):
+    """Take a waiting job out of the queue, and put whatever it was for back how it was. Returns its description."""
+    with _cv:
+        task = next((t for t in _pending if t["id"] == task_id), None)
+        if not task:
+            return None
+        _pending.remove(task)
+    info = _describe(task)
+    fn, arg = task["fn"].__name__, task["args"][0] if task["args"] else None
+    if fn == "make_reels" and arg:
+        clip = db.one("SELECT status FROM clips WHERE id = ?", arg)
+        if clip and clip["status"] in ("queued", "analysed"):
+            db.update("clips", arg, status="used" if clip["status"] == "queued" else "analysed")
+    elif fn == "analyse_clip" and arg:
+        db.update("clips", arg, status="failed", notes="Removed from the queue: press Try again in Clips to analyse it")
+    elif fn in ("render_reel", "chat_edit", "trim", "pick_text_spot") and arg:
+        reel = db.one("SELECT status, video_path, post_at, media_id FROM reels WHERE id = ?", arg)
+        if reel and reel["status"] == "rendering":
+            if reel["video_path"] and Path(reel["video_path"]).exists():  # keep the version it already had
+                db.update("reels", arg, status="posted" if reel["media_id"] else "scheduled" if reel["post_at"] else "draft")
+            else:
+                db.update("reels", arg, status="failed", error="Removed from the queue before it was made")
+    elif fn == "remake" and arg:
+        db.update("reels", arg, remake_note=None)
+    db.log(f"Removed from the queue: {info['label']} {info['subject']}".strip())
+    return info
 
 
 # --------------------------------------------------------------------------- clips

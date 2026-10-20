@@ -714,6 +714,17 @@ def remake_journeys(reels, latest, limit=4):
     return out[:limit]
 
 
+async def queue_state(request: Request):
+    return JSONResponse(jobs.queue_view())
+
+
+async def queue_remove(request: Request):
+    info = jobs.cancel(int(request.path_params["id"]))
+    if not info:
+        return JSONResponse({"error": "It already started (or finished), so it can't be removed."}, 409)
+    return JSONResponse({"removed": info})
+
+
 async def favourite(request: Request):
     reel = db.one("SELECT favourite FROM reels WHERE id = ?", request.path_params["id"])
     if not reel:
@@ -753,7 +764,7 @@ async def health(request: Request):
 
 routes = [
     Route("/", home), Route("/health", health), Route("/ask", ask, methods=["POST"]), Route("/overview", overview),
-    Route("/logout", logout), Route("/reels/{id}/favourite", favourite, methods=["POST"]),
+    Route("/logout", logout), Route("/queue", queue_state), Route("/queue/{id}/remove", queue_remove, methods=["POST"]), Route("/reels/{id}/favourite", favourite, methods=["POST"]),
     Route("/login", login, methods=["GET", "POST"]),
     Route("/review", review),
     Route("/reels/remake-all", rerender_all, methods=["POST"]),
