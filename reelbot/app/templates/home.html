@@ -293,9 +293,9 @@
     <div class="compare reveal d2" role="img" aria-label="First version {{ journey.v1 }} views, remake {{ journey.v2 }} views">
       {% set hi = [journey.v1, journey.v2]|max or 1 %}
       <div class="bar-col"><div class="bar grow" style="height: {{ [24, (220 * journey.v1 / hi)|int]|max }}px"></div><strong>{{ '{:,}'.format(journey.v1) }}</strong><span>First version</span></div>
-      <div class="bar-col after"><div class="bar grow" style="height: {{ [24, (220 * journey.v2 / hi)|int]|max }}px"></div><strong>{{ '{:,}'.format(journey.v2) }}</strong><span>After the remake</span></div>
+      <div class="bar-col after"><div class="bar grow" style="height: {{ [24, (220 * journey.v2 / hi)|int]|max }}px"></div><strong>{{ '{:,}'.format(journey.v2) }}</strong><span>{{ "After the remake" if journey.n < 3 else "Version " ~ journey.n }}</span></div>
     </div>
-    <p class="note reveal d3">Your reel “{{ journey.title }}”: {{ journey.lift }}× the views after Creatr's remake.</p>
+    <p class="note reveal d3">Your reel “{{ journey.title }}”: {{ journey.lift }}× the views after {{ "Creatr's remake" if journey.n < 3 else (journey.n - 1) ~ " remakes" }}.</p>
     {% else %}
     <div class="compare reveal d2" role="img" aria-label="Example: a first version gets fewer views, the remake gets more">
       <div class="bar-col"><div class="bar grow" style="height: 70px"></div><strong>First try</strong><span>Creatr learns why</span></div>

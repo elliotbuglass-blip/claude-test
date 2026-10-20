@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import statistics
+import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -51,6 +52,11 @@ def initials():
 
 def page(name, request, **ctx):
     ctx.setdefault("initials", initials())
+    note = db.get_setting("flash")
+    if note:
+        db.set_setting("flash", None)
+        if time.time() - note["at"] < 60:
+            ctx["flash"] = note["text"]
     ctx.update(request=request, nav=request.url.path, busy=jobs.busy(), mode=jobs.setting("mode"),
                paused=db.get_setting("posting_paused"),
                events=db.q("SELECT * FROM events ORDER BY id DESC LIMIT 6"))
@@ -107,7 +113,48 @@ async def review(request: Request):
                 times=jobs.next_free_slots(6))
 
 
+def flash(text):
+    """A short confirmation shown at the top of the next page ("Added to the queue…")."""
+    db.set_setting("flash", {"text": text, "at": time.time()})
+
+
+def _minutes(seconds):
+    return "under a minute" if seconds < 60 else f"about {round(seconds / 60)} min"
+
+
+def action_message(action, reel, form):
+    hook = f"“{reel['on_screen_text']}”" if reel else "the reel"
+    render = _minutes(db.stage_seconds("reels", "rendering"))
+    return {
+        "approve": "🚀 Posting now as a trial reel" if form.get("post_at") == "now" else f"✓ {hook} is scheduled",
+        "postnow": "🚀 Posting now as a trial reel",
+        "spot": f"✓ Added to the queue: moving the text on {hook}. Ready in {render}",
+        "retry": f"✓ Added to the queue: re-making {hook}. Ready in {render}",
+        "colour": f"✓ Added to the queue: new colour for {hook}. Ready in {render}",
+        "chat": f"✓ Added to the queue: Creatr is making your changes to {hook}. Ready in {render}",
+        "trim": f"✓ Added to the queue: re-cutting {hook}. Ready in {render}",
+        "edit": f"✓ Added to the queue: re-making {hook}. Ready in {render}",
+        "review": f"✓ Added to the queue: Creatr is reviewing {hook}'s results. Refresh in a minute",
+        "remake": f"✓ Added to the queue: remaking {hook}. The new draft lands in Review in about 2 min",
+        "reject": "Rejected", "remove": "Removed", "reschedule": "✓ Moved", "unschedule": "✓ Unscheduled, back in Review",
+        "caption": "✓ Caption saved",
+    }.get(action)
+
+
 async def reel_action(request: Request):
+    resp = await _reel_action(request)
+    reel = db.one("SELECT * FROM reels WHERE id = ?", request.path_params["id"])
+    action = request.path_params["action"]
+    if action == "remake" and reel and (reel["remake_note"] or "").startswith("failed"):
+        flash(f"✗ Couldn't remake it: {reel['remake_note'][8:]}")
+    elif action == "forget_lesson" and reel:
+        flash("✓ Creatr won't use that lesson any more" if json.loads(reel["lesson"] or "{}").get("ignored") else "✓ Creatr will use that lesson again")
+    elif action_message(action, reel, await request.form()):
+        flash(action_message(action, reel, await request.form()))
+    return resp
+
+
+async def _reel_action(request: Request):
     reel_id, action = request.path_params["id"], request.path_params["action"]
     form = await request.form()
     reel = db.one("SELECT * FROM reels WHERE id = ?", reel_id)
@@ -133,12 +180,19 @@ async def reel_action(request: Request):
             jobs.approve(reel_id, form["post_at"])
     elif action == "review":
         jobs.submit("learn from results", jobs.review_reel, reel_id)
+    elif action == "forget_lesson":
+        lesson = json.loads(reel["lesson"] or "{}")
+        if lesson:
+            db.update("reels", reel_id, lesson=json.dumps(lesson | {"ignored": not lesson.get("ignored")}, ensure_ascii=False))
+        return RedirectResponse(request.headers.get("referer", "/results").split("#")[0] + f"#r-{reel_id}", 303)
     elif action == "remake":
         ok, why = jobs.remake_allowed(reel_id)
         if ok:
+            db.update("reels", reel_id, remake_note="working")
             jobs.submit("remake reel", jobs.remake, reel_id)
         else:
-            db.log(f"Remake skipped: {why}")
+            db.update("reels", reel_id, remake_note=f"failed: {why}")
+        return RedirectResponse(request.headers.get("referer", "/results").split("#")[0] + f"#r-{reel_id}", 303)
     elif action == "unschedule":
         db.update("reels", reel_id, status="draft", post_at=None)
     elif action == "trim":
@@ -171,8 +225,9 @@ async def reel_action(request: Request):
 
 
 async def rerender_all(request: Request):
-    db.run("UPDATE reels SET status = 'rendering' WHERE status IN ('draft', 'failed')")
+    db.run("UPDATE reels SET status = 'rendering', stage_at = ? WHERE status IN ('draft', 'failed')", db.now())
     jobs.submit("re-make all reels", jobs.rerender_all)
+    flash(f"✓ Added to the queue: re-making every reel in Review. Each one takes {_minutes(db.stage_seconds('reels', 'rendering'))}")
     return RedirectResponse("/review", 303)
 
 
@@ -231,6 +286,25 @@ STAGES = [("analysing", "Uploaded · analysing"), ("making", "Researching · mak
           ("scheduled", "Scheduled"), ("posted", "Posted · tracking 24/48/72h"), ("done", "Results in")]
 
 
+def _epoch(iso):
+    try:
+        d = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except (AttributeError, ValueError):
+        return None
+    return (d if d.tzinfo else d.replace(tzinfo=jobs.tz())).timestamp()
+
+
+def progress(table, item):
+    """A progress wheel for a clip or reel that's being worked on: when its stage started and how long it usually takes."""
+    if item["status"] == "new":
+        return {"queued": True}
+    if item["status"] in db.TIMED.get(table, ()) and item.get("stage_at"):
+        return {"start": _epoch(item["stage_at"]), "avg": db.stage_seconds(table, item["status"])}
+    if table == "reels" and item["status"] == "posted" and item.get("posted_at"):
+        return {"start": _epoch(item["posted_at"]), "avg": 72 * 3600, "results": True}  # 72h until the final results
+    return None
+
+
 def pipeline():
     """Every clip and reel, put in the column for the stage it's at."""
     cols = {k: [] for k, _ in STAGES}
@@ -238,14 +312,14 @@ def pipeline():
         stage = "making" if c["status"] == "making" or (c["status"] == "failed" and c["subject"]) else "analysing"
         if c["status"] == "analysed":  # analysed, not made yet: in review mode reels are on the way; autopilot uses it later
             stage = "making" if jobs.setting("mode") == "review" else "analysing"
-        cols[stage].append({"type": "clip", **c})
+        cols[stage].append({"type": "clip", "prog": progress("clips", c), **c})
     done = {s["reel_id"] for s in db.q("SELECT reel_id FROM snapshots WHERE hours = 72")}
     snaps = {s["reel_id"]: s for s in db.q("SELECT * FROM snapshots ORDER BY hours")}
     for r in db.q("""SELECT r.*, c.filename FROM reels r JOIN clips c ON c.id = r.clip_id
                      WHERE r.status != 'rejected' ORDER BY COALESCE(r.post_at, r.created_at) DESC LIMIT 200"""):
         stage = {"rendering": "making", "draft": "review", "failed": "review", "scheduled": "scheduled",
                  "posting": "scheduled", "posted": "done" if r["id"] in done else "posted"}[r["status"]]
-        cols[stage].append({"type": "reel", "snap": snaps.get(r["id"]), **r})
+        cols[stage].append({"type": "reel", "snap": snaps.get(r["id"]), "prog": progress("reels", r) if stage != "done" else None, **r})
     brolls = db.q("SELECT * FROM clips WHERE kind = 'broll' ORDER BY created_at DESC")
     return [(k, label, cols[k]) for k, label in STAGES], brolls
 
@@ -255,7 +329,7 @@ async def upload_page(request: Request):
     picked = request.query_params.get("clips", "")
     library = [c for c in (db.one("SELECT id, filename, kind, subject, description, duration FROM clips WHERE id = ?", i)
                            for i in picked.split(",") if i) if c]
-    return page("upload.html", request, stages=stages, brolls=brolls, picked=library, mix=jobs.research_mix())
+    return page("upload.html", request, stages=stages, brolls=brolls, picked=library, mix=jobs.research_mix(), now=time.time())
 
 
 async def upload_start(request: Request):
@@ -274,7 +348,7 @@ async def upload_start(request: Request):
 
 async def pipeline_part(request: Request):
     stages, brolls = pipeline()
-    html = templates.get_template("_pipeline.html").render(stages=stages, brolls=brolls, busy=jobs.busy())
+    html = templates.get_template("_pipeline.html").render(stages=stages, brolls=brolls, busy=jobs.busy(), now=time.time())
     return HTMLResponse(html)
 
 
@@ -316,6 +390,7 @@ async def clip_action(request: Request):
             jobs.submit("re-analyse", jobs.analyse_clip, clip_id, False, failed)  # a retry carries on to making reels
     elif action == "make":
         jobs.submit("make reels", jobs.make_reels, clip_id, int(form.get("n") or 3))
+        flash(f"✓ Added to the queue: making reels. They land in Review in {_minutes(db.stage_seconds('clips', 'making'))}")
     elif action == "delete":
         clip = db.one("SELECT * FROM clips WHERE id = ?", clip_id)
         Path(clip["path"]).unlink(missing_ok=True)
@@ -363,6 +438,7 @@ async def reel_page(request: Request):
     snaps = db.q("SELECT * FROM snapshots WHERE reel_id = ? ORDER BY hours", r["id"])
     brolls = db.q("SELECT * FROM clips WHERE kind = 'broll' ORDER BY created_at DESC")
     r["remake"] = db.one("SELECT id, on_screen_text, status FROM reels WHERE parent = ? AND status != 'rejected'", r["id"])
+    r["chain_len"] = len(jobs.versions(r["id"]))
     return page("reel.html", request, r=r, snaps=snaps, brolls=brolls, times=jobs.next_free_slots(6),
                 hashtags=jobs.cfg()["posting"].get("hashtags", ""))
 
@@ -378,6 +454,7 @@ async def results(request: Request):
         latest = r["snaps"].get(72) or r["snaps"].get(48) or r["snaps"].get(24)
         r["latest"] = latest
         r["remake"] = db.one("SELECT id, on_screen_text, status FROM reels WHERE parent = ? AND status != 'rejected'", r["id"])
+        r["chain_len"] = len(jobs.versions(r["id"]))
         final = r["snaps"].get(72) or r["snaps"].get(48)
         r["actual"] = jobs.actual_score(final["views"], usual) if final else None
         r["actual_final"] = bool(r["snaps"].get(72))
@@ -386,8 +463,13 @@ async def results(request: Request):
     if scored:
         views = [(r["snaps"].get(72) or r["snaps"].get(48))["views"] or 0 for r in scored]
         summary = {"reels": len(scored), "median": int(statistics.median(views)), "best": max(views)}
+        gaps = [abs(r["actual"] - (r["virality_score"] or 0)) for r in scored if r["actual"] is not None]
+        summary["off_by"] = round(statistics.mean(gaps)) if gaps else None
+        summary["learned"] = sum(1 for r in reels if r["lesson"])
 
-    return page("results.html", request, reels=reels, summary=summary, by_source=jobs.source_results(days=3650),
+    every = db.q("SELECT * FROM reels WHERE status != 'rejected' ORDER BY created_at DESC")
+    latest = {snap["reel_id"]: snap for snap in db.q("SELECT * FROM snapshots ORDER BY hours")}
+    return page("results.html", request, reels=reels, summary=summary, journeys=remake_journeys(every, latest, 6), by_source=jobs.source_results(days=3650),
                 recent=jobs.source_results(), mix=jobs.research_mix(), mix_change=db.latest_research("mix_change"),
                 auto=jobs.setting("mix_auto"))
 
@@ -498,6 +580,9 @@ async def home(request: Request):
              "typical": int(statistics.median(views)) if views else 0,
              "learned": sum(1 for r in reels if r["lesson"])}
     journey = next((j for j in remake_journeys(reels, latest, 10) if j["lift"]), None)
+    if journey:  # the home page shows first version vs latest
+        journey = {"title": journey["title"], "v1": journey["first"], "v2": journey["last"], "lift": journey["lift"],
+                   "n": len([v for v in journey["versions"] if v["views"] is not None])}
     trend = db.latest_research("trends")
     return page("home.html", request, stats=stats, journey=journey,
                 trending=[t["term"] for t in (trend or {}).get("items", [])[:6]])
@@ -586,35 +671,32 @@ def _day(iso):
 
 
 def remake_journeys(reels, latest, limit=4):
-    """Each reel Creatr learned from and remade: made → live → learned → remade → live → result, with views per check."""
+    """Every reel that was remade, as its whole chain of versions (v1 → v2 → …): when each went live, its views, what
+    Creatr learned and what changed. Best improvement first."""
     by_id = {r["id"]: r for r in reels}
-    snaps = {}
-    for snap in db.q("SELECT reel_id, hours, views FROM snapshots ORDER BY hours"):
-        snaps.setdefault(snap["reel_id"], []).append([snap["hours"], snap["views"] or 0])
+    child = {}
+    for r in sorted(reels, key=lambda r: r["created_at"] or ""):
+        if r["parent"] in by_id and r["parent"] not in child:
+            child[r["parent"]] = r
     out = []
-    for remake in reels:
-        first = by_id.get(remake["parent"])
-        if not first:
-            continue
-        lesson = json.loads(first["lesson"]) if first["lesson"] else {}
-        v1 = (latest.get(first["id"]) or {}).get("views")
-        v2 = (latest.get(remake["id"]) or {}).get("views")
-        steps = [{"label": "Made", "when": _day(first["created_at"]), "text": f"“{first['on_screen_text']}”", "kind": "made"}]
-        if first["posted_at"]:
-            steps.append({"label": "Went live", "when": _day(first["posted_at"]), "kind": "live",
-                          "text": f"{v1:,} views" if v1 is not None else "waiting for results"})
-        if lesson:
-            steps.append({"label": "Creatr learned", "when": _day(lesson.get("reviewed_at")), "kind": f"learn-{lesson.get('verdict', 'ok')}",
-                          "text": lesson.get("headline", "")})
-        steps.append({"label": "Remade", "when": _day(remake["created_at"]), "kind": "remade",
-                      "text": f"“{remake['on_screen_text']}” · {lesson.get('tweak', '')}".strip(" ·")})
-        if remake["posted_at"]:
-            steps.append({"label": "Went live", "when": _day(remake["posted_at"]), "kind": "live",
-                          "text": f"{v2:,} views" if v2 is not None else "waiting for results"})
-        lift = round(v2 / v1, 1) if v1 and v2 is not None else None
-        out.append({"first": first["id"], "remake": remake["id"], "title": first["on_screen_text"], "steps": steps,
-                    "v1": v1, "v2": v2, "lift": lift, "s1": snaps.get(first["id"], []), "s2": snaps.get(remake["id"], []),
-                    "status": remake["status"]})
+    for root in reels:
+        if root["parent"] in by_id or root["id"] not in child:
+            continue  # only chains, from their first version
+        chain, r = [], root
+        while r and len(chain) < 10:
+            lesson = json.loads(r["lesson"]) if r["lesson"] else {}
+            snap = latest.get(r["id"]) or {}
+            chain.append({"id": r["id"], "n": len(chain) + 1, "hook": r["on_screen_text"], "status": r["status"],
+                          "live": _day(r["posted_at"]) if r["posted_at"] else None, "made": _day(r["created_at"]),
+                          "views": snap.get("views"), "hours": snap.get("hours"),
+                          "learned": lesson.get("headline"), "tweak": lesson.get("tweak"), "verdict": lesson.get("verdict")})
+            r = child.get(r["id"])
+        scored = [v for v in chain if v["views"] is not None]
+        lift = round(scored[-1]["views"] / scored[0]["views"], 1) if len(scored) > 1 and scored[0]["views"] else None
+        best = max(scored, key=lambda v: v["views"]) if scored else None
+        out.append({"title": root["on_screen_text"], "versions": chain, "lift": lift, "best": best,
+                    "last_n": scored[-1]["n"] if scored else None,
+                    "first": scored[0]["views"] if scored else None, "last": scored[-1]["views"] if scored else None})
     out.sort(key=lambda j: -(j["lift"] or 0))
     return out[:limit]
 

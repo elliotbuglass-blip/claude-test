@@ -1,43 +1,73 @@
 {% extends "base.html" %}{% from "_score.html" import score %}
 {% block main %}
-<h1>Results & learning</h1>
-<p class="sub">Every trial reel Creatr posted, checked at 24, 48 and 72 hours. After 72 hours Creatr reviews each one: what worked, what didn't, and one tweak to try. Press <b>Remake</b> to test it.</p>
-{% if summary %}<div class="row" style="margin-bottom:16px"><span class="tag">{{ summary.reels }} reel{{ "s" if summary.reels != 1 }} with results</span><span class="tag">median {{ summary.median|num }} views</span><span class="tag ok">best {{ summary.best|num }} views</span>
-</div>{% endif %}
-<div class="card" style="margin-bottom:16px"><div class="body">
-  <p class="hook">📊 Research mix scoreboard</p>
-  <div class="scroll" style="border:0"><table>
-    <tr><th>Source</th><th>Share of reels now</th><th>Reels with results</th><th>Median views (48–72h)</th><th>Breakouts (3× usual)</th><th>Last 30 days</th></tr>
+<h1>Results &amp; learning</h1>
+<p class="sub">How each trial reel did, what Creatr learned from it, and a one-tap remake.</p>
+
+{% if summary %}
+<div class="tiles">
+  <div class="tile"><small>Reels with results</small><strong>{{ summary.reels }}</strong></div>
+  <div class="tile"><small>Typical views</small><strong>{{ summary.median|num }}</strong></div>
+  <div class="tile"><small>Best reel</small><strong>{{ summary.best|num }}</strong></div>
+  <div class="tile"><small>Predictions</small><strong>{{ ('±' ~ summary.off_by) if summary.off_by is not none else '–' }}</strong><span>points off, on average</span></div>
+</div>
+{% endif %}
+
+{% if journeys %}<h2 class="h2" style="margin-top:8px">🔁 Remake journeys</h2>
+<p class="meta" style="margin:-6px 0 12px">Each reel's versions over time: the views it had when Creatr remade it, and the views each new version got.</p>
+<div class="journeys" style="margin-bottom:22px">{% include "_journeys.html" %}</div>{% endif %}
+{% if not reels %}<div class="empty">No posted reels yet. Results appear 24 hours after a reel goes out.</div>{% else %}
+<div class="rlist">
+  {% for r in reels %}{% set lesson = r.lesson|fromjson %}{% set src = r.source or ('trends' if r.risky else 'instagram') %}
+  <details class="rrow" id="r-{{ r.id }}" {{ 'open' if r.remake_note }}>
+    <summary>
+      <img src="/thumb/{{ r.id }}.jpg" alt="" loading="lazy">
+      <div class="rmain">
+        <b>“{{ r.on_screen_text }}”</b>
+        <div class="meta"><span class="tag src-{{ src }}">{{ SOURCE_LABELS[src] }}</span> · {{ r.posted_at|when }}</div>
+      </div>
+      <div class="rnum"><small>Predicted</small>{{ score(r.virality_score) }}</div>
+      <div class="rnum"><small>Actual</small>{% if r.actual is not none %}{{ score(r.actual) }}{% else %}<span class="meta">after 72h</span>{% endif %}</div>
+      <div class="rnum"><small>Views</small><b>{{ r.latest.views|num if r.latest else '–' }}</b></div>
+      <div class="rverdict">
+        {% if r.remake_note == 'working' %}<span class="tag">⏳ Remaking</span>
+        {% elif r.remake %}<span class="tag">🔁 Remade</span>
+        {% elif lesson %}<span class="tag {{ 'ok' if lesson.verdict == 'winner' else 'bad' if lesson.verdict == 'flop' else '' }}">{{ {"winner": "🏆 Winner", "ok": "👌 OK", "flop": "📉 Flop"}[lesson.verdict] }}</span>
+        {% else %}<span class="tag">⏳ Tracking</span>{% endif %}
+      </div>
+    </summary>
+    <div class="rdetail">
+      <div class="rstats">
+        {% for h in (24, 48, 72) %}<div><small>{{ h }}h</small><b>{{ r.snaps[h].views|num if h in r.snaps else '⏳' }}</b></div>{% endfor %}
+        <div><small>Shares</small><b>{{ r.latest.shares|num if r.latest else '–' }}</b></div>
+        <div><small>Saves</small><b>{{ r.latest.saved|num if r.latest else '–' }}</b></div>
+        <div><small>Avg watch</small><b>{{ ('%.1fs'|format(r.latest.avg_watch_ms / 1000)) if r.latest and r.latest.avg_watch_ms else '–' }}</b></div>
+        {% if r.actual is not none %}{% set d = r.actual - (r.virality_score or 0) %}<div><small>vs predicted</small><b>{{ '▲' if d > 0 else '▼' if d < 0 else '=' }} {{ d|abs }}</b></div>{% endif %}
+      </div>
+      {% include "_lesson.html" %}
+      <p class="meta"><a href="/reel/{{ r.id }}">Open the reel</a>{% if r.permalink %} · <a href="{{ r.permalink }}" target="_blank" rel="noopener">View on Instagram ↗</a>{% endif %}</p>
+    </div>
+  </details>
+  {% endfor %}
+</div>
+{% endif %}
+
+<details class="card" style="margin-top:20px"><summary class="body" style="margin:0"><b>📊 Research mix scoreboard</b> <span class="meta">· which kind of research is winning</span></summary>
+  <div class="body" style="padding-top:0">
+  <div class="scroll" style="border:0;box-shadow:none;background:transparent"><table>
+    <tr><th>Source</th><th>Share now</th><th>Reels</th><th>Median views</th><th>Breakouts</th><th>Last 30 days</th></tr>
     {% for src in SOURCE_LABELS %}
     <tr><td>{{ SOURCE_LABELS[src] }}</td><td>{{ mix[src] }}%</td><td>{{ by_source[src].reels if src in by_source else 0 }}</td>
       <td><b>{{ by_source[src].median|num if src in by_source else '–' }}</b></td>
       <td>{{ by_source[src].breakouts if src in by_source else '–' }}</td><td class="meta">{{ recent[src].median|num if src in recent else '–' }}</td></tr>
     {% endfor %}
   </table></div>
-  <p class="meta">{% if auto %}Rebalancing is on: every Monday the mix moves up to 10% towards the winner (views, with extra credit for breakouts).{% else %}Rebalancing is off (Settings).{% endif %}
-  {% if mix_change %} Last change: {{ mix_change.reason }}.{% endif %}</p>
-</div></div>
-{% set with_snaps = reels|selectattr('latest')|list %}
-{% if with_snaps %}<h2 class="h2">🧠 Learning</h2>
-<div class="lessons">{% for r in with_snaps %}<div>
-  <p class="meta"><a href="/reel/{{ r.id }}"><b>“{{ r.on_screen_text }}”</b></a> · {{ r.latest.views|num }} views at {{ r.latest.hours }}h</p>
-  {% include "_lesson.html" %}</div>{% endfor %}</div>{% endif %}
-{% if not reels %}<div class="empty">No posted reels yet.</div>{% else %}
-<div class="scroll"><table>
-<tr><th>Reel</th><th>Predicted</th><th>Actual <span title="From real views at 72h: 50 = your usual reel, 65 = 2× usual, 80 = 4×, 35 = half">ⓘ</span></th><th>Posted</th><th>24h views</th><th>48h views</th><th>72h views</th><th>Shares</th><th>Saves</th><th>Avg watch</th></tr>
-{% for r in reels %}
-<tr>
-  <td><a href="/reel/{{ r.id }}"><b>“{{ r.on_screen_text }}”</b></a> <span class="tag src-{{ r.source or ('trends' if r.risky else 'instagram') }}">{{ SOURCE_LABELS[r.source or ('trends' if r.risky else 'instagram')] }}</span><div class="meta">{{ r.angle }} · 🎵 {{ r.sound_suggestion }}{% if r.permalink %} · <a href="{{ r.permalink }}" target="_blank">open ↗</a>{% endif %}</div></td>
-  <td>{{ score(r.virality_score) }}</td>
-  <td>{% if r.actual is not none %}{{ score(r.actual) }}{% set d = r.actual - (r.virality_score or 0) %}
-    <div class="meta">{{ '▲' if d > 0 else '▼' if d < 0 else '=' }} {{ d|abs }} vs predicted{{ '' if r.actual_final else ' · 48h, so far' }}</div>
-    {% else %}<span class="meta">after 72h ⏳</span>{% endif %}</td>
-  <td class="meta">{{ r.posted_at|when }}</td>
-  {% for h in (24, 48, 72) %}<td>{{ r.snaps[h].views|num if h in r.snaps else '⏳' }}</td>{% endfor %}
-  <td>{{ r.latest.shares|num if r.latest else '–' }}</td>
-  <td>{{ r.latest.saved|num if r.latest else '–' }}</td>
-  <td>{{ ('%.1fs'|format(r.latest.avg_watch_ms / 1000)) if r.latest and r.latest.avg_watch_ms else '–' }}</td>
-</tr>
-{% endfor %}
-</table></div>{% endif %}
+  <p class="meta">{% if auto %}Every Monday the mix moves up to 10% towards the winner.{% else %}Rebalancing is off (Settings).{% endif %}{% if mix_change %} Last change: {{ mix_change.reason }}.{% endif %}</p>
+  </div>
+</details>
+<script>
+  // Open the reel you just acted on (e.g. after pressing Remake), and keep checking while a remake runs.
+  const target = location.hash && document.querySelector(location.hash);
+  if (target && target.tagName === "DETAILS") { target.open = true; target.scrollIntoView({block: "center"}); }
+  if (document.querySelector('.rrow[open] .remaking')) setTimeout(() => location.reload(), 15000);
+</script>
 {% endblock %}

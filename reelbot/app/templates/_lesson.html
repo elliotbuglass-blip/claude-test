@@ -7,12 +7,18 @@
     <ul class="reasons">{% for w in lesson.worked %}<li class="plus">{{ w }}</li>{% endfor %}{% for w in lesson.didnt %}<li class="minus">{{ w }}</li>{% endfor %}</ul>
     <p>🔧 <b>Next try:</b> {{ lesson.tweak }}</p>
     <p class="meta">📌 Remembered for every future reel: {{ lesson.lesson_for_next }} · from {{ lesson.hours }}h results</p>
+    {% if lesson.ignored %}<p class="meta">🚫 You marked this lesson as wrong, so Creatr doesn't use it.</p>{% endif %}
+    {% if r.remake_note == 'working' %}<p class="remaking">⏳ <b>Remaking now.</b> The new draft appears in <a href="/review">Review</a> in about 2 minutes.</p>
+    {% elif r.remake_note and r.remake_note.startswith('failed') %}<p class="s-low">✗ Couldn't remake it: {{ r.remake_note[8:] }}</p>{% endif %}
     {% if r.remake %}<p>🔁 Remade as <a href="/reel/{{ r.remake.id }}">“{{ r.remake.on_screen_text }}”</a> ({{ r.remake.status }})</p>
-    {% elif r.parent %}<p class="meta">This is already a remake, so it can't be remade again.</p>
-    {% else %}<form method="post" action="/reels/{{ r.id }}/remake" class="row"><button>🔁 Remake with this tweak</button></form>
-      <p class="meta">Makes a new draft of the same clip in Review: a new hook and a different part of the clip (or a slow push-in), on a different day. One remake per reel.</p>{% endif %}
+    {% elif r.chain_len and r.chain_len >= 5 %}<p class="meta">This is version {{ r.chain_len }}, the most a reel can have. Upload fresh clips for this idea.</p>
+    {% elif r.remake_note != 'working' %}<form method="post" action="/reels/{{ r.id }}/remake" class="row"><button>🔁 Remake with this tweak</button></form>
+      <p class="meta">Makes version {{ (r.chain_len or 1) + 1 }} of this reel as a draft in Review: a new hook and a different part of the clip (or a slow push-in), on a different day. A remake can be remade again, up to 5 versions.</p>{% endif %}
   {% else %}
     <p class="meta">Creatr reviews each reel by itself once it has 72 hours of results.</p>
   {% endif %}
-  <form method="post" action="/reels/{{ r.id }}/review" class="row"><button class="ghost mini">{{ '↻ Review again' if lesson else '🧠 Review now' }}</button></form>
+  <div class="row">
+    <form method="post" action="/reels/{{ r.id }}/review"><button class="ghost mini">{{ '↻ Review again' if lesson else '🧠 Review now' }}</button></form>
+    {% if lesson %}<form method="post" action="/reels/{{ r.id }}/forget_lesson"><button class="ghost mini">{{ '↩ Use this lesson again' if lesson.ignored else '👎 This lesson is wrong' }}</button></form>{% endif %}
+  </div>
 </div></div>

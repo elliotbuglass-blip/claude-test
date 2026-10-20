@@ -176,8 +176,8 @@ Only trends reels may have a trend; all others have trend "". Only original reel
 inspired_by must name research from the reel's own source.
 
 post_caption: the text under the reel. It complements the hook instead of repeating it: 1-2 short lines in the
-creator's voice that add context or a reason to engage (a question, "save this for later", a detail viewers can't
-see), under 150 characters, at most one emoji, then 3-5 specific hashtags for this clip's topic on a new line.
+creator's voice that add context (a detail viewers can't see, the spec, the moment), matching the caption style of the
+creator's own best reels. Don't force a question or call to action: only use one when their winners do. Under 150 characters, at most one emoji, then 3-5 specific hashtags for this clip's topic on a new line.
 sound_suggestion: the best-fitting trending Instagram sound from the research (name — artist), or "original audio (engine)" when the clip's own sound is the point (start-ups, revs). Most winning car reels use original audio.
 sound_reason: one line on why this sound (cite the research, e.g. "9 of the top 12 reels for this topic use their own sound").
 track: a filename from the creator's own music library that fits the mood, or "" to keep the clip's own sound. Only use a library track when the clip's sound isn't the point.
@@ -323,7 +323,7 @@ LESSON_SCHEMA = {
 }
 
 
-def review_result(reel, results, usual, clip_seconds, others=""):
+def review_result(reel, results, usual, clip_seconds, others="", winners=""):
     """After a trial reel has results: what worked, what didn't, and one tweak worth testing in a remake."""
     text = f"""You review how an Instagram TRIAL reel did (shown to non-followers only), so the creator learns and the next version does better.
 
@@ -333,10 +333,17 @@ The clip it came from is {clip_seconds:.1f}s long; the reel used {reel.get("star
 RESULTS (hours after posting → numbers): {json.dumps(results)}
 The creator's usual views per reel: {usual:,}.
 {others}
+{winners}
 
 How to read it: views vs usual is the headline. Shares and saves per 1,000 views show whether people valued it.
 Average watch time vs reel length shows whether the opening held people (a short watch on a long reel = the hook or
 first second lost them). Likes per view show whether the payoff landed. Be specific and honest; numbers beat adjectives.
+
+Learn from THIS creator, not from generic social-media advice. Many of their best reels went viral with no question, no
+call to action and few comments, so never conclude "ask a question", "add a call to action", "get more comments" or
+"post more" unless their own best reels clearly show it. Low comments on its own is not a problem: views, watch time,
+shares and saves matter far more for trial reels. Compare this reel with the creator's best reels above (hook style,
+caption style, opening, length, sound) and name the real difference. If one reel can't prove a pattern, say so.
 
 - verdict: winner (clearly above usual, or strong shares/saves), ok, or flop (clearly below usual).
 - headline: one plain sentence a 10-year-old would get, e.g. "Half your usual views: people scrolled past in the first second."
@@ -345,7 +352,8 @@ first second lost them). Likes per view show whether the payoff landed. Be speci
 - change: which parts the remake should change.
 - new_start, new_length: the part of the clip the remake should use, in seconds of the clip (keep the current ones if the part isn't the problem).
   For a winner, pick a different part of the clip so the remake isn't a duplicate.
-- lesson_for_next: one line ReelBot should remember for every future reel (e.g. "Night walk-ups beat daytime 3 to 1")."""
+- lesson_for_next: one line Creatr should remember for every future reel, only if the creator's own results back it up
+  (e.g. "Night walk-ups beat daytime 3 to 1"); otherwise a cautious note like "One reel: test the engine-first opening again"."""
     return _ask([{"type": "text", "text": text}], LESSON_SCHEMA, effort="medium", max_tokens=6000)
 
 

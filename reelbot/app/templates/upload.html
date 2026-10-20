@@ -134,8 +134,24 @@ function drawMix() {
 }
 sliders.forEach(s => s.oninput = drawMix); drawMix();
 async function refresh() {
-  const r = await fetch('/pipeline'); if (r.ok) document.getElementById('pipeline').innerHTML = await r.text();
+  const r = await fetch('/pipeline'); if (r.ok) { document.getElementById('pipeline').innerHTML = await r.text(); tickRings(); }
 }
 setInterval(refresh, 6000);
+// Progress wheels tick every second between refreshes.
+function fmtLeft(s) { return s < 60 ? `${Math.max(1, Math.round(s))}s` : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.round(s / 3600)}h`; }
+function tickRings() {
+  const now = Date.now() / 1000;
+  document.querySelectorAll('.ring[data-start]').forEach(r => {
+    const el = Math.max(0, now - +r.dataset.start), avg = +r.dataset.avg, results = r.dataset.results === '1';
+    const f = Math.min(el / avg, results ? 1 : .97), left = avg - el;
+    r.querySelector('.rf').setAttribute('stroke-dashoffset', (94.2 * (1 - f)).toFixed(1));
+    r.querySelector('b').textContent = Math.floor(f * 100) + '%';
+    r.setAttribute('aria-valuenow', Math.floor(f * 100));
+    r.classList.toggle('slow', !results && left < 0);
+    r.querySelector('small').textContent = results ? (left > 0 ? `final results in ${fmtLeft(left)}` : 'results due')
+      : left > 0 ? `about ${fmtLeft(left)} left` : 'taking a little longer…';
+  });
+}
+tickRings(); setInterval(tickRings, 1000);
 </script>
 {% endblock %}

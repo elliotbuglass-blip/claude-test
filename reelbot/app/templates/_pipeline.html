@@ -1,3 +1,15 @@
+{# Progress wheel: how far through its stage an item is, from how long that stage usually takes. Updated every second by
+   the page's ticker (upload.html); the numbers here are the starting point. #}
+{% macro ring(p) -%}
+{% if p and p.queued %}<span class="ring queued" role="img" aria-label="Waiting in the queue"><svg viewBox="0 0 36 36" aria-hidden="true"><circle class="rt" cx="18" cy="18" r="15"/><circle class="rf" cx="18" cy="18" r="15" stroke-dasharray="24 94.2"/></svg><small>in the queue</small></span>
+{% elif p and p.start %}
+  {% set el = [now - p.start, 0]|max %}{% set f = [el / p.avg, (1.0 if p.results else 0.97)]|min %}
+  <span class="ring{{ ' slow' if (el > p.avg and not p.results) }}" data-start="{{ p.start }}" data-avg="{{ p.avg }}" data-results="{{ 1 if p.results else 0 }}"
+        role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ (f * 100)|int }}" aria-label="{{ 'Time until final results' if p.results else 'Progress' }}">
+    <svg viewBox="0 0 36 36" aria-hidden="true"><circle class="rt" cx="18" cy="18" r="15"/><circle class="rf" cx="18" cy="18" r="15" stroke-dasharray="94.2" stroke-dashoffset="{{ '%.1f'|format(94.2 * (1 - f)) }}"/></svg>
+    <b>{{ (f * 100)|int }}%</b><small></small></span>
+{% endif %}
+{%- endmacro %}
 <div class="pipe">
 {% for key, label, items in stages %}
   <div class="stage s-{{ key }}">
@@ -5,19 +17,20 @@
     {% for it in items[:12] %}
       {% if it.type == 'clip' %}
         <div class="chip col"><div class="chip-t">🎬 {{ it.filename }}</div>
-          <div class="meta">{% if it.status == 'failed' %}<span class="s-low">✗ {{ it.notes[:90] }}</span> · <a href="/clips">retry in Clips</a>{% elif key == 'analysing' %}⏳ watching the clip…{% else %}🔎 researching hooks, sounds &amp; trends…{% endif %}</div>
+          <div class="meta">{% if it.status == 'failed' %}<span class="s-low">✗ {{ it.notes[:90] }}</span> · <a href="/clips">retry in Clips</a>{% elif key == 'analysing' %}watching the clip…{% else %}researching, writing and editing…{% endif %}</div>
+          {% if it.status != 'failed' %}{{ ring(it.prog) }}{% endif %}
           {% if it.subject %}<div class="meta">{{ it.subject }}</div>{% elif it.description %}<div class="meta">“{{ it.description[:80] }}”</div>{% endif %}</div>
       {% else %}
         <a class="chip" href="{{ '/review' if key == 'review' else '/calendar' if key == 'scheduled' else '/results' if key in ('posted','done') else '#' }}">
           {% if it.status not in ('rendering',) and it.video_path %}<img src="/thumb/{{ it.id }}.jpg" alt="" loading="lazy">{% endif %}
           <div><div class="chip-t">“{{ it.on_screen_text }}”</div>
           <div class="meta">
-            {% if it.status == 'rendering' %}⏳ editing…{% elif it.status == 'failed' %}<span class="s-low">✗ failed</span>
+            {% if it.status == 'rendering' %}editing the reel…{% elif it.status == 'failed' %}<span class="s-low">✗ failed</span>
             {% elif key == 'scheduled' %}⏰ {{ it.post_at|when }}{% if it.status == 'posting' %} · posting…{% endif %}
             {% elif key in ('posted','done') %}{{ it.posted_at|when }}{% if it.snap %} · {{ it.snap.views|num }} views ({{ it.snap.hours }}h){% endif %}
             {% else %}{{ it.virality_score }}/100 · {{ it.angle }}{% endif %}
             {% set src = it.source or ('trends' if it.risky else 'instagram') %} · {{ SOURCE_LABELS[src].split(' ')[0] }}{% if it.trend %} {{ it.trend }}{% endif %}
-          </div></div></a>
+          </div>{% if it.status in ('rendering', 'posted') %}{{ ring(it.prog) }}{% endif %}</div></a>
       {% endif %}
     {% else %}<div class="meta empty-s">—</div>{% endfor %}
     {% if items|length > 12 %}<div class="meta">+{{ items|length - 12 }} more</div>{% endif %}

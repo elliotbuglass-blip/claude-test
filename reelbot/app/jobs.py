@@ -1006,7 +1006,8 @@ def build_context(topic, tiktok=None, keywords=None, hunt=None):
                      "Lean into what's above 1x, avoid what's below, but don't over-trust anything with only 1 reel:\n"
                      f"- Creators/reels borrowed from: {fmt(board['creators'])}\n- Words used: {fmt(board['words'])}\n"
                      f"- Angles: {fmt(board['formats'])}")
-    lessons = db.q("SELECT on_screen_text, lesson FROM reels WHERE lesson IS NOT NULL ORDER BY posted_at DESC LIMIT 10")
+    lessons = [r for r in db.q("SELECT on_screen_text, lesson FROM reels WHERE lesson IS NOT NULL ORDER BY posted_at DESC LIMIT 20")
+               if not json.loads(r["lesson"]).get("ignored")][:10]
     if lessons:
         parts.append("LESSONS FROM MY POSTED TRIAL REELS (newest first; apply them):\n" + "\n".join(
             f'- "{r["on_screen_text"]}": {json.loads(r["lesson"])["verdict"]}. {json.loads(r["lesson"])["lesson_for_next"]}'
@@ -1680,7 +1681,11 @@ def review_reel(reel_id):
     others = [r for r in _result_rows(90) if r["id"] != reel_id]
     peers = ("Other ReelBot trial reels for comparison: " + "; ".join(
         f'"{r["on_screen_text"]}" ({r["source"]}) {r["views"]:,} views' for r in others[:10])) if others else ""
-    lesson = brain.review_result(info, results, usual_views(), reel["clip_seconds"] or reel["seconds"] or 8, peers)
+    mine = (db.latest_research("my_reels") or {}).get("reels") or []
+    best = sorted(mine, key=lambda m: -(m.get("views") or 0))[:10]
+    winners = ("THE CREATOR'S BEST REELS (caption → views), to compare against:\n" + "\n".join(
+        f'- "{(m.get("caption") or "").splitlines()[0][:100] if m.get("caption") else "(no caption)"}" → {m["views"]:,}' for m in best)) if best else ""
+    lesson = brain.review_result(info, results, usual_views(), reel["clip_seconds"] or reel["seconds"] or 8, peers, winners)
     lesson["new_start"] = max(0.0, min(lesson["new_start"], (reel["clip_seconds"] or 0) - 1))
     lesson["new_length"] = max(3.0, min(lesson["new_length"] or reel["seconds"] or 8, 180))
     lesson["reviewed_at"] = local_now().isoformat(timespec="minutes")
@@ -1690,29 +1695,57 @@ def review_reel(reel_id):
     return lesson
 
 
-def remake_allowed(reel_id):
-    """One remake per posted reel (on top of the 2-per-clip limit). Returns (ok, reason)."""
+MAX_VERSIONS = 5  # a reel and its remakes: v1 → v2 → … → v5
+
+
+def versions(reel_id):
+    """The whole remake chain a reel belongs to, first version first: [v1, v2, …] (rejected remakes left out)."""
     reel = db.one("SELECT * FROM reels WHERE id = ?", reel_id)
-    if reel["parent"]:
-        return False, "This is already a remake: remake the original instead, or upload a new clip."
-    kid = db.one("SELECT id FROM reels WHERE parent = ? AND status != 'rejected'", reel_id)
-    if kid:
-        return False, "Already remade once. Reject that remake to try a different one."
+    while reel and reel["parent"]:
+        up = db.one("SELECT * FROM reels WHERE id = ?", reel["parent"])
+        if not up:
+            break
+        reel = up
+    chain = []
+    while reel:
+        chain.append(reel)
+        reel = db.one("SELECT * FROM reels WHERE parent = ? AND status != 'rejected' ORDER BY created_at LIMIT 1", reel["id"])
+    return chain
+
+
+def remake_allowed(reel_id):
+    """Each posted reel can be remade once (on top of the 2-per-clip limit), and a remake can be remade again,
+    up to MAX_VERSIONS in a chain. Returns (ok, reason)."""
+    if db.one("SELECT id FROM reels WHERE parent = ? AND status != 'rejected'", reel_id):
+        return False, "already remade. Reject that remake to try a different one"
+    if len(versions(reel_id)) >= MAX_VERSIONS:
+        return False, f"this reel has had {MAX_VERSIONS} versions already, so upload fresh clips for this idea"
     return True, ""
 
 
 def remake(reel_id):
+    """Run a remake, keeping the reel's card up to date: "working" while it runs, the reason if it fails."""
+    try:
+        _remake(reel_id)
+        db.update("reels", reel_id, remake_note=None)
+    except Exception as e:
+        db.update("reels", reel_id, remake_note=f"failed: {str(e)[:200]}")
+        raise
+
+
+def _remake(reel_id):
     """A new draft of a posted reel's clip with the lesson applied: new hook, and a different part or a push-in."""
     ok, why = remake_allowed(reel_id)
     if not ok:
-        db.log(f"Remake skipped: {why}")
-        return
+        raise RuntimeError(why)
     reel = db.one("SELECT * FROM reels WHERE id = ?", reel_id)
     lesson = json.loads(reel["lesson"] or "null") or review_reel(reel_id)
     if not lesson:
-        db.log("Remake skipped: no results to learn from yet")
-        return
-    clip = ensure_working_copy(db.one("SELECT * FROM clips WHERE id = ?", reel["clip_id"]))
+        raise RuntimeError("no results to learn from yet")
+    clip = db.one("SELECT * FROM clips WHERE id = ?", reel["clip_id"])
+    if not clip or not Path(clip["path"]).exists():
+        raise RuntimeError("the original clip isn't on the server any more (it was deleted), so there's nothing to re-cut")
+    clip = ensure_working_copy(clip)
     start = lesson["new_start"]
     length = min(lesson["new_length"], max(1.0, clip["duration"] - start))
     old_start, old_len = reel["start"] or 0.0, reel["seconds"] or length
@@ -1725,8 +1758,16 @@ def remake(reel_id):
     info = {"filename": clip["filename"], "subject": clip["subject"], "notes": clip["notes"], "seconds": clip["duration"],
             "reel_cut": f"{start:.1f}s–{start + length:.1f}s of the clip, so the reel is {length:.0f}s long",
             "creator_description": clip["description"] or ""}
-    brief = {"first_version": {"hook": reel["on_screen_text"], "caption": reel["post_caption"], "angle": reel["angle"],
-                               "sound": reel["sound_suggestion"]}, "lesson": {k: lesson[k] for k in ("verdict", "headline", "worked", "didnt", "tweak", "change")}}
+    chain = versions(reel_id)
+    history = []
+    for n, v in enumerate(chain, 1):
+        snap = db.one("SELECT views FROM snapshots WHERE reel_id = ? ORDER BY hours DESC LIMIT 1", v["id"])
+        history.append({"version": n, "hook": v["on_screen_text"], "caption": v["post_caption"], "angle": v["angle"],
+                        "views": snap["views"] if snap else None,
+                        "lesson": (json.loads(v["lesson"]) or {}).get("headline") if v["lesson"] else None})
+    brief = {"version_now": len(chain) + 1, "earlier_versions": history,
+             "lesson": {k: lesson[k] for k in ("verdict", "headline", "worked", "didnt", "tweak", "change")},
+             "rule": "Every earlier version's hook is used: write a clearly new one. Build on what the best version did."}
     library = sorted(p.name for p in db.AUDIO_DIR.glob("*") if p.suffix.lower() in editor.AUDIO_EXTS)
     plan = brain.plan_reels(_frames(clip["path"], 3, start, length), info, 1, context, library,
                             {reel["source"] or "instagram": 1}, remake=brief)[0]

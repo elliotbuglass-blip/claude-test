@@ -1,0 +1,32 @@
+/* Remake journeys (Overview + Results): white on the tinted panel */
+.jy { border-radius: 18px; padding: 20px 22px; background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.22);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.18); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); color: #fff; }
+.jy + .jy { margin-top: 16px; }
+.jy-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.jy-head small { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: rgba(255,255,255,.62); }
+.jy-head b { font: 500 20px/1.25 "Satoshi", "Inter", sans-serif; }
+.jy-lift { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.jy-lift strong { font: 500 34px/1 "Satoshi", "Inter", sans-serif; letter-spacing: -.02em; }
+.jy-lift span { font-size: 13px; color: rgba(255,255,255,.8); }
+.jy-lift em { font-style: normal; font-size: 12px; padding: 3px 10px; border-radius: 999px; background: #F6E7CF; color: #1C1C1C; }
+.jy-chart { margin-top: 10px; }
+.jy-chart svg { width: 100%; height: 190px; display: block; overflow: visible; }
+.jy-base { stroke: rgba(255,255,255,.18); stroke-width: 1; }
+.jy-area { fill: url(#jyFill); }
+.jy-line { fill: none; stroke: #fff; stroke-width: 2.5; stroke-linecap: round; }
+.jy-dot { fill: #fff; stroke: rgba(0,0,0,.25); stroke-width: 2; }
+.jy-dot.pending { fill: transparent; stroke: rgba(255,255,255,.6); stroke-dasharray: 3 3; }
+.jy-val { fill: #fff; font: 600 12px "Inter", sans-serif; }
+.jy-cols { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: 12px; }
+.jy-col { text-align: center; font-size: 12px; color: rgba(255,255,255,.8); }
+.jy-col b { display: block; font: 600 14px "Inter", sans-serif; color: #fff; }
+.jy-col small { display: block; color: rgba(255,255,255,.62); margin-bottom: 4px; }
+.jy-col a { color: #fff; text-decoration: none; display: block; overflow-wrap: anywhere; }
+.jy-col a:hover { text-decoration: underline; }
+.jy-learn { display: block; margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: rgba(0,0,0,.16); text-align: left; line-height: 1.4; }
+.jy-learn i { font-style: normal; font-weight: 600; color: #fff; }
+@media (max-width: 760px) {
+  .jy { padding: 16px; }
+  .jy-cols { gap: 6px; } .jy-col { font-size: 11px; }
+  .jy-learn { display: none; }
+}

@@ -1,0 +1,50 @@
+{# Remake journeys: each reel's chain of versions on a graph (views per version, over time), with what Creatr learned
+   and changed between them. Needs journeys (web.remake_journeys). Styles: static/journeys.css. #}
+{% for j in journeys %}
+<article class="jy" aria-label="Versions of “{{ j.title }}”">
+  <div class="jy-head">
+    <div><small>{{ j.versions|length }} versions</small><b>“{{ j.title }}”</b></div>
+    {% if j.lift %}<div class="jy-lift"><strong>{{ j.lift }}×</strong><span>views, v1 → v{{ j.last_n }}</span>{% if j.lift >= 3 %}<em>🚀 Took off</em>{% endif %}</div>{% endif %}
+  </div>
+  <div class="jy-chart" data-points='{{ j.versions|map(attribute="views")|list|tojson }}' style="--cols: {{ j.versions|length }}">
+    <svg role="img" aria-label="Views per version: {% for v in j.versions %}v{{ v.n }} {{ v.views if v.views is not none else 'not live yet' }}{{ ', ' if not loop.last }}{% endfor %}"></svg>
+  </div>
+  <ol class="jy-cols" style="--cols: {{ j.versions|length }}">
+    {% for v in j.versions %}
+    <li class="jy-col">
+      <b>v{{ v.n }}</b><small>{{ ('live ' ~ v.live) if v.live else {'draft': 'in Review', 'scheduled': 'scheduled', 'rendering': 'being made'}.get(v.status, v.status) }}</small>
+      <a href="/reel/{{ v.id }}">“{{ v.hook }}”</a>
+      {% if not loop.last and v.learned %}<span class="jy-learn"><i>Learned</i> {{ v.learned }}{% if v.tweak %} <i>→ Changed</i> {{ v.tweak }}{% endif %}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</article>
+{% endfor %}
+<script>
+  // One graph per journey: views at each version, drawn to line up with the version columns underneath.
+  (function () {
+    function draw() {
+      document.querySelectorAll(".jy-chart").forEach(box => {
+        const pts = JSON.parse(box.dataset.points), svg = box.querySelector("svg");
+        const W = box.clientWidth, H = 190, top = 28, bottom = 14, n = pts.length;
+        const max = Math.max(1, ...pts.filter(v => v != null));
+        const x = i => (i + 0.5) * W / n, y = v => top + (1 - v / max) * (H - top - bottom);
+        const live = pts.map((v, i) => [i, v]).filter(p => p[1] != null);
+        let path = "";
+        live.forEach(([i, v], k) => {
+          if (!k) { path = `M${x(i)},${y(v)}`; return; }
+          const [pi, pv] = live[k - 1], mx = (x(pi) + x(i)) / 2;
+          path += ` C${mx},${y(pv)} ${mx},${y(v)} ${x(i)},${y(v)}`;
+        });
+        const area = live.length > 1 ? `<path class="jy-area" d="${path} L${x(live.at(-1)[0])},${H - bottom} L${x(live[0][0])},${H - bottom} Z"/>` : "";
+        svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+        svg.innerHTML = `<defs><linearGradient id="jyFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".25"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
+          <line class="jy-base" x1="0" x2="${W}" y1="${H - bottom}" y2="${H - bottom}"/>${area}<path class="jy-line" d="${path}"/>` +
+          pts.map((v, i) => v == null
+            ? `<circle class="jy-dot pending" cx="${x(i)}" cy="${H - bottom}" r="6"/>`
+            : `<circle class="jy-dot" cx="${x(i)}" cy="${y(v)}" r="6"/><text class="jy-val" x="${x(i)}" y="${y(v) - 13}" text-anchor="middle">${v.toLocaleString()}</text>`).join("");
+      });
+    }
+    draw(); addEventListener("resize", () => { clearTimeout(window.jyT); window.jyT = setTimeout(draw, 150); });
+  })();
+</script>

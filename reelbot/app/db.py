@@ -58,12 +58,13 @@ CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, account
 
 # Columns added after the first release: added to older databases on start-up.
 NEW_COLUMNS = {
-    "clips": {"description": "TEXT", "keep_look": "INTEGER", "batch": "TEXT", "combine": "INTEGER", "search_terms": "TEXT"},
+    "clips": {"description": "TEXT", "keep_look": "INTEGER", "batch": "TEXT", "combine": "INTEGER", "search_terms": "TEXT", "stage_at": "TEXT"},
     "snapshots": {"account": "TEXT"},
     "reels": {"positives": "TEXT", "negatives": "TEXT", "sound_reason": "TEXT", "trend": "TEXT",
               "cut_reason": "TEXT", "text_reason": "TEXT", "research": "TEXT", "text_spots": "TEXT", "risky": "INTEGER", "source": "TEXT", "series": "TEXT",
               "adjust": "TEXT", "chat": "TEXT", "text_layout": "TEXT", "text_scale": "REAL", "motion": "TEXT",
-              "inspirations": "TEXT", "keywords": "TEXT", "lesson": "TEXT", "parent": "TEXT", "favourite": "INTEGER"},
+              "inspirations": "TEXT", "keywords": "TEXT", "lesson": "TEXT", "parent": "TEXT", "favourite": "INTEGER",
+              "stage_at": "TEXT", "remake_note": "TEXT"},
 }
 
 _lock = threading.Lock()
@@ -119,16 +120,40 @@ def run(sql, *args):
         c.commit()
 
 
+TIMED = {"clips": ("analysing", "making"), "reels": ("rendering",)}  # stages the pipeline shows a progress wheel for
+DEFAULT_SECONDS = {"clips:analysing": 90, "clips:making": 300, "reels:rendering": 150}
+
+
+def stage_seconds(table, status):
+    """How long this stage usually takes here (running average of the last runs), for the pipeline's progress wheels."""
+    return get_setting(f"avg:{table}:{status}", DEFAULT_SECONDS.get(f"{table}:{status}", 120))
+
+
+def _timing(table, id_, new_status):
+    """When a clip or reel changes stage: learn how long the old stage took, and note when the new one started."""
+    old = one(f"SELECT status, stage_at FROM {table} WHERE id = ?", id_)
+    if old and old["status"] in TIMED.get(table, ()) and old["stage_at"] and old["status"] != new_status:
+        took = (datetime.now(timezone.utc) - datetime.fromisoformat(old["stage_at"])).total_seconds()
+        if 3 < took < 3600:  # ignore restarts and stuck jobs
+            avg = stage_seconds(table, old["status"])
+            set_setting(f"avg:{table}:{old['status']}", round(avg * 0.7 + took * 0.3, 1))
+    return now()
+
+
 def insert(table, row):
     row = {"account": ACCOUNT, **row}
     if table != "snapshots":
         row.setdefault("created_at", now())
+    if table in TIMED and "status" in row:
+        row.setdefault("stage_at", now())
     cols = ", ".join(row)
     marks = ", ".join("?" for _ in row)
     run(f"INSERT OR REPLACE INTO {table} ({cols}) VALUES ({marks})", *row.values())
 
 
 def update(table, id_, **fields):
+    if table in TIMED and "status" in fields:
+        fields["stage_at"] = _timing(table, id_, fields["status"])
     sets = ", ".join(f"{k} = ?" for k in fields)
     run(f"UPDATE {table} SET {sets} WHERE id = ?", *fields.values(), id_)
 

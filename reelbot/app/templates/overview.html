@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/rail.css">
+<link rel="stylesheet" href="/static/journeys.css">
 <style>
   /* Animatable tint colours so the whole panel can fade between reels' themes */
   @property --tint-a { syntax: "<color>"; inherits: true; initial-value: #4A1752; }
@@ -290,21 +291,7 @@
 
       <div class="section-head rise" style="animation-delay:.36s"><h2>Remake journeys</h2><a href="/results">Results &amp; learning →</a></div>
       {% if journeys %}
-      <section class="journeys">
-        {% for j in journeys %}
-        <article class="card journey rise" style="animation-delay:{{ 0.38 + loop.index0 * 0.06 }}s" aria-label="How “{{ j.title }}” was learned from and remade">
-          <ol class="steps">
-            {% for st in j.steps %}<li class="step {{ st.kind }}"><i aria-hidden="true"></i><b>{{ st.label }}</b><small>{{ st.when }}</small><span>{{ st.text }}</span></li>{% endfor %}
-          </ol>
-          <div class="jchart" data-s1="{{ j.s1|tojson }}" data-s2="{{ j.s2|tojson }}">
-            <svg role="img" aria-label="Views at 24, 48 and 72 hours: first version {{ j.s1|map('last')|join(', ') }}; remake {{ j.s2|map('last')|join(', ') or 'not posted yet' }}"></svg>
-            <div class="lift">{% if j.lift %}<strong>{{ j.lift }}×</strong> the views after the remake{% elif j.v2 is none %}Remake {{ 'scheduled' if j.status == 'scheduled' else 'waiting for review' if j.status == 'draft' else 'live, waiting for results' }}{% endif %}</div>
-            <div class="key"><span>First version</span><span>Remake</span></div>
-            <a class="ghost-btn" href="/reel/{{ j.remake }}" style="padding-left:0">See the remake →</a>
-          </div>
-        </article>
-        {% endfor %}
-      </section>
+      <section class="journeys rise" style="animation-delay:.38s">{% include "_journeys.html" %}</section>
       {% else %}
       <div class="card empty rise" style="animation-delay:.38s">When a posted reel underperforms, Creatr learns why after 72 hours and you can remake it (Results &amp; learning). Each remake's story shows up here: when it went live, what Creatr learned, what changed and how many more views it got.</div>
       {% endif %}
@@ -424,20 +411,6 @@
       if (r.ok) { f.fav = (await r.json()).favourite; fav.setAttribute("aria-pressed", String(f.fav)); }
     };
   }
-
-  /* Remake journey charts: first version (dashed) vs remake (solid), views at each check */
-  function drawJourneys() {
-    document.querySelectorAll(".jchart").forEach(box => {
-      const s1 = JSON.parse(box.dataset.s1), s2 = JSON.parse(box.dataset.s2), svg = box.querySelector("svg");
-      const W = svg.clientWidth || 260, H = 120, pad = 22, hours = [24, 48, 72];
-      const max = Math.max(1, ...s1.map(p => p[1]), ...s2.map(p => p[1]));
-      const x = h => pad + (hours.indexOf(h) * (W - pad * 2) / 2), y = v => 14 + (1 - v / max) * (H - 40);
-      const line = (pts, cls) => pts.length ? `<path class="${cls}" d="${pts.map((p, i) => (i ? "L" : "M") + x(p[0]) + "," + y(p[1])).join(" ")}"/>` +
-        `<text class="lab" x="${x(pts.at(-1)[0])}" y="${y(pts.at(-1)[1]) - 8}" text-anchor="middle">${pts.at(-1)[1].toLocaleString()}</text>` : "";
-      svg.innerHTML = hours.map(h => `<text x="${x(h)}" y="${H - 4}" text-anchor="middle">${h}h</text>`).join("") + line(s1, "l1") + line(s2, "l2");
-    });
-  }
-  drawJourneys(); addEventListener("resize", () => { clearTimeout(window.jT); window.jT = setTimeout(drawJourneys, 150); });
 
   /* Alerts */
   const ab = $("alertsBtn"), al = $("alerts");
