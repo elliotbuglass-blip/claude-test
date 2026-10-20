@@ -1243,7 +1243,11 @@ def gather_research(clip, sources, trend_share=0):
     status, tags = [], json.loads(clip["hashtags"] or "[]")
     terms = json.loads(clip["search_terms"] or "[]") or [" ".join((clip["subject"] or "").split()[:4])]
 
+    doing = {"Google trends": "checking Google trends", "Instagram": "researching Instagram", "TikTok": "researching TikTok",
+             "Trend hunt": "hunting for trends to tie in", "Google searches": "checking what people search on Google"}
+
     def attempt(name, fn, *args):
+        step(clip["id"], doing.get(name, name))
         try:
             return fn(*args)
         except Exception as e:
@@ -1284,7 +1288,27 @@ def gather_research(clip, sources, trend_share=0):
     return topic, tiktok, keywords, status, hunt
 
 
+def step(clip_id, text):
+    """What a clip is doing right now, shown under its progress wheel in the pipeline."""
+    db.update("clips", clip_id, step=text)
+
+
 def make_reels(clip_id, n=None, post_at=None, sources=None, mix=None):
+    """make_reels, but if anything goes wrong the clip says where it stopped and why (instead of sitting in the
+    pipeline forever)."""
+    try:
+        _make_reels(clip_id, n, post_at, sources, mix)
+    except Exception as e:
+        clip = db.one("SELECT status, step FROM clips WHERE id = ?", clip_id)
+        if clip and clip["status"] == "making":
+            db.update("clips", clip_id, status="failed",
+                      notes=f"Stopped while {clip['step'] or 'making reels'}: {str(e)[:250]}")
+        raise
+    finally:
+        step(clip_id, None)
+
+
+def _make_reels(clip_id, n=None, post_at=None, sources=None, mix=None):
     """Plan + render n reels for one clip. Review mode → drafts; autopilot → scheduled.
     mix = how bold to go for this batch (set on the Upload page); otherwise the mix from Settings."""
     c = cfg()
@@ -1302,6 +1326,7 @@ def make_reels(clip_id, n=None, post_at=None, sources=None, mix=None):
     mix_now = mix or research_mix()
     trend_share = round(100 * (mix_now.get("trends") or 0) / max(sum(mix_now.values()), 1))
     topic, tiktok, keywords, status, hunt = gather_research(clip, sources, trend_share)
+    step(clip_id, "finding the best moments in the clip")
     if "tiktok" in sources and not (tiktok and tiktok.get("winners")):  # no TikTok research: lean on Instagram instead
         sources = ["instagram" if s == "tiktok" else s for s in sources]
     library = sorted(p.name for p in db.AUDIO_DIR.glob("*") if p.suffix.lower() in editor.AUDIO_EXTS)
@@ -1318,6 +1343,7 @@ def make_reels(clip_id, n=None, post_at=None, sources=None, mix=None):
             "creator_description": clip["description"] or ""}
     counts = Counter(sources)
     context, refs = build_context(topic, tiktok, keywords, hunt)
+    step(clip_id, "writing the hooks and captions")
     try:
         plans = brain.plan_reels(_frames(clip["path"], 3, start, length), info, n, context, library,
                                  {s: counts.get(s, 0) for s in SOURCES})
@@ -1335,6 +1361,7 @@ def make_reels(clip_id, n=None, post_at=None, sources=None, mix=None):
         else:  # not enough clip for a different part: same moment, different framing
             w_start, motion = windows[0], "push"
             w_reason = cut_reason + " · with a slow push-in so it isn't a duplicate of the other reel"
+        step(clip_id, f"editing reel {i + 1} of {len(plans)}")
         save_plan(clip, plan, refs, research, slot=slot, start=w_start, length=length, cut_reason=w_reason, motion=motion,
                   mode=mode, post_at=slot if mode == "autopilot" else None)
     db.update("clips", clip_id, status="used")

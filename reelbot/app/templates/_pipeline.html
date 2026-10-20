@@ -2,12 +2,14 @@
    the page's ticker (upload.html); the numbers here are the starting point. #}
 {% macro ring(p) -%}
 {% if p and p.queued %}<span class="ring queued" role="img" aria-label="Waiting in the queue"><svg viewBox="0 0 36 36" aria-hidden="true"><circle class="rt" cx="18" cy="18" r="15"/><circle class="rf" cx="18" cy="18" r="15" stroke-dasharray="24 94.2"/></svg><small>in the queue</small></span>
+{% elif p and p.stuck %}<span class="ring stuck">⚠️ <span>This is taking far longer than usual ({{ ((now - p.start) / 60)|int }} min){% if p.step %}, last seen {{ p.step }}{% endif %}. It may be stuck.</span></span>
 {% elif p and p.start %}
   {% set el = [now - p.start, 0]|max %}{% set f = [el / p.avg, (1.0 if p.results else 0.97)]|min %}
   <span class="ring{{ ' slow' if (el > p.avg and not p.results) }}" data-start="{{ p.start }}" data-avg="{{ p.avg }}" data-results="{{ 1 if p.results else 0 }}"
         role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ (f * 100)|int }}" aria-label="{{ 'Time until final results' if p.results else 'Progress' }}">
     <svg viewBox="0 0 36 36" aria-hidden="true"><circle class="rt" cx="18" cy="18" r="15"/><circle class="rf" cx="18" cy="18" r="15" stroke-dasharray="94.2" stroke-dashoffset="{{ '%.1f'|format(94.2 * (1 - f)) }}"/></svg>
     <b>{{ (f * 100)|int }}%</b><small></small></span>
+  {% if p.step %}<div class="meta step">Now: {{ p.step }}…</div>{% endif %}
 {% endif %}
 {%- endmacro %}
 <div class="pipe">
@@ -18,7 +20,9 @@
       {% if it.type == 'clip' %}
         <div class="chip col"><div class="chip-t">🎬 {{ it.filename }}</div>
           <div class="meta">{% if it.status == 'failed' %}<span class="s-low">✗ {{ it.notes[:90] }}</span> · <a href="/clips">retry in Clips</a>{% elif key == 'analysing' %}watching the clip…{% else %}researching, writing and editing…{% endif %}</div>
-          {% if it.status != 'failed' %}{{ ring(it.prog) }}{% endif %}
+          {% if it.status != 'failed' %}{{ ring(it.prog) }}
+            {% if it.prog and it.prog.stuck %}<form method="post" action="/clips/{{ it.id }}/make" class="row tight"><input type="hidden" name="n" value="2"><button class="mini">Start again</button></form>{% endif %}
+          {% else %}<form method="post" action="/clips/{{ it.id }}/make" class="row tight"><input type="hidden" name="n" value="2"><button class="mini ghost">Try again</button></form>{% endif %}
           {% if it.subject %}<div class="meta">{{ it.subject }}</div>{% elif it.description %}<div class="meta">“{{ it.description[:80] }}”</div>{% endif %}</div>
       {% else %}
         <a class="chip" href="{{ '/review' if key == 'review' else '/calendar' if key == 'scheduled' else '/results' if key in ('posted','done') else '#' }}">
@@ -31,6 +35,7 @@
             {% else %}{{ it.virality_score }}/100 · {{ it.angle }}{% endif %}
             {% set src = it.source or ('trends' if it.risky else 'instagram') %} · {{ SOURCE_LABELS[src].split(' ')[0] }}{% if it.trend %} {{ it.trend }}{% endif %}
           </div>{% if it.status in ('rendering', 'posted') %}{{ ring(it.prog) }}{% endif %}</div></a>
+        {% if it.prog and it.prog.stuck %}<form method="post" action="/reels/{{ it.id }}/retry" class="row tight" style="margin:-2px 0 8px"><button class="mini">Start again</button></form>{% endif %}
       {% endif %}
     {% else %}<div class="meta empty-s">—</div>{% endfor %}
     {% if items|length > 12 %}<div class="meta">+{{ items|length - 12 }} more</div>{% endif %}

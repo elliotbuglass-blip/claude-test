@@ -37,7 +37,8 @@ def claude_key():
 
 def claude():
     import anthropic
-    return anthropic.Anthropic(api_key=claude_key() or None)
+    # A call that hangs would freeze the pipeline, so give up after 4 minutes (the SDK retries twice).
+    return anthropic.Anthropic(api_key=claude_key() or None, timeout=240)
 
 
 def env(name, required=True):

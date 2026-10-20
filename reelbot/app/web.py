@@ -299,7 +299,9 @@ def progress(table, item):
     if item["status"] == "new":
         return {"queued": True}
     if item["status"] in db.TIMED.get(table, ()) and item.get("stage_at"):
-        return {"start": _epoch(item["stage_at"]), "avg": db.stage_seconds(table, item["status"])}
+        start, avg = _epoch(item["stage_at"]), db.stage_seconds(table, item["status"])
+        stuck = time.time() - start > max(3 * avg, 20 * 60)  # far longer than usual: probably stuck
+        return {"start": start, "avg": avg, "step": item.get("step"), "stuck": stuck}
     if table == "reels" and item["status"] == "posted" and item.get("posted_at"):
         return {"start": _epoch(item["posted_at"]), "avg": 72 * 3600, "results": True}  # 72h until the final results
     return None

@@ -149,7 +149,7 @@ function tickRings() {
     r.setAttribute('aria-valuenow', Math.floor(f * 100));
     r.classList.toggle('slow', !results && left < 0);
     r.querySelector('small').textContent = results ? (left > 0 ? `final results in ${fmtLeft(left)}` : 'results due')
-      : left > 0 ? `about ${fmtLeft(left)} left` : 'taking a little longer…';
+      : left > 0 ? `about ${fmtLeft(left)} left` : `taking longer than usual · ${fmtLeft(el)} so far`;
   });
 }
 tickRings(); setInterval(tickRings, 1000);

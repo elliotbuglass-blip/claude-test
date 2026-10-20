@@ -372,3 +372,5 @@ button.sending::before { content: ""; display: inline-block; width: 12px; height
   border: 2px solid currentColor; border-right-color: transparent; animation: spin2 .8s linear infinite; }
 @keyframes spin2 { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; } button.sending::before { animation: none; } }
+.ring.stuck { align-items: flex-start; color: var(--warn); line-height: 1.4; }
+.meta.step { margin-top: 2px; font-size: 12px; }
