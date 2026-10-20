@@ -126,9 +126,11 @@ def action_message(action, reel, form):
     hook = f"“{reel['on_screen_text']}”" if reel else "the reel"
     render = _minutes(db.stage_seconds("reels", "rendering"))
     return {
-        "approve": "🚀 Posting now as a trial reel" if form.get("post_at") == "now" else f"✓ {hook} is scheduled",
+        "approve": "🚀 Posting now as a trial reel" if form.get("post_at") == "now" else
+                   f"🎵 {hook} is ready for its song: scan the QR code with your phone" if form.get("post_at") == "handoff" else
+                   f"✓ {hook} is scheduled",
         "postnow": "🚀 Posting now as a trial reel",
-        "handoff": f"🎵 {hook} is ready for its song: open it on your phone and send it to Edits or Instagram",
+        "handoff": f"🎵 {hook} is ready for its song: scan the QR code with your phone",
         "findpost": f"🔎 Looking for {hook} on your Instagram. Refresh in a minute",
         "link": f"✓ Linked {hook} to your Instagram post: Creatr tracks its results from now",
         "spot": f"✓ Added to the queue: moving the text on {hook}. Ready in {render}",
@@ -168,7 +170,7 @@ async def _reel_action(request: Request):
         if when == "now":
             jobs.post_now(reel_id)
         elif when == "handoff":
-            jobs.hand_off(reel_id)
+            return _hand_off(request, reel_id)
         else:
             jobs.approve(reel_id, form.get("custom_at") if when == "custom" and form.get("custom_at") else when)
     elif action == "spot":
@@ -179,7 +181,7 @@ async def _reel_action(request: Request):
     elif action == "postnow":
         jobs.post_now(reel_id)
     elif action == "handoff":
-        jobs.hand_off(reel_id)
+        return _hand_off(request, reel_id)
     elif action == "findpost":
         jobs.submit("find my post", jobs.match_handoffs)
     elif action == "link":
@@ -289,6 +291,15 @@ async def video(request: Request):
 # Instagram's API can't add its music or save drafts, so reels that need a song go to your phone: the /finish page hands
 # the video to Edits or Instagram, you add the song and post, and Creatr spots the post and tracks it like any other.
 
+def _hand_off(request, reel_id):
+    """Straight to the next step: on a phone, the send-to-Edits/Instagram page; on a computer, the reel's QR code."""
+    jobs.hand_off(reel_id)
+    ua = request.headers.get("user-agent", "")
+    if any(k in ua for k in ("iPhone", "iPad", "Android", "Mobi")):
+        return RedirectResponse("/" + links.finish_url(reel_id, request.url.netloc).split("/", 3)[3], 303)  # same site
+    return RedirectResponse(f"/reel/{reel_id}", 303)
+
+
 def _signed(request):
     reel_id = request.path_params["id"]
     e, s = request.query_params.get("e"), request.query_params.get("s")
@@ -302,6 +313,7 @@ async def finish_page(request: Request):
     r = db.one("SELECT * FROM reels WHERE id = ?", reel_id)
     if not r:
         return HTMLResponse("Not found", 404)
+    db.set_setting("flash", None)  # this page has no toast: don't leave "scan the QR code" for the next one
     caption = " ".join(x for x in (r["post_caption"] or r["on_screen_text"], jobs.cfg()["posting"].get("hashtags", "")) if x)
     return HTMLResponse(templates.get_template("finish.html").render(
         r=r, e=e, s=s, caption=caption, checked=request.query_params.get("checked")))

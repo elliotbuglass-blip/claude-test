@@ -40,22 +40,17 @@
   <div class="card done"><p class="song">✅ Posted and linked</p>
     <p class="meta">Creatr found it on your Instagram and is tracking its results.{% if r.permalink %} <a href="{{ r.permalink }}" style="color:#fff">Open it ↗</a>{% endif %}</p></div>
   {% else %}
-  <video src="/public/{{ r.id }}.mp4?e={{ e }}&s={{ s }}" controls playsinline preload="metadata"></video>
-
-  <div class="card">
-    <p class="label">🎵 Song to add</p>
-    <p class="song">{{ r.sound_suggestion or 'Original audio' }}</p>
-    {% if r.sound_moment %}<p class="meta">Use: {{ r.sound_moment }}</p>{% endif %}
-    {% if r.sound_reason %}<p class="meta">{{ r.sound_reason }}</p>{% endif %}
-  </div>
-
   <div class="card stack">
-    <p class="label">1 · Send the video</p>
+    <p class="label">1 · Send it, then add this song 🎵</p>
+    <p class="song">{{ r.sound_suggestion or 'Original audio' }}{% if r.sound_moment %} <span class="meta">· {{ r.sound_moment }}</span>{% endif %}</p>
     <button type="button" class="primary" id="share" disabled>Loading the video…</button>
     <a class="btn ghost" href="/public/{{ r.id }}.mp4?e={{ e }}&s={{ s }}" download="creatr-{{ r.id }}.mp4">⬇️ Save video to my phone</a>
     <p class="meta">Pick <b>Edits</b> or <b>Instagram</b> from the share menu. Not there? Save the video, open Edits, and import it from your camera roll.</p>
     <p class="note" id="shareNote" role="status" aria-live="polite"></p>
   </div>
+
+  <video src="/public/{{ r.id }}.mp4?e={{ e }}&s={{ s }}" controls playsinline preload="metadata" style="margin-top:14px"></video>
+  {% if r.sound_reason %}<p class="meta">Why this song: {{ r.sound_reason }}</p>{% endif %}
 
   <div class="card">
     <p class="label">2 · Copy the caption</p>
@@ -95,7 +90,8 @@
     }
   }).catch(() => { share.textContent = "Couldn't load the video: save it instead"; });
   share.addEventListener("click", async () => {
-    try { await navigator.share({files: [file]}); note.textContent = "Sent. Now add the song and paste the caption."; }
+    try { navigator.clipboard && navigator.clipboard.writeText(document.getElementById("caption").textContent).catch(() => {}); } catch (e) {}
+    try { await navigator.share({files: [file]}); note.textContent = "Sent, and the caption is copied. Now add the song and paste the caption."; }
     catch (e) { if (e.name !== "AbortError") note.textContent = "Couldn't open the share menu: save the video instead."; }
   });
   document.getElementById("copy").addEventListener("click", async e => {

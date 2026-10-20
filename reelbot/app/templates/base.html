@@ -37,7 +37,9 @@
   document.addEventListener("submit", e => {
     const b = e.submitter;
     if (!b || e.target.method !== "post") return;
-    setTimeout(() => { b.disabled = true; b.classList.add("sending"); b.dataset.label = b.textContent; b.textContent = "Adding to the queue…"; }, 0);
+    const song = e.target.action.endsWith("/handoff") || e.target.querySelector('input[value="handoff"]:checked');
+    setTimeout(() => { b.disabled = true; b.classList.add("sending"); b.dataset.label = b.textContent;
+      b.textContent = song ? "Getting it ready to send…" : "Adding to the queue…"; }, 0);
   });
   const toast = document.querySelector(".toast");
   if (toast) setTimeout(() => toast.classList.add("out"), 7000);
