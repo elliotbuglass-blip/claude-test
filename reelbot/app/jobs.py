@@ -1851,6 +1851,8 @@ def _resume():
         submit(f"analyse {c['filename']}", analyse_clip, c["id"], c["notes"] != "kind set by you")
     for c in db.q("SELECT * FROM clips WHERE status = 'making'"):
         db.update("clips", c["id"], status="failed", notes="Making reels was interrupted by a restart: make them again")
+    for c in db.q("SELECT * FROM clips WHERE status = 'queued'"):  # asked for more reels, still waiting its turn
+        submit(f"make reels for {c['filename']}", make_reels, c["id"], int(db.get_setting(f"queued:{c['id']}") or 2))
     for r in db.q("SELECT id FROM reels WHERE status = 'rendering'"):
         submit("re-render", render_reel, r["id"])
 

@@ -19,7 +19,7 @@
     {% for it in items[:12] %}
       {% if it.type == 'clip' %}
         <div class="chip col"><div class="chip-t">🎬 {{ it.filename }}</div>
-          <div class="meta">{% if it.status == 'failed' %}<span class="s-low">✗ {{ it.notes[:90] }}</span> · <a href="/clips">retry in Clips</a>{% elif key == 'analysing' %}watching the clip…{% else %}researching, writing and editing…{% endif %}</div>
+          <div class="meta">{% if it.status == 'failed' %}<span class="s-low">✗ {{ it.notes[:90] }}</span> · <a href="/clips">retry in Clips</a>{% elif key == 'analysing' %}watching the clip…{% elif it.status == 'queued' %}waiting its turn: more reels from this clip{% else %}researching, writing and editing…{% endif %}</div>
           {% if it.status != 'failed' %}{{ ring(it.prog) }}
             {% if it.prog and it.prog.stuck %}<form method="post" action="/clips/{{ it.id }}/make" class="row tight"><input type="hidden" name="n" value="2"><button class="mini">Start again</button></form>{% endif %}
           {% else %}<form method="post" action="/clips/{{ it.id }}/make" class="row tight"><input type="hidden" name="n" value="2"><button class="mini ghost">Try again</button></form>{% endif %}

@@ -296,7 +296,7 @@ def _epoch(iso):
 
 def progress(table, item):
     """A progress wheel for a clip or reel that's being worked on: when its stage started and how long it usually takes."""
-    if item["status"] == "new":
+    if item["status"] in ("new", "queued"):
         return {"queued": True}
     if item["status"] in db.TIMED.get(table, ()) and item.get("stage_at"):
         start, avg = _epoch(item["stage_at"]), db.stage_seconds(table, item["status"])
@@ -310,8 +310,8 @@ def progress(table, item):
 def pipeline():
     """Every clip and reel, put in the column for the stage it's at."""
     cols = {k: [] for k, _ in STAGES}
-    for c in db.q("SELECT * FROM clips WHERE kind = 'main' AND status IN ('new', 'analysing', 'analysed', 'making', 'failed') ORDER BY created_at DESC"):
-        stage = "making" if c["status"] == "making" or (c["status"] == "failed" and c["subject"]) else "analysing"
+    for c in db.q("SELECT * FROM clips WHERE kind = 'main' AND status IN ('new', 'analysing', 'analysed', 'queued', 'making', 'failed') ORDER BY created_at DESC"):
+        stage = "making" if c["status"] in ("making", "queued") or (c["status"] == "failed" and c["subject"]) else "analysing"
         if c["status"] == "analysed":  # analysed, not made yet: in review mode reels are on the way; autopilot uses it later
             stage = "making" if jobs.setting("mode") == "review" else "analysing"
         cols[stage].append({"type": "clip", "prog": progress("clips", c), **c})
@@ -391,8 +391,19 @@ async def clip_action(request: Request):
             failed = db.one("SELECT status FROM clips WHERE id = ?", clip_id)["status"] == "failed"
             jobs.submit("re-analyse", jobs.analyse_clip, clip_id, False, failed)  # a retry carries on to making reels
     elif action == "make":
-        jobs.submit("make reels", jobs.make_reels, clip_id, int(form.get("n") or 3))
-        flash(f"✓ Added to the queue: making reels. They land in Review in {_minutes(db.stage_seconds('clips', 'making'))}")
+        clip = db.one("SELECT filename FROM clips WHERE id = ?", clip_id)
+        left = jobs.clip_allowance(clip_id)
+        if left <= 0:
+            flash(f"✗ {clip['filename'] if clip else 'This clip'} has had {jobs.MAX_PER_CLIP} trial reels in the last 30 days, "
+                  "so more would look like duplicates. Reject drafts you don't want to free a slot, or remake a posted one on Results")
+            return RedirectResponse("/clips", 303)
+        n = min(int(form.get("n") or 2), left)
+        db.update("clips", clip_id, status="queued")  # shows in the pipeline straight away, waiting its turn
+        db.set_setting(f"queued:{clip_id}", n)
+        jobs.submit("make reels", jobs.make_reels, clip_id, n)
+        flash(f"✓ Added to the queue: making {n} reel{'s' if n != 1 else ''} from {clip['filename'] if clip else 'the clip'}. "
+              f"Follow it in the pipeline below; drafts land in Review in {_minutes(db.stage_seconds('clips', 'making'))}")
+        return RedirectResponse("/upload#pipeline-h", 303)
     elif action == "delete":
         clip = db.one("SELECT * FROM clips WHERE id = ?", clip_id)
         Path(clip["path"]).unlink(missing_ok=True)
