@@ -36,7 +36,7 @@
           <h4>🎯 Inspired by</h4>
           {% if insp %}<div class="insp">{% for x in insp %}
             <div class="i"><div class="who">
-              <span class="tag">{{ {"instagram": "📸 Instagram", "tiktok": "🎵 TikTok", "google": "🔎 Google", "youtube": "▶️ YouTube", "you": "⭐ Your reel"}.get(x.platform, x.platform) }}</span>
+              <span class="tag">{{ {"instagram": "📸 Instagram", "tiktok": "🎵 TikTok", "google": "🔎 Google trend", "news": "📰 In the news", "youtube": "▶️ YouTube", "you": "⭐ Your reel"}.get(x.platform, x.platform) }}</span>
               {% if x.account and x.account != 'you' %}<b>@{{ x.account }}</b>{% endif %}
               {% if x.views %}<span class="meta">{{ x.views|num }} {{ x.metric or 'views' }}{% if x.ratio %} · {{ x.ratio }}× their normal{% endif %}</span>{% endif %}
               {% if x.searches %}<span class="meta">{{ x.searches }} searches</span>{% endif %}
@@ -46,6 +46,8 @@
           {% else %}<p class="meta">{{ 'Nothing borrowed: this one is built from scratch.' if src == 'original' else 'No specific creator recorded for this reel.' }}</p>{% endif %}
           {% if kws %}<h4>🔤 Why these words</h4>
             <p>{% for k in kws %}<span class="kw"><b>“{{ k.word }}”</b> · {{ k.why }}{% if k.platform in ('google', 'youtube') %} ({{ k.platform|capitalize }}){% endif %}</span>{% endfor %}</p>{% endif %}
+          {% if res.trend_ideas %}<h4>💡 Trend ideas Creatr found ({{ res.trend_level }} trend hunt)</h4>
+            <ul class="src">{% for t in res.trend_ideas %}<li><b>“{{ t.hook }}”</b> · {{ t.trend }} ({{ t.why_now }}) · link: {{ t.link }} · fit {{ t.fit }}/10{% if t.url %} <a href="{{ t.url }}" target="_blank" rel="noopener">↗</a>{% endif %}</li>{% endfor %}</ul>{% endif %}
           {% if res.searches %}<details><summary class="meta">What people search about this ({{ res.searches|length }})</summary>
             <p>{% for k in res.searches %}<span class="kw">{{ k.search }}</span>{% endfor %}</p></details>{% endif %}
           <h4>📊 Research source</h4><p>{{ SOURCE_LABELS[src] }}-led: {{ {"instagram": "built on what is proven on Instagram right now", "tiktok": "built on something rising on TikTok before it hits Instagram", "trends": "a riskier reel riding news or a Google trend", "original": "a trend-setter: something nobody in your niche is doing, made to become your own series" + (" (“" ~ r.series ~ "”)" if r.series else "")}[src] }}.</p>

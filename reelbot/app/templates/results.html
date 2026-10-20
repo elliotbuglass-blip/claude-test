@@ -24,11 +24,14 @@
   {% include "_lesson.html" %}</div>{% endfor %}</div>{% endif %}
 {% if not reels %}<div class="empty">No posted reels yet.</div>{% else %}
 <div class="scroll"><table>
-<tr><th>Reel</th><th>Predicted</th><th>Posted</th><th>24h views</th><th>48h views</th><th>72h views</th><th>Shares</th><th>Saves</th><th>Avg watch</th></tr>
+<tr><th>Reel</th><th>Predicted</th><th>Actual <span title="From real views at 72h: 50 = your usual reel, 65 = 2× usual, 80 = 4×, 35 = half">ⓘ</span></th><th>Posted</th><th>24h views</th><th>48h views</th><th>72h views</th><th>Shares</th><th>Saves</th><th>Avg watch</th></tr>
 {% for r in reels %}
 <tr>
   <td><a href="/reel/{{ r.id }}"><b>“{{ r.on_screen_text }}”</b></a> <span class="tag src-{{ r.source or ('trends' if r.risky else 'instagram') }}">{{ SOURCE_LABELS[r.source or ('trends' if r.risky else 'instagram')] }}</span><div class="meta">{{ r.angle }} · 🎵 {{ r.sound_suggestion }}{% if r.permalink %} · <a href="{{ r.permalink }}" target="_blank">open ↗</a>{% endif %}</div></td>
   <td>{{ score(r.virality_score) }}</td>
+  <td>{% if r.actual is not none %}{{ score(r.actual) }}{% set d = r.actual - (r.virality_score or 0) %}
+    <div class="meta">{{ '▲' if d > 0 else '▼' if d < 0 else '=' }} {{ d|abs }} vs predicted{{ '' if r.actual_final else ' · 48h, so far' }}</div>
+    {% else %}<span class="meta">after 72h ⏳</span>{% endif %}</td>
   <td class="meta">{{ r.posted_at|when }}</td>
   {% for h in (24, 48, 72) %}<td>{{ r.snaps[h].views|num if h in r.snaps else '⏳' }}</td>{% endfor %}
   <td>{{ r.latest.shares|num if r.latest else '–' }}</td>

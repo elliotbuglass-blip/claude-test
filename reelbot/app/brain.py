@@ -159,7 +159,8 @@ Research mix: every reel has a source = the research it is mainly built on. The 
 - tiktok: a hook, format or sound that is winning or rising in TIKTOK RESEARCH but isn't big on Instagram yet. The
   early-wave bet. If you suggest a TikTok sound, write it as "Name — Artist (rising on TikTok; use it if it's in
   Instagram's library, otherwise original audio)".
-- trends: riskier. Rides current news or a Google trend from TRENDING NOW that genuinely ties to what's in the clip
+- trends: riskier. If TREND TIE-INS lists ideas, build trends reels on the strongest ones (highest fit), sharpening the
+  hook in the creator's voice, and cite that idea's trend id. Otherwise ride current news or a Google trend from TRENDING NOW that genuinely ties to what's in the clip
   (e.g. a new Batman film trending + a black car → "Bruce Wayne spec"); set trend to that trend's name. If not enough
   trends fit naturally, make it a bold experiment instead (an angle the creator has never tried, a polarising opinion,
   a cultural reference) with trend "". A forced trend tie-in looks cringe. Never use tragedies, politics or news about
@@ -188,13 +189,13 @@ inspired_by: name the exact source — the winning reel(s) or pattern this hook 
 
 Every research item in the request has an id in square brackets, e.g. [I3] (Instagram reel), [T2] (TikTok), [C1]
 (competitor outlier), [S4] (a reel the creator saved), [M2] (the creator's own reel), [G5] (Google trending search),
-[K7] (what people search on Google/YouTube about this clip's topic).
+[K7] (what people search on Google/YouTube about this clip's topic), [X2] (a trend tie-in idea from the trend hunt).
 inspirations: 1–3 research items this reel really borrows from (hook wording, format, structure, sound, pacing).
   ref = the id exactly as written, e.g. "I3". took = what you took from it in a few words ("the 'POV:' opener",
   "the night walk-up format", "this sound"). Original reels may cite the items whose gap they fill. Only cite ids that
   exist in the request; if nothing was borrowed, return [].
 keywords: words or phrases in on_screen_text or post_caption that you chose because of the research: a search people
-  make [K..], a trending search [G..], or a phrase that keeps winning on creators' reels [I../T../C..]. word = the word
+  make [K..], a trending search or trend tie-in [G../X..], or a phrase that keeps winning on creators' reels [I../T../C..]. word = the word
   or phrase as written in the reel, ref = the id, why = a few words ("people search 'db12 sound'", "trending on Google").
   Only real, cited reasons: [] is fine."""
 
@@ -348,23 +349,20 @@ first second lost them). Likes per view show whether the payoff landed. Be speci
     return _ask([{"type": "text", "text": text}], LESSON_SCHEMA, effort="medium", max_tokens=6000)
 
 
-def web_reels(subject, terms, sites, max_uses=3):
-    """Search the web (like Googling "site:instagram.com/reel …") for popular reels/TikToks on a topic.
-    Returns the result links Claude's web search found: [{url, title, page_age}]. Costs about a penny a search."""
+def _web_results(prompt, sites=None, max_uses=3):
+    """Run Claude's web search and return the result links it found: [{url, title, page_age}]. About a penny a search."""
     if not claude_key():
         raise RuntimeError("Claude isn't connected")
+    tool = {"type": "web_search_20260209", "name": "web_search", "max_uses": max_uses,
+            "user_location": {"type": "approximate", "country": "GB"}} | ({"allowed_domains": list(sites)} if sites else {})
     response = claude().beta.messages.create(
         model=MODEL,
         max_tokens=4000,
         betas=["server-side-fallback-2026-07-01"],
         fallbacks="default",
         output_config={"effort": "low"},
-        tools=[{"type": "web_search_20260209", "name": "web_search", "allowed_domains": list(sites), "max_uses": max_uses,
-                "user_location": {"type": "approximate", "country": "GB"}}],
-        messages=[{"role": "user", "content": f"""Find popular, recent short videos ({" and ".join(sites)}) about: {subject}.
-Try a few searches, e.g. {"; ".join(f'"{t}"' for t in terms[:3])}, and the topic with words like reel, POV, sound.
-Prefer individual video pages (instagram.com/reel/…, tiktok.com/@…/video/…) from the last few months.
-Then list the 10 best links, one per line."""}],
+        tools=[tool],
+        messages=[{"role": "user", "content": prompt}],
     )
     found = []
     for block in response.content:
@@ -375,6 +373,62 @@ Then list the 10 best links, one per line."""}],
         if errors:
             raise RuntimeError(f"web search failed: {getattr(errors[0], 'error_code', errors[0])}")
     return found
+
+
+def web_reels(subject, terms, sites, max_uses=3):
+    """Search the web (like Googling "site:instagram.com/reel …") for popular reels/TikToks on a topic."""
+    return _web_results(f"""Find popular, recent short videos ({" and ".join(sites)}) about: {subject}.
+Try a few searches, e.g. {"; ".join(f'"{t}"' for t in terms[:3])}, and the topic with words like reel, POV, sound.
+Prefer individual video pages (instagram.com/reel/…, tiktok.com/@…/video/…) from the last few months.
+Then list the 10 best links, one per line.""", sites, max_uses)
+
+
+def web_news(max_uses=4):
+    """What the UK is talking about this week (news, films, games, music, sport, launches, memes): headline links."""
+    return _web_results("""Find what people in the UK are talking about THIS WEEK: big news stories, film and TV releases,
+games and consoles, music, sport, celebrity moments, product launches, viral memes, seasonal moments (holidays, events).
+Search a few different ways (e.g. "trending this week UK", "biggest releases this week", "viral this week").
+Then list the 15 most talked-about topics, one per line.""", None, max_uses)
+
+
+IDEAS_SCHEMA = {
+    "type": "object",
+    "properties": {"ideas": {"type": "array", "items": {
+        "type": "object",
+        "properties": {
+            "trend": {"type": "string"}, "ref": {"type": "string"}, "why_now": {"type": "string"},
+            "link": {"type": "string"}, "hook": {"type": "string"}, "fit": {"type": "integer"}, "risk": {"type": "string"},
+        },
+        "required": ["trend", "ref", "why_now", "link", "hook", "fit", "risk"], "additionalProperties": False}}},
+    "required": ["ideas"],
+    "additionalProperties": False,
+}
+
+
+def trend_ideas(frames, subject, niche, candidates, n=5):
+    """Trend-jacking: link what's trending right now to what's in this clip, as ready-to-use on-screen lines.
+    candidates: lines like "[G3] Batman · 500K+ searches · New Batman film trailer drops"."""
+    text = f"""This clip shows: {subject}. The creator's account: {niche}
+
+TRENDING RIGHT NOW (ids in brackets):
+{candidates}
+
+Find the {n} cleverest ways to link something trending to THIS clip, so the reel rides the trend. The best ones feel
+obvious once you hear them, and are funny or aspirational in the creator's voice (calm, confident, a little cheeky):
+- a black car + a new Batman film trending → "POV: you chose the Bruce Wayne spec"
+- a supercar + PlayStation in the news before Christmas → "POV: you asked for an Aston Martin instead of a PlayStation"
+Look for a real link: colour, shape, sound, price, status, a character, a season, a rivalry, a meme format.
+
+For each idea:
+- trend: the trend's name. ref: its id exactly, e.g. "G3" or "N2".
+- why_now: why it's trending, in a few words.
+- link: the connection between the trend and the clip, in a few words.
+- hook: the on-screen line, under 9 words, no emoji or hashtags.
+- fit: 1-10, how natural the link is (10 = anyone gets it instantly; below 5 = forced).
+- risk: anything to watch (e.g. "trend may fade in days", "film spoilers").
+Never use tragedies, deaths, disasters, wars, politics, crime or anyone's misfortune. Skip anything forced: fewer, better
+ideas beat a full list. Return the ideas best first."""
+    return _ask([*_images(frames), {"type": "text", "text": text}], IDEAS_SCHEMA, effort="medium", max_tokens=8000)["ideas"]
 
 
 ASK_SYSTEM = """You are Creatr, an assistant inside an app that turns a creator's clips into Instagram trial reels.

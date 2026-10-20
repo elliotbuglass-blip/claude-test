@@ -369,6 +369,7 @@ async def reel_page(request: Request):
 
 async def results(request: Request):
     reels = db.q("SELECT * FROM reels WHERE status = 'posted' ORDER BY posted_at DESC")
+    usual = jobs.usual_views()
     snaps = {}
     for s in db.q("SELECT * FROM snapshots"):
         snaps.setdefault(s["reel_id"], {})[s["hours"]] = s
@@ -377,6 +378,9 @@ async def results(request: Request):
         latest = r["snaps"].get(72) or r["snaps"].get(48) or r["snaps"].get(24)
         r["latest"] = latest
         r["remake"] = db.one("SELECT id, on_screen_text, status FROM reels WHERE parent = ? AND status != 'rejected'", r["id"])
+        final = r["snaps"].get(72) or r["snaps"].get(48)
+        r["actual"] = jobs.actual_score(final["views"], usual) if final else None
+        r["actual_final"] = bool(r["snaps"].get(72))
     scored = [r for r in reels if r["snaps"].get(72) or r["snaps"].get(48)]
     summary = None
     if scored:
@@ -487,9 +491,16 @@ async def settings_page(request: Request):
 
 async def home(request: Request):
     """The signed-in home page: "Let's get creative", with a chat box to make reels or ask a question."""
-    recent = db.q("""SELECT r.id, r.on_screen_text, r.status, r.post_at, r.recommended_time FROM reels r
-                     WHERE r.status IN ('draft', 'scheduled', 'posted') ORDER BY r.created_at DESC LIMIT 6""")
-    return page("home.html", request, recent=recent)
+    reels = db.q("SELECT * FROM reels WHERE status != 'rejected' ORDER BY created_at DESC")
+    latest = {snap["reel_id"]: snap for snap in db.q("SELECT * FROM snapshots ORDER BY hours")}
+    views = [latest[r["id"]]["views"] or 0 for r in reels if r["id"] in latest]
+    stats = {"made": len(reels), "posted": sum(1 for r in reels if r["status"] == "posted"),
+             "typical": int(statistics.median(views)) if views else 0,
+             "learned": sum(1 for r in reels if r["lesson"])}
+    journey = next((j for j in remake_journeys(reels, latest, 10) if j["lift"]), None)
+    trend = db.latest_research("trends")
+    return page("home.html", request, stats=stats, journey=journey,
+                trending=[t["term"] for t in (trend or {}).get("items", [])[:6]])
 
 
 TINTS = {"instagram": ["#4A1752", "#9C3D84"], "tiktok": ["#16295E", "#3A62B8"],  # dark → light; white text passes AA
@@ -553,6 +564,7 @@ async def overview(request: Request):
     recent = [r for r in reels if r["status"] != "rendering" and (not q or q.lower() in f"{r['on_screen_text']} {r['post_caption']}".lower())][:4 if not q else 12]
     status_word = {"draft": "Waiting for review", "scheduled": "Scheduled", "posted": "Posted", "failed": "Failed"}
     conn = connect.status()
+    journeys = remake_journeys(reels, latest)
     return page("overview.html", request, week=week, total=sum(d["v"] for d in week), views_week=views_week, streak=streak,
                 month=sum(1 for r in reels if (r["created_at"] or "")[:7] == f"{now:%Y-%m}"),
                 profile={"name": conn.get("username") or "Your account", "handle": conn.get("username"),
@@ -560,7 +572,51 @@ async def overview(request: Request):
                          "median": int(statistics.median(with_views)) if with_views else 0},
                 spend=spend, budget=budget, featured=[feature(r) for r in top], q=q,
                 recent=[{"id": r["id"], "title": r["on_screen_text"], "when": f"{status_word.get(r['status'], r['status'])} · {_ago(r['created_at'])}"}
-                        for r in recent], alerts=db.q("SELECT * FROM events ORDER BY id DESC LIMIT 8"))
+                        for r in recent], alerts=db.q("SELECT * FROM events ORDER BY id DESC LIMIT 8"), journeys=journeys)
+
+
+def _day(iso):
+    try:
+        d = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except (AttributeError, ValueError):
+        return ""
+    if d.tzinfo:
+        d = d.astimezone(jobs.tz())
+    return f"{d:%a} {d.day} {d:%b}"
+
+
+def remake_journeys(reels, latest, limit=4):
+    """Each reel Creatr learned from and remade: made → live → learned → remade → live → result, with views per check."""
+    by_id = {r["id"]: r for r in reels}
+    snaps = {}
+    for snap in db.q("SELECT reel_id, hours, views FROM snapshots ORDER BY hours"):
+        snaps.setdefault(snap["reel_id"], []).append([snap["hours"], snap["views"] or 0])
+    out = []
+    for remake in reels:
+        first = by_id.get(remake["parent"])
+        if not first:
+            continue
+        lesson = json.loads(first["lesson"]) if first["lesson"] else {}
+        v1 = (latest.get(first["id"]) or {}).get("views")
+        v2 = (latest.get(remake["id"]) or {}).get("views")
+        steps = [{"label": "Made", "when": _day(first["created_at"]), "text": f"“{first['on_screen_text']}”", "kind": "made"}]
+        if first["posted_at"]:
+            steps.append({"label": "Went live", "when": _day(first["posted_at"]), "kind": "live",
+                          "text": f"{v1:,} views" if v1 is not None else "waiting for results"})
+        if lesson:
+            steps.append({"label": "Creatr learned", "when": _day(lesson.get("reviewed_at")), "kind": f"learn-{lesson.get('verdict', 'ok')}",
+                          "text": lesson.get("headline", "")})
+        steps.append({"label": "Remade", "when": _day(remake["created_at"]), "kind": "remade",
+                      "text": f"“{remake['on_screen_text']}” · {lesson.get('tweak', '')}".strip(" ·")})
+        if remake["posted_at"]:
+            steps.append({"label": "Went live", "when": _day(remake["posted_at"]), "kind": "live",
+                          "text": f"{v2:,} views" if v2 is not None else "waiting for results"})
+        lift = round(v2 / v1, 1) if v1 and v2 is not None else None
+        out.append({"first": first["id"], "remake": remake["id"], "title": first["on_screen_text"], "steps": steps,
+                    "v1": v1, "v2": v2, "lift": lift, "s1": snaps.get(first["id"], []), "s2": snaps.get(remake["id"], []),
+                    "status": remake["status"]})
+    out.sort(key=lambda j: -(j["lift"] or 0))
+    return out[:limit]
 
 
 async def favourite(request: Request):

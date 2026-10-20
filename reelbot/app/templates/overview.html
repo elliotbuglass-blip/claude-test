@@ -136,6 +136,29 @@
   .swap.out { opacity: 0; transform: translateY(6px); }
 
   .section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 34px 0 14px; }
+  /* Remake journeys: a timeline per reel Creatr learned from and remade */
+  .journeys { display: grid; gap: 16px; }
+  .journey { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 22px; align-items: center; }
+  .steps { list-style: none; padding: 0; margin: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0; position: relative; }
+  .steps::before { content: ""; position: absolute; left: 7px; right: 7px; top: 7px; height: 2px; background: rgba(255,255,255,.25); }
+  .step { position: relative; padding-right: 10px; }
+  .step i { display: block; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 3px solid var(--tint-a); box-shadow: 0 0 0 1px rgba(255,255,255,.5); margin-bottom: 10px; position: relative; }
+  .step.learn-flop i { background: #FFB4AC; } .step.learn-winner i { background: #9BEBB8; } .step.learn-ok i { background: #FFD48A; }
+  .step.remade i { background: var(--cream); }
+  .step b { display: block; font-size: 12px; font-weight: 600; }
+  .step small { display: block; font-size: 11px; color: var(--on-tint-faint); margin: 2px 0 4px; }
+  .step span { display: block; font-size: 12px; color: var(--on-tint-muted); line-height: 1.4; overflow-wrap: anywhere; }
+  .jchart { position: relative; }
+  .jchart svg { width: 100%; height: 120px; overflow: visible; display: block; }
+  .jchart .l1 { fill: none; stroke: rgba(255,255,255,.55); stroke-width: 2; stroke-dasharray: 4 4; }
+  .jchart .l2 { fill: none; stroke: #fff; stroke-width: 2.5; }
+  .jchart text { fill: var(--on-tint-faint); font: 400 11px var(--font-body); }
+  .jchart .lab { fill: #fff; font-weight: 500; }
+  .lift { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; font-size: 13px; color: var(--on-tint-muted); flex-wrap: wrap; }
+  .lift strong { font: 500 26px var(--font-display); color: #fff; }
+  .key { display: flex; gap: 12px; font-size: 11px; color: var(--on-tint-faint); margin-top: 4px; }
+  .key span::before { content: ""; display: inline-block; width: 14px; height: 0; border-top: 2px dashed rgba(255,255,255,.55); vertical-align: middle; margin-right: 5px; }
+  .key span + span::before { border-top: 2.5px solid #fff; }
   .section-head h2 { font: 400 20px var(--font-display); }
   .section-head a { font-size: 13px; color: var(--on-tint-muted); }
   .section-head a:hover { color: #fff; }
@@ -154,6 +177,7 @@
 
   @media (max-width: 1100px) {
     .grid { grid-template-columns: 1fr; }
+    .journey { grid-template-columns: 1fr; }
     .recent { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .search { width: 180px; }
   }
@@ -170,6 +194,10 @@
     .head-actions .ghost-btn span { display: none; }
     .feature-media { min-height: 260px; }
     .recent { gap: 10px; }
+    .journey { grid-template-columns: 1fr; }
+    .steps { grid-auto-flow: row; gap: 14px; }
+    .steps::before { left: 7px; right: auto; top: 8px; bottom: 8px; width: 2px; height: auto; }
+    .step { padding: 0 0 0 28px; } .step i { position: absolute; left: 0; top: 0; margin: 0; }
   }
   @media (prefers-reduced-motion: reduce) {
     .blob, .rise { animation: none; }
@@ -188,7 +216,7 @@
       <header class="head rise">
         <h1>Overview</h1>
         <div class="chips">
-          <span class="chip"><i aria-hidden="true">🔥</i>{{ streak }}-day posting streak</span>
+          <span class="chip"><i aria-hidden="true">🔥</i>{{ (streak ~ '-day posting streak') if streak else 'Start a posting streak' }}</span>
           <span class="chip"><i aria-hidden="true">✓</i>{{ month }} reel{{ 's' if month != 1 }} this month</span>
           <span class="chip"><i aria-hidden="true">{{ '🤖' if mode == 'autopilot' else '👀' }}</i>{{ 'Autopilot' if mode == 'autopilot' else 'Review mode' }}</span>
         </div>
@@ -259,6 +287,27 @@
         <div class="card empty rise" style="grid-column: 1 / -1">No reels yet. <a href="/">Let's get creative →</a></div>
         {% endif %}
       </section>
+
+      <div class="section-head rise" style="animation-delay:.36s"><h2>Remake journeys</h2><a href="/results">Results &amp; learning →</a></div>
+      {% if journeys %}
+      <section class="journeys">
+        {% for j in journeys %}
+        <article class="card journey rise" style="animation-delay:{{ 0.38 + loop.index0 * 0.06 }}s" aria-label="How “{{ j.title }}” was learned from and remade">
+          <ol class="steps">
+            {% for st in j.steps %}<li class="step {{ st.kind }}"><i aria-hidden="true"></i><b>{{ st.label }}</b><small>{{ st.when }}</small><span>{{ st.text }}</span></li>{% endfor %}
+          </ol>
+          <div class="jchart" data-s1="{{ j.s1|tojson }}" data-s2="{{ j.s2|tojson }}">
+            <svg role="img" aria-label="Views at 24, 48 and 72 hours: first version {{ j.s1|map('last')|join(', ') }}; remake {{ j.s2|map('last')|join(', ') or 'not posted yet' }}"></svg>
+            <div class="lift">{% if j.lift %}<strong>{{ j.lift }}×</strong> the views after the remake{% elif j.v2 is none %}Remake {{ 'scheduled' if j.status == 'scheduled' else 'waiting for review' if j.status == 'draft' else 'live, waiting for results' }}{% endif %}</div>
+            <div class="key"><span>First version</span><span>Remake</span></div>
+            <a class="ghost-btn" href="/reel/{{ j.remake }}" style="padding-left:0">See the remake →</a>
+          </div>
+        </article>
+        {% endfor %}
+      </section>
+      {% else %}
+      <div class="card empty rise" style="animation-delay:.38s">When a posted reel underperforms, Creatr learns why after 72 hours and you can remake it (Results &amp; learning). Each remake's story shows up here: when it went live, what Creatr learned, what changed and how many more views it got.</div>
+      {% endif %}
 
       <div class="section-head rise" style="animation-delay:.4s"><h2>{{ 'Results for “' ~ q ~ '”' if q else 'Recent reels' }}</h2><a href="{{ '/overview' if q else '/calendar' }}">{{ 'Clear search' if q else 'See all →' }}</a></div>
       {% if recent %}
@@ -375,6 +424,20 @@
       if (r.ok) { f.fav = (await r.json()).favourite; fav.setAttribute("aria-pressed", String(f.fav)); }
     };
   }
+
+  /* Remake journey charts: first version (dashed) vs remake (solid), views at each check */
+  function drawJourneys() {
+    document.querySelectorAll(".jchart").forEach(box => {
+      const s1 = JSON.parse(box.dataset.s1), s2 = JSON.parse(box.dataset.s2), svg = box.querySelector("svg");
+      const W = svg.clientWidth || 260, H = 120, pad = 22, hours = [24, 48, 72];
+      const max = Math.max(1, ...s1.map(p => p[1]), ...s2.map(p => p[1]));
+      const x = h => pad + (hours.indexOf(h) * (W - pad * 2) / 2), y = v => 14 + (1 - v / max) * (H - 40);
+      const line = (pts, cls) => pts.length ? `<path class="${cls}" d="${pts.map((p, i) => (i ? "L" : "M") + x(p[0]) + "," + y(p[1])).join(" ")}"/>` +
+        `<text class="lab" x="${x(pts.at(-1)[0])}" y="${y(pts.at(-1)[1]) - 8}" text-anchor="middle">${pts.at(-1)[1].toLocaleString()}</text>` : "";
+      svg.innerHTML = hours.map(h => `<text x="${x(h)}" y="${H - 4}" text-anchor="middle">${h}h</text>`).join("") + line(s1, "l1") + line(s2, "l2");
+    });
+  }
+  drawJourneys(); addEventListener("resize", () => { clearTimeout(window.jT); window.jT = setTimeout(drawJourneys, 150); });
 
   /* Alerts */
   const ab = $("alertsBtn"), al = $("alerts");

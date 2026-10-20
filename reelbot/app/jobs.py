@@ -622,6 +622,56 @@ def google_trends(max_age_hours=6):
     return result
 
 
+def trend_news(max_age_hours=6):
+    """What the UK is talking about this week, from Claude's web search (news, films, games, launches, memes)."""
+    cached = db.latest_research("news")
+    if cached and datetime.fromisoformat(cached["checked_at"]) > local_now() - timedelta(hours=max_age_hours):
+        return cached
+    _count("web_searches")
+    seen, items = set(), []
+    for r in brain.web_news():
+        title = (r["title"] or "").split(" | ")[0].split(" - ")[0].strip()
+        if title and title.lower() not in seen:
+            seen.add(title.lower())
+            items.append({"title": title[:140], "url": r["url"]})
+    result = {"checked_at": local_now().isoformat(), "items": items[:25]}
+    db.save_research("news", result)
+    db.log(f"Trend news: {len(result['items'])} stories people are talking about")
+    return result
+
+
+TREND_LEVELS = [(50, "deepest"), (25, "deeper"), (1, "light")]  # Trends share of the mix → how hard to hunt
+
+
+def trend_hunt(clip, share):
+    """Trend-jacking, scaled by the Trends slider: light = Google's trending searches only; deeper = Claude also links
+    them to this clip as ready-made hooks; deepest = adds this week's news and pop culture from the web, more ideas."""
+    level = next((name for floor, name in TREND_LEVELS if share >= floor), None)
+    if level in (None, "light"):
+        return {"level": level, "share": share, "ideas": [], "news": []}
+    trends = (db.latest_research("trends") or {}).get("items", [])[:30]
+    news = []
+    if level == "deepest":
+        try:
+            news = trend_news()["items"]
+        except Exception as e:
+            db.log(f"Trend news skipped: {e}")
+    lines = [f'[G{i}] {t["term"]} · {t["searches"]} searches ({t["geo"]}) · {t["headline"][:100]}' for i, t in enumerate(trends, 1)]
+    lines += [f'[N{i}] {n["title"]}' for i, n in enumerate(news, 1)]
+    if not lines:
+        return {"level": level, "share": share, "ideas": [], "news": news}
+    ideas = brain.trend_ideas(_frames(clip["path"], 2), clip["subject"], cfg()["niche"], "\n".join(lines),
+                              8 if level == "deepest" else 5)
+    for idea in ideas:  # attach the real trend behind each idea (and drop made-up ids)
+        ref = (idea["ref"] or "").strip("[] ").upper()
+        idx = int(ref[1:]) - 1 if ref[1:].isdigit() else -1
+        src = (trends if ref.startswith("G") else news if ref.startswith("N") else [])
+        idea["source"] = src[idx] if 0 <= idx < len(src) else None
+    ideas = [i for i in ideas if i["source"] and i["fit"] >= 5]
+    ideas.sort(key=lambda i: -i["fit"])
+    return {"level": level, "share": share, "ideas": ideas, "news": news}
+
+
 SUGGEST = "https://suggestqueries.google.com/complete/search"
 
 
@@ -927,7 +977,7 @@ def learnings():
     return "\n".join(lines)
 
 
-def build_context(topic, tiktok=None, keywords=None):
+def build_context(topic, tiktok=None, keywords=None, hunt=None):
     """Everything the planner reads, with an id on every research item ([I3], [T2], [K7]…) so each reel can say
     exactly which creators, reels and searches it took from. Returns (text, refs: id → item)."""
     parts, refs = [], {}
@@ -991,6 +1041,12 @@ def build_context(topic, tiktok=None, keywords=None):
         parts.append("TRENDING NOW on Google (search term · searches · headline):\n" + "\n".join(
             f'- {ref("G", {"platform": "google", "text": t["term"], "searches": t["searches"], "headline": t["headline"], "url": t["url"], "geo": t["geo"]})}'
             f' {t["term"]} · {t["searches"]} · {t["headline"][:90]}' for t in trends["items"][:30]))
+    if hunt and hunt.get("ideas"):
+        parts.append(f"TREND TIE-INS (Creatr's trend hunt: ways to link what's trending right now to THIS clip; Trends slider "
+                     f"{hunt['share']}%, so lean into these for trends reels, strongest first):\n" + "\n".join(
+            f'- {ref("X", {"platform": "news" if (i["ref"] or "").upper().lstrip("[").startswith("N") else "google", "text": i["trend"], "url": (i["source"] or {}).get("url"), "searches": (i["source"] or {}).get("searches"), "headline": (i["source"] or {}).get("headline") or (i["source"] or {}).get("title")})}'
+            f' trend "{i["trend"]}" ({i["why_now"]}) · link: {i["link"]} · hook idea: "{i["hook"]}" · fit {i["fit"]}/10 · risk: {i["risk"]}'
+            for i in hunt["ideas"]))
     radar = db.latest_research("radar")
     if radar and radar.get("outliers"):
         metric = radar.get("metric", "views")
@@ -1071,6 +1127,15 @@ def series_to_continue(limit=4):
 
 
 MAX_PER_CLIP = 2  # trial reels per clip per 30 days
+
+
+def actual_score(views, usual=None):
+    """Turn real views into the same 0-100 scale as the predicted virality score: 50 = your usual reel,
+    each doubling adds 15 (2x = 65, 4x = 80, 8x = 95) and each halving takes 15 off."""
+    usual = usual or usual_views() or 1
+    if views is None:
+        return None
+    return max(0, min(100, round(50 + 15 * math.log2(max(views, 1) / usual))))
 
 
 def clip_allowance(clip_id, day=None):
@@ -1171,8 +1236,9 @@ def cut(path, seconds):
     return start, length, reason
 
 
-def gather_research(clip, sources):
-    """All the research for one clip, plus a plain record of what ran and what didn't (shown on every reel)."""
+def gather_research(clip, sources, trend_share=0):
+    """All the research for one clip, plus a plain record of what ran and what didn't (shown on every reel).
+    trend_share = the Trends slider (%): the higher it is, the harder Creatr hunts for trends to tie the clip to."""
     status, tags = [], json.loads(clip["hashtags"] or "[]")
     terms = json.loads(clip["search_terms"] or "[]") or [" ".join((clip["subject"] or "").split()[:4])]
 
@@ -1201,11 +1267,20 @@ def gather_research(clip, sources):
             status.append({"source": "TikTok", "ok": True, "text": (
                 f"used {len(tiktok['winners'])} saved TikToks (free, no new search)" if tiktok.get("from_library")
                 else f"{tiktok['found']} videos{how(tiktok)}, {len(tiktok['winners'])} winners")})
+    hunt = attempt("Trend hunt", trend_hunt, clip, trend_share) if trend_share > 0 else None
+    if hunt and hunt["level"] != "light":
+        status.append({"source": "Trend hunt", "ok": True, "text": (
+            f"{hunt['level']} (Trends slider {trend_share}%): {len((trends or {}).get('items', [])[:30])} Google trends"
+            + (f" + {len(hunt['news'])} stories from this week's news" if hunt["news"] else "")
+            + f" → {len(hunt['ideas'])} ways to tie this clip to a trend")})
+    elif hunt:
+        status.append({"source": "Trend hunt", "ok": True, "text": f"light (Trends slider {trend_share}%): Google's trending searches only. "
+                                                                    "Turn Trends up to 25%+ for trend tie-in ideas, 50%+ to search this week's news too"})
     keywords = attempt("Google searches", google_keywords, terms)
     if keywords:
         status.append({"source": "Google searches", "ok": True,
                        "text": f"{len(keywords['items'])} things people search about “{'”, “'.join(keywords['terms'])}”"})
-    return topic, tiktok, keywords, status
+    return topic, tiktok, keywords, status, hunt
 
 
 def make_reels(clip_id, n=None, post_at=None, sources=None, mix=None):
@@ -1223,7 +1298,9 @@ def make_reels(clip_id, n=None, post_at=None, sources=None, mix=None):
     n = min(n, allowed)
     db.update("clips", clip_id, status="making")
     sources = list(sources or (mix_plan(n, recent=0, mix=mix) if mix else mix_plan(n)))
-    topic, tiktok, keywords, status = gather_research(clip, sources)
+    mix_now = mix or research_mix()
+    trend_share = round(100 * (mix_now.get("trends") or 0) / max(sum(mix_now.values()), 1))
+    topic, tiktok, keywords, status, hunt = gather_research(clip, sources, trend_share)
     if "tiktok" in sources and not (tiktok and tiktok.get("winners")):  # no TikTok research: lean on Instagram instead
         sources = ["instagram" if s == "tiktok" else s for s in sources]
     library = sorted(p.name for p in db.AUDIO_DIR.glob("*") if p.suffix.lower() in editor.AUDIO_EXTS)
@@ -1239,7 +1316,7 @@ def make_reels(clip_id, n=None, post_at=None, sources=None, mix=None):
             "reel_cut": f"{start:.1f}s–{start + length:.1f}s of the clip, so the reel is {length:.0f}s long",
             "creator_description": clip["description"] or ""}
     counts = Counter(sources)
-    context, refs = build_context(topic, tiktok, keywords)
+    context, refs = build_context(topic, tiktok, keywords, hunt)
     try:
         plans = brain.plan_reels(_frames(clip["path"], 3, start, length), info, n, context, library,
                                  {s: counts.get(s, 0) for s in SOURCES})
@@ -1248,7 +1325,7 @@ def make_reels(clip_id, n=None, post_at=None, sources=None, mix=None):
         raise
     mode = setting("mode")
     slots = post_at or spread_slots(len(plans))
-    research = research_snapshot(topic, tiktok, keywords, status)
+    research = research_snapshot(topic, tiktok, keywords, status, hunt)
     for i, (plan, slot) in enumerate(zip(plans, slots)):
         if i < len(windows):
             w_start, motion = windows[i], None
@@ -1287,7 +1364,7 @@ def save_plan(clip, plan, refs, research, slot, start, length, cut_reason, motio
     render_reel(reel_id)
 
 
-def research_snapshot(topic, tiktok=None, keywords=None, status=None):
+def research_snapshot(topic, tiktok=None, keywords=None, status=None, hunt=None):
     """The research a batch of reels was planned from, kept with each reel for its "Why this reel" panel."""
     out = {"winners": [], "sounds": [], "sounds_7d": [], "original_share": None, "outliers": [], "hashtags": [],
            "tiktok": [], "tiktok_sounds_7d": [], "searches": [], "status": status or []}
@@ -1298,6 +1375,10 @@ def research_snapshot(topic, tiktok=None, keywords=None, status=None):
                    sounds_7d=topic.get("sounds_7d", [])[:5], original_share=topic["original_audio_share"])
     if keywords:
         out["searches"] = keywords["items"][:12]
+    if hunt and hunt.get("ideas"):
+        out["trend_ideas"] = [{k: i[k] for k in ("trend", "why_now", "link", "hook", "fit", "risk")} | {"url": (i["source"] or {}).get("url")}
+                              for i in hunt["ideas"][:8]]
+        out["trend_level"] = hunt["level"]
     radar = db.latest_research("radar")
     if radar and radar.get("outliers"):
         out["outliers"] = [{k: o.get(k) for k in ("account", "url", "views", "ratio", "on_screen_text", "post_caption")}
@@ -1639,7 +1720,7 @@ def remake(reel_id):
     motion = "push" if overlap > 0.5 and reel["motion"] != "push" else None  # mostly the same moment: reframe it
     cut_reason = (f"{start:.1f}s–{start + length:.1f}s of the clip, from the lesson: {lesson['tweak']}"
                   + (" · with a slow push-in so it isn't a duplicate of the first version" if motion else ""))
-    topic, tiktok, keywords, status = gather_research(clip, [reel["source"] or "instagram"])
+    topic, tiktok, keywords, status, _ = gather_research(clip, [reel["source"] or "instagram"])
     context, refs = build_context(topic, tiktok, keywords)
     info = {"filename": clip["filename"], "subject": clip["subject"], "notes": clip["notes"], "seconds": clip["duration"],
             "reel_cut": f"{start:.1f}s–{start + length:.1f}s of the clip, so the reel is {length:.0f}s long",
